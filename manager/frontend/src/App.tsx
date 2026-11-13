@@ -49,6 +49,8 @@ interface AuthMe {
   authenticated: boolean
   email: string
   admin: boolean
+  user_status?: string
+  has_password?: boolean
   auth_mode: string
   sandbox_auth_mode: string
   default_admin_email: string
@@ -165,6 +167,9 @@ interface UserItem {
   display_name: string | null
   role: string
   status: string
+  has_password: boolean
+  sandbox_count: number
+  created_at?: string | null
 }
 
 interface AdminItem {
@@ -364,7 +369,9 @@ function LoginView({
   const [mode, setMode] = useState<'admin' | 'user'>('admin')
   const [email, setEmail] = useState(auth?.default_admin_email || 'admin@example.com')
   const [token, setToken] = useState('')
+  const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const urlError = new URLSearchParams(window.location.search).get('error')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -375,6 +382,7 @@ function LoginView({
         body: JSON.stringify({
           email,
           token: mode === 'admin' ? token : undefined,
+          password: mode === 'user' ? password : undefined,
           mode,
         }),
       })
@@ -394,7 +402,7 @@ function LoginView({
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">登录 DSH Sandbox Cloud</CardTitle>
             <Badge variant="outline">
-              {auth?.auth_mode === 'oidc' ? 'SSO / OIDC' : 'Token 认证'}
+              {auth?.auth_mode === 'oidc' ? 'SSO / OIDC' : '本地认证'}
             </Badge>
           </div>
           <CardDescription>
@@ -402,6 +410,12 @@ function LoginView({
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {urlError === 'disabled' && (
+            <div className="mb-4 rounded-lg border border-rose-500/40 bg-rose-950/60 p-3 text-xs text-rose-200 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+              <span>该账号已被平台管理员禁用，请联系管理员启用后再登录。</span>
+            </div>
+          )}
           {auth?.auth_mode === 'oidc' ? (
             <div className="space-y-4">
               <Button
@@ -437,7 +451,7 @@ function LoginView({
                   onClick={() => {
                     setMode('user')
                     if (email === (auth?.default_admin_email || 'admin@example.com')) {
-                      setEmail('alice@example.com')
+                      setEmail('')
                     }
                   }}
                   className={cn(
@@ -475,8 +489,15 @@ function LoginView({
                     />
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-400 leading-relaxed">
-                    输入管理员为您分配工作区时绑定的邮箱地址，即可进入个人远程 Agent OS 启动台。
+                  <div className="space-y-1.5">
+                    <Label>登录密码</Label>
+                    <Input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="输入管理员为您设置的登录密码..."
+                    />
                   </div>
                 )}
 
@@ -485,7 +506,7 @@ function LoginView({
                     ? '正在验证...'
                     : mode === 'admin'
                       ? '进入管理员控制台'
-                      : '查看我的远程工作区'}
+                      : '登录我的远程工作区'}
                 </Button>
               </form>
             </div>
@@ -531,6 +552,7 @@ function AdminConsoleView({
   const [sbxForm, setSbxForm] = useState({
     email: '',
     display_name: '',
+    initial_password: '',
     slug: '',
     template: 'agent-os',
     image_repo: 'dsh-sandbox',
@@ -592,6 +614,22 @@ function AdminConsoleView({
   // Admin / User Form
   const [newAdminEmail, setNewAdminEmail] = useState('')
   const [newAdminName, setNewAdminName] = useState('')
+  const [newUserForm, setNewUserForm] = useState({
+    email: '',
+    display_name: '',
+    password: '',
+  })
+  const [creatingUser, setCreatingUser] = useState(false)
+  const [resetPwTarget, setResetPwTarget] = useState<UserItem | null>(null)
+  const [resetPwValue, setResetPwValue] = useState('')
+  const [savingPw, setSavingPw] = useState(false)
+
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+    const bytes = new Uint8Array(12)
+    crypto.getRandomValues(bytes)
+    return Array.from(bytes, (b) => chars[b % chars.length]).join('')
+  }
 
   const copyText = (key: string, text: string) => {
     navigator.clipboard.writeText(text)
@@ -680,6 +718,7 @@ function AdminConsoleView({
         body: JSON.stringify({
           email: sbxForm.email.trim(),
           display_name: sbxForm.display_name.trim() || null,
+          initial_password: sbxForm.initial_password.trim() || null,
           slug: sbxForm.slug.trim() || null,
           template: sbxForm.template,
           image_repo: sbxForm.image_repo.trim() || null,
@@ -694,7 +733,13 @@ function AdminConsoleView({
       })
       notify(`沙箱已成功分配给 ${sbxForm.email}`)
       setCreateSbxOpen(false)
-      setSbxForm((prev) => ({ ...prev, email: '', display_name: '', slug: '' }))
+      setSbxForm((prev) => ({
+        ...prev,
+        email: '',
+        display_name: '',
+        initial_password: '',
+        slug: '',
+      }))
       await refreshAll()
     } catch (err: any) {
       notify(err.message || '创建沙箱失败', 'error')
@@ -1632,6 +1677,199 @@ function AdminConsoleView({
       {/* TAB 5: Users, Admins & Audit Log */}
       {activeTab === 'users' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle>普通用户管理 (Workspace Users)</CardTitle>
+                  <CardDescription>
+                    {overview?.manager_auth_mode === 'oidc'
+                      ? '当前使用 OIDC 单点登录，账号通过 IdP 的 Email Claim 校验；管理员仍可在下方预先建档或禁用特定用户。'
+                      : '当前使用本地认证模式，普通用户须通过「邮箱 + 密码」登录，禁用后将立即无法访问个人工作区与 DSH。'}
+                  </CardDescription>
+                </div>
+                <Badge variant="outline">
+                  {overview?.manager_auth_mode === 'oidc' ? 'OIDC 兼容模式' : '本地密码认证'}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  setCreatingUser(true)
+                  try {
+                    await apiFetch('/api/users', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        email: newUserForm.email.trim(),
+                        display_name: newUserForm.display_name.trim() || null,
+                        password: newUserForm.password.trim() || null,
+                      }),
+                    })
+                    notify(`已添加用户 ${newUserForm.email.trim()}`)
+                    setNewUserForm({ email: '', display_name: '', password: '' })
+                    await refreshAll()
+                  } catch (err: any) {
+                    notify(err.message, 'error')
+                  } finally {
+                    setCreatingUser(false)
+                  }
+                }}
+                className="grid grid-cols-1 gap-2 sm:grid-cols-12"
+              >
+                <div className="sm:col-span-4">
+                  <Input
+                    type="email"
+                    required
+                    placeholder="用户邮箱 *"
+                    value={newUserForm.email}
+                    onChange={(e) =>
+                      setNewUserForm({ ...newUserForm, email: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="sm:col-span-3">
+                  <Input
+                    placeholder="姓名 / 备注 (可选)"
+                    value={newUserForm.display_name}
+                    onChange={(e) =>
+                      setNewUserForm({ ...newUserForm, display_name: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="sm:col-span-3 flex gap-1.5">
+                  <Input
+                    type="text"
+                    required={overview?.manager_auth_mode !== 'oidc'}
+                    minLength={6}
+                    placeholder={
+                      overview?.manager_auth_mode === 'oidc'
+                        ? '本地密码 (可选)'
+                        : '初始密码 (至少6位) *'
+                    }
+                    value={newUserForm.password}
+                    onChange={(e) =>
+                      setNewUserForm({ ...newUserForm, password: e.target.value })
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setNewUserForm({
+                        ...newUserForm,
+                        password: generatePassword(),
+                      })
+                    }
+                    title="生成随机密码"
+                  >
+                    随机
+                  </Button>
+                </div>
+                <div className="sm:col-span-2 flex justify-end">
+                  <Button type="submit" size="sm" className="w-full" disabled={creatingUser}>
+                    <Plus className="h-3.5 w-3.5" />
+                    添加用户
+                  </Button>
+                </div>
+              </form>
+
+              {users.length === 0 ? (
+                <div className="py-8 text-center text-xs text-zinc-500">
+                  暂无普通用户，可在上方创建或通过分配新沙箱自动建档。
+                </div>
+              ) : (
+                <div className="divide-y divide-zinc-800/70 text-xs">
+                  {users.map((u) => (
+                    <div
+                      key={u.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-zinc-200">{u.email}</span>
+                        {u.display_name && (
+                          <span className="text-zinc-400">({u.display_name})</span>
+                        )}
+                        <Badge variant={u.status === 'active' ? 'success' : 'warning'}>
+                          {u.status === 'active' ? '生效中' : '已禁用'}
+                        </Badge>
+                        {overview?.manager_auth_mode === 'oidc' ? (
+                          <Badge variant="secondary">
+                            {u.has_password ? 'OIDC + 已设本地密码' : 'OIDC 认证'}
+                          </Badge>
+                        ) : (
+                          <Badge variant={u.has_password ? 'outline' : 'warning'}>
+                            {u.has_password ? '已设密码' : '未设密码'}
+                          </Badge>
+                        )}
+                        <Badge variant="outline">{u.sandbox_count} 个沙箱</Badge>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setResetPwTarget(u)
+                            setResetPwValue('')
+                          }}
+                        >
+                          <KeyRound className="h-3 w-3" />
+                          {u.has_password ? '重置密码' : '设置密码'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            const nextStatus = u.status === 'active' ? 'disabled' : 'active'
+                            try {
+                              await apiFetch(`/api/users/${u.id}`, {
+                                method: 'PATCH',
+                                body: JSON.stringify({ status: nextStatus }),
+                              })
+                              notify(
+                                nextStatus === 'active'
+                                  ? `已启用用户 ${u.email}`
+                                  : `已禁用用户 ${u.email}`,
+                              )
+                              await refreshAll()
+                            } catch (err: any) {
+                              notify(err.message, 'error')
+                            }
+                          }}
+                        >
+                          {u.status === 'active' ? '禁用' : '启用'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={u.sandbox_count > 0}
+                          title={
+                            u.sandbox_count > 0
+                              ? '请先删除该用户名下的沙箱'
+                              : '删除用户'
+                          }
+                          onClick={async () => {
+                            try {
+                              await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' })
+                              notify(`已删除用户 ${u.email}`)
+                              await refreshAll()
+                            } catch (err: any) {
+                              notify(err.message, 'error')
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>平台管理员 (Platform Admins)</CardTitle>
@@ -1738,10 +1976,18 @@ function AdminConsoleView({
               <Input
                 type="email"
                 required
+                list="existing-users-list"
                 placeholder="employee@example.com"
                 value={sbxForm.email}
                 onChange={(e) => setSbxForm({ ...sbxForm, email: e.target.value })}
               />
+              <datalist id="existing-users-list">
+                {users.map((u) => (
+                  <option key={u.id} value={u.email}>
+                    {u.display_name || u.email}
+                  </option>
+                ))}
+              </datalist>
             </div>
             <div className="space-y-1.5">
               <Label>员工姓名 / 备注</Label>
@@ -1751,6 +1997,33 @@ function AdminConsoleView({
                 onChange={(e) => setSbxForm({ ...sbxForm, display_name: e.target.value })}
               />
             </div>
+
+            {overview?.manager_auth_mode !== 'oidc' && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>用户初始登录密码 (仅首次建档或尚未设密码时写入，可选)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    minLength={6}
+                    placeholder="至少 6 位，若用户已有密码可留空"
+                    value={sbxForm.initial_password}
+                    onChange={(e) =>
+                      setSbxForm({ ...sbxForm, initial_password: e.target.value })
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setSbxForm({ ...sbxForm, initial_password: generatePassword() })
+                    }
+                  >
+                    随机生成
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label>选择镜像与环境模板 *</Label>
@@ -2148,6 +2421,67 @@ function AdminConsoleView({
           </div>
         </div>
       </Dialog>
+
+      {/* DIALOG 6: Reset User Password */}
+      <Dialog
+        open={!!resetPwTarget}
+        onOpenChange={(o) => !o && setResetPwTarget(null)}
+        title={`设置 / 重置用户密码：${resetPwTarget?.email}`}
+        description="设置后，用户在非 OIDC 模式下须使用该密码登录个人工作区。"
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault()
+            if (!resetPwTarget) return
+            setSavingPw(true)
+            try {
+              await apiFetch(`/api/users/${resetPwTarget.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ password: resetPwValue.trim() }),
+              })
+              notify(`已更新 ${resetPwTarget.email} 的登录密码`)
+              setResetPwTarget(null)
+              setResetPwValue('')
+              await refreshAll()
+            } catch (err: any) {
+              notify(err.message, 'error')
+            } finally {
+              setSavingPw(false)
+            }
+          }}
+          className="space-y-4 text-xs"
+        >
+          <div className="space-y-1.5">
+            <Label>新密码 (至少 6 位) *</Label>
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                required
+                minLength={6}
+                placeholder="输入新密码..."
+                value={resetPwValue}
+                onChange={(e) => setResetPwValue(e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setResetPwValue(generatePassword())}
+              >
+                随机生成
+              </Button>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setResetPwTarget(null)}>
+              取消
+            </Button>
+            <Button type="submit" disabled={savingPw}>
+              {savingPw ? '保存中...' : '确认设置'}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   )
 }
@@ -2168,6 +2502,13 @@ function UserPortalView({
   const [logsTarget, setLogsTarget] = useState<SandboxItem | null>(null)
   const [logsText, setLogsText] = useState('')
   const [loadingLogs, setLoadingLogs] = useState(false)
+  const [pwModalOpen, setPwModalOpen] = useState(false)
+  const [pwForm, setPwForm] = useState({
+    current_password: '',
+    new_password: '',
+    confirm_password: '',
+  })
+  const [savingPw, setSavingPw] = useState(false)
 
   const openLogsModal = async (sbx: SandboxItem) => {
     setLogsTarget(sbx)
@@ -2226,10 +2567,18 @@ function UserPortalView({
             当前账号：<span className="text-zinc-200 font-mono">{auth?.email}</span> · 工作区由平台管理员统一创建与分配
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadMySandboxes}>
-          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-          刷新状态
-        </Button>
+        <div className="flex items-center gap-2">
+          {auth?.auth_mode !== 'oidc' && !auth?.admin && (
+            <Button variant="outline" size="sm" onClick={() => setPwModalOpen(true)}>
+              <KeyRound className="h-3.5 w-3.5" />
+              修改密码
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={loadMySandboxes}>
+            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+            刷新状态
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -2359,6 +2708,88 @@ function UserPortalView({
             {loadingLogs ? '正在读取容器日志...' : logsText}
           </pre>
         </div>
+      </Dialog>
+
+      {/* Change My Password Modal */}
+      <Dialog
+        open={pwModalOpen}
+        onOpenChange={(o) => !o && setPwModalOpen(false)}
+        title="修改个人登录密码"
+        description={`账号：${auth?.email}`}
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault()
+            if (pwForm.new_password !== pwForm.confirm_password) {
+              notify('两次输入的新密码不一致', 'error')
+              return
+            }
+            setSavingPw(true)
+            try {
+              await apiFetch('/api/my/password', {
+                method: 'POST',
+                body: JSON.stringify({
+                  current_password: pwForm.current_password || null,
+                  new_password: pwForm.new_password,
+                }),
+              })
+              notify('登录密码修改成功')
+              setPwModalOpen(false)
+              setPwForm({ current_password: '', new_password: '', confirm_password: '' })
+            } catch (err: any) {
+              notify(err.message, 'error')
+            } finally {
+              setSavingPw(false)
+            }
+          }}
+          className="space-y-4 text-xs"
+        >
+          {auth?.has_password && (
+            <div className="space-y-1.5">
+              <Label>当前密码 *</Label>
+              <Input
+                type="password"
+                required
+                value={pwForm.current_password}
+                onChange={(e) =>
+                  setPwForm({ ...pwForm, current_password: e.target.value })
+                }
+              />
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label>新密码 (至少 6 位) *</Label>
+            <Input
+              type="password"
+              required
+              minLength={6}
+              value={pwForm.new_password}
+              onChange={(e) =>
+                setPwForm({ ...pwForm, new_password: e.target.value })
+              }
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>确认新密码 *</Label>
+            <Input
+              type="password"
+              required
+              minLength={6}
+              value={pwForm.confirm_password}
+              onChange={(e) =>
+                setPwForm({ ...pwForm, confirm_password: e.target.value })
+              }
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setPwModalOpen(false)}>
+              取消
+            </Button>
+            <Button type="submit" disabled={savingPw}>
+              {savingPw ? '提交中...' : '保存新密码'}
+            </Button>
+          </div>
+        </form>
       </Dialog>
     </div>
   )

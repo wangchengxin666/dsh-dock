@@ -18,10 +18,43 @@ def _normalize_memory(value: str | None) -> str | None:
     return value
 
 
+def _normalize_password(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if len(cleaned) < 6 or len(cleaned) > 128:
+        raise ValueError("password length must be between 6 and 128 characters")
+    return cleaned
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     display_name: str | None = None
     role: Literal["user", "admin"] = "user"
+    password: str | None = None
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str | None) -> str | None:
+        return _normalize_password(value)
+
+
+class UserUpdate(BaseModel):
+    display_name: str | None = None
+    status: Literal["active", "disabled"] | None = None
+    password: str | None = None
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str | None) -> str | None:
+        return _normalize_password(value)
+
+
+class UserPasswordChange(BaseModel):
+    current_password: str | None = None
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 class UserOut(BaseModel):
@@ -32,6 +65,9 @@ class UserOut(BaseModel):
     display_name: str | None
     role: str
     status: str
+    has_password: bool = False
+    sandbox_count: int = 0
+    created_at: datetime | None = None
 
 
 class AdminCreate(BaseModel):
@@ -106,6 +142,7 @@ class SandboxCreate(BaseModel):
     email: EmailStr
     slug: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
     display_name: str | None = None
+    initial_password: str | None = None
     image_repo: str | None = None
     image_tag: str | None = None
     template: str = "agent-os"
@@ -115,6 +152,11 @@ class SandboxCreate(BaseModel):
     llm_profile_id: str | None = None
     cpu_limit: float | None = Field(default=None, gt=0, le=64)
     memory_limit: str | None = None
+
+    @field_validator("initial_password")
+    @classmethod
+    def validate_initial_password(cls, value: str | None) -> str | None:
+        return _normalize_password(value)
 
     @field_validator("memory_limit")
     @classmethod

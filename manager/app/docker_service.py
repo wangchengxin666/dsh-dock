@@ -171,6 +171,12 @@ class DockerService:
             trusted_hosts = f"{host}:{port} {host}"
             whitelist_domains = f"{host}:{port},{host}"
 
+        allowed_emails = [email.lower()]
+        if auth_mode == "oidc" and self.settings.manager_admin_email:
+            adm_email = self.settings.manager_admin_email.strip().lower()
+            if adm_email and adm_email not in allowed_emails:
+                allowed_emails.append(adm_email)
+
         env: dict[str, str] = {
             "AUTH_MODE": auth_mode,
             "SANDBOX_BASE_PATH": base_path,
@@ -179,7 +185,7 @@ class DockerService:
             "DSH_MOUNT": dsh_mount,
             "DSH_PUBLIC_URL": dsh_public_url,
             "DSH_TRUSTED_HOSTS": trusted_hosts,
-            "DSH_ALLOWED_EMAILS": email,
+            "DSH_ALLOWED_EMAILS": ",".join(allowed_emails),
             "DSH_TOKEN_COOKIE_NAME": f"dsh_token_seen_{suffix}",
             "DSH_PERMISSION_MODE": self.settings.dsh_permission_mode,
             "DSH_PLUGIN_INDEX_URL": f"{manager_url}/plugins/index.json",
@@ -256,6 +262,20 @@ class DockerService:
                     "OAUTH2_PROXY_SILENCE_PING_LOGGING": "true",
                 }
             )
+            if self.settings.oidc_discovery_url:
+                try:
+                    with httpx.Client(timeout=5.0, trust_env=False) as http:
+                        meta = http.get(self.settings.oidc_discovery_url).json()
+                    auth_ep = meta.get("authorization_endpoint")
+                    token_ep = meta.get("token_endpoint")
+                    jwks_uri = meta.get("jwks_uri")
+                    if auth_ep and token_ep and jwks_uri:
+                        env["OAUTH2_PROXY_SKIP_OIDC_DISCOVERY"] = "true"
+                        env["OAUTH2_PROXY_LOGIN_URL"] = auth_ep
+                        env["OAUTH2_PROXY_REDEEM_URL"] = token_ep
+                        env["OAUTH2_PROXY_OIDC_JWKS_URL"] = jwks_uri
+                except Exception:
+                    pass
         return env
 
     def create(self, sandbox: Sandbox) -> Container:

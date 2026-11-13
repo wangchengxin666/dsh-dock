@@ -30,7 +30,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from starlette.middleware.sessions import SessionMiddleware
@@ -57,8 +57,10 @@ from .schemas import (
     TemplateUpdate,
     UserCreate,
     UserOut,
+    UserPasswordChange,
+    UserUpdate,
 )
-from .security import encrypt_secret
+from .security import encrypt_secret, hash_password, verify_password
 from .services import (
     Conflict,
     ManagerError,
@@ -92,14 +94,18 @@ settings = get_settings()
 WEB_DIST_DIR = Path(__file__).parent / "web_dist"
 
 oauth = OAuth()
-if settings.manager_auth_mode == "oidc" and settings.oidc_issuer_url:
+if settings.manager_auth_mode == "oidc" and (
+    settings.oidc_discovery_url or settings.oidc_issuer_url
+):
+    discovery_url = (
+        settings.oidc_discovery_url.strip()
+        or f"{settings.oidc_issuer_url.rstrip('/')}/.well-known/openid-configuration"
+    )
     oauth.register(
         name="oidc",
         client_id=settings.oauth2_proxy_client_id,
         client_secret=settings.oauth2_proxy_client_secret,
-        server_metadata_url=(
-            f"{settings.oidc_issuer_url.rstrip('/')}/.well-known/openid-configuration"
-        ),
+        server_metadata_url=discovery_url,
         client_kwargs={
             "scope": settings.oauth2_proxy_scope,
             **(
@@ -126,7 +132,9 @@ async def lifespan(_app: FastAPI):
         missing = [
             name
             for name, value in {
-                "OIDC_ISSUER_URL": settings.oidc_issuer_url,
+                "OIDC_ISSUER_URL (or OIDC_DISCOVERY_URL)": (
+                    settings.oidc_issuer_url or settings.oidc_discovery_url
+                ),
                 "OAUTH2_PROXY_CLIENT_ID": settings.oauth2_proxy_client_id,
                 "OAUTH2_PROXY_CLIENT_SECRET": settings.oauth2_proxy_client_secret,
             }.items()
@@ -244,6 +252,29 @@ def sandbox_out(sandbox: Sandbox) -> SandboxOut:
         last_seen_at=sandbox.last_seen_at,
         deleted_at=sandbox.deleted_at,
     )
+
+
+def _user_out(user: User, sandbox_count: int = 0) -> UserOut:
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        role=user.role,
+        status=user.status,
+        has_password=bool(user.password_hash),
+        sandbox_count=sandbox_count,
+        created_at=user.created_at,
+    )
+
+
+def _ensure_active_user(db: Session, email: str) -> User | None:
+    user = db.scalar(select(User).where(User.email == email.strip().lower()))
+    if user and user.status != "active":
+        raise HTTPException(
+            status_code=403,
+            detail="该账号已被管理员禁用，请联系平台管理员",
+        )
+    return user
 
 
 def _manager_error(exc: Exception) -> HTTPException:
@@ -414,6 +445,7 @@ def safe_next(value: str | None) -> str:
 class LoginPayload(BaseModel):
     email: str
     token: str | None = None
+    password: str | None = None
     mode: str = "admin"
 
 
@@ -422,10 +454,17 @@ class LoginPayload(BaseModel):
 def auth_me(request: Request, db: Session = Depends(get_db)):
     email = session_email(request)
     admin = _is_authenticated_admin(request, db)
+    user_row = (
+        db.scalar(select(User).where(User.email == email))
+        if email
+        else None
+    )
     return {
         "authenticated": bool(email),
         "email": email,
         "admin": admin,
+        "user_status": user_row.status if user_row else "active",
+        "has_password": bool(user_row and user_row.password_hash),
         "auth_mode": settings.manager_auth_mode,
         "sandbox_auth_mode": settings.sandbox_auth_mode,
         "default_admin_email": settings.manager_admin_email,
@@ -484,6 +523,24 @@ a.btn{{display:inline-block;background:#27272a;color:#f4f4f5;text-decoration:non
             detail=f"禁止访问：工作区 /s/{slug} 仅归属人 ({owner_email}) 或管理员可访问",
         )
 
+    if not is_admin and sandbox.user.status != "active":
+        if wants_html:
+            html = f"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>403 账号已禁用 - DSH Sandbox Cloud</title>
+<style>body{{margin:0;background:#09090b;color:#f4f4f5;font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center}}
+.card{{max-width:440px;padding:28px;border-radius:14px;background:#18181b;border:1px solid #3f3f46;box-shadow:0 20px 40px rgba(0,0,0,.5)}}
+h2{{margin:0 0 10px;font-size:18px;color:#fb7185}}p{{margin:0 0 20px;font-size:13px;color:#a1a1aa;line-height:1.6}}
+code{{background:#27272a;padding:2px 6px;border-radius:4px;color:#e4e4e7}}
+a.btn{{display:inline-block;background:#27272a;color:#f4f4f5;text-decoration:none;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:500;border:1px solid #3f3f46}}</style></head>
+<body><div class="card"><h2>403 账号已被禁用</h2>
+<p>账号 <code>{email}</code> 已被平台管理员禁用，暂时无法访问工作区 <code>/s/{slug}/</code>。</p>
+<a class="btn" href="/login">返回登录页</a></div></body></html>"""
+            return HTMLResponse(content=html, status_code=403)
+        raise HTTPException(
+            status_code=403,
+            detail=f"禁止访问：账号 {email} 已被管理员禁用",
+        )
+
     effective_user = email or settings.manager_admin_email.lower()
     return Response(
         status_code=200,
@@ -514,13 +571,29 @@ def api_auth_login(
         }
 
     if settings.manager_auth_mode == "token":
-        if payload.mode == "user" and not payload.token:
+        if payload.mode == "user":
             if is_platform_admin(db, clean_email):
                 raise HTTPException(
                     status_code=401,
                     detail="管理员账号请切换至“管理员控制台”并输入 Admin Token 登录",
                 )
-            # Employee portal lookup mode: allow viewing assigned workspace on /my
+            user = db.scalar(select(User).where(User.email == clean_email))
+            secret = (
+                payload.password if payload.password is not None else payload.token
+            ) or ""
+            if not user:
+                raise HTTPException(status_code=401, detail="邮箱或密码错误")
+            if user.status != "active":
+                raise HTTPException(
+                    status_code=403, detail="该账号已被管理员禁用，请联系平台管理员"
+                )
+            if not user.password_hash:
+                raise HTTPException(
+                    status_code=401,
+                    detail="该账号尚未设置登录密码，请联系管理员设置初始密码",
+                )
+            if not verify_password(secret, user.password_hash):
+                raise HTTPException(status_code=401, detail="邮箱或密码错误")
             request.session["email"] = clean_email
             request.session["role"] = "user"
             return {
@@ -577,6 +650,11 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
     email = str(email or "").lower()
     if not email:
         raise HTTPException(status_code=400, detail="ID token has no email")
+    if not is_platform_admin(db, email):
+        existing_user = db.scalar(select(User).where(User.email == email))
+        if existing_user and existing_user.status != "active":
+            request.session.clear()
+            return RedirectResponse("/login?error=disabled", status_code=303)
     request.session["email"] = email
     request.session["name"] = userinfo.get("name") or email
     next_url = request.session.pop("next", "/admin")
@@ -604,7 +682,11 @@ def open_sandbox_with_token(
 ):
     sandbox = load_sandbox(db, sandbox_id)
     email = session_email(request)
-    if not _is_authenticated_admin(request, db) and sandbox.user.email.lower() != email:
+    is_admin = _is_authenticated_admin(request, db)
+    if (
+        (not is_admin and sandbox.user.email.lower() != email)
+        or (not is_admin and sandbox.user.status != "active")
+    ):
         return verify_sandbox_access(sandbox.slug, request, db)
     base = settings.sandbox_url(sandbox.port, sandbox.slug).rstrip("/")
     if settings.sandbox_auth_mode == "oidc":
@@ -631,6 +713,8 @@ def backup_sandbox_workspace(
             raise HTTPException(status_code=401, detail="请先登录")
         if sandbox.user.email.lower() != email:
             raise HTTPException(status_code=403, detail="无权备份他人的工作区")
+        if sandbox.user.status != "active":
+            raise HTTPException(status_code=403, detail="该账号已被管理员禁用")
     try:
         stream = get_docker().export_workspace_tar(sandbox)
     except Exception as exc:
@@ -661,6 +745,7 @@ def api_my_sandboxes(
     target_email = (email or sess_email or "").strip().lower()
     if not is_admin:
         target_email = sess_email
+        _ensure_active_user(db, sess_email)
     if not target_email:
         return SandboxList(items=[])
     sandboxes = list(
@@ -675,6 +760,35 @@ def api_my_sandboxes(
     return SandboxList(items=[sandbox_out(s) for s in sandboxes])
 
 
+@app.post("/api/my/password")
+def api_change_my_password(
+    payload: UserPasswordChange,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if settings.manager_auth_mode == "oidc":
+        raise HTTPException(
+            status_code=400,
+            detail="当前已启用企业 OIDC 登录，请前往统一身份认证平台修改密码",
+        )
+    email = require_user_api(request)
+    user = _ensure_active_user(db, email)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="当前账号仅使用平台管理员配置，无独立用户密码记录",
+        )
+    if user.password_hash:
+        if not payload.current_password or not verify_password(
+            payload.current_password, user.password_hash
+        ):
+            raise HTTPException(status_code=401, detail="当前密码错误")
+    user.password_hash = hash_password(payload.new_password)
+    audit(db, "user.password_change", target=user.email, actor=email)
+    db.commit()
+    return {"ok": True}
+
+
 @app.post("/api/my/sandboxes/{sandbox_id}/{action}", response_model=SandboxOut)
 def api_my_sandbox_action(
     sandbox_id: str,
@@ -684,8 +798,11 @@ def api_my_sandbox_action(
 ):
     email = require_user_api(request)
     sandbox = load_sandbox(db, sandbox_id)
-    if not _is_authenticated_admin(request, db) and sandbox.user.email.lower() != email:
-        raise HTTPException(status_code=403, detail="无权操作他人的工作区")
+    if not _is_authenticated_admin(request, db):
+        if sandbox.user.email.lower() != email:
+            raise HTTPException(status_code=403, detail="无权操作他人的工作区")
+        if sandbox.user.status != "active":
+            raise HTTPException(status_code=403, detail="该账号已被管理员禁用")
     handlers = {
         "start": lambda: start_sandbox(db, get_docker(), sandbox_id),
         "stop": lambda: stop_sandbox(db, get_docker(), sandbox_id),
@@ -899,19 +1016,28 @@ def create_user(
     email = payload.email.lower()
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(status_code=409, detail="该邮箱用户已存在")
+    pw_hash = hash_password(payload.password) if payload.password else None
     user = User(
         email=email,
         display_name=payload.display_name,
+        password_hash=pw_hash,
         role=payload.role,
     )
     db.add(user)
     try:
+        db.flush()
+        audit(
+            db,
+            "user.create",
+            target=email,
+            detail=f"has_password={bool(pw_hash)}",
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="该邮箱用户已存在") from exc
     db.refresh(user)
-    return user
+    return _user_out(user, 0)
 
 
 @app.get("/api/users", response_model=list[UserOut])
@@ -919,7 +1045,46 @@ def list_users(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_api),
 ):
-    return list(db.scalars(select(User).order_by(User.email)).all())
+    users = list(db.scalars(select(User).order_by(User.email)).all())
+    counts_rows = db.execute(
+        select(Sandbox.user_id, func.count(Sandbox.id))
+        .where(Sandbox.deleted_at.is_(None))
+        .group_by(Sandbox.user_id)
+    ).all()
+    counts = {row[0]: int(row[1]) for row in counts_rows}
+    return [_user_out(u, counts.get(u.id, 0)) for u in users]
+
+
+@app.patch("/api/users/{user_id}", response_model=UserOut)
+def update_user_endpoint(
+    user_id: str,
+    payload: UserUpdate,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_api),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    changes: list[str] = []
+    if payload.display_name is not None:
+        user.display_name = payload.display_name.strip() or None
+        changes.append("display_name")
+    if payload.status is not None and payload.status != user.status:
+        user.status = payload.status
+        changes.append(f"status={payload.status}")
+    if payload.password is not None:
+        user.password_hash = hash_password(payload.password)
+        changes.append("password_reset")
+    if changes:
+        audit(db, "user.update", target=user.email, detail=",".join(changes))
+    db.commit()
+    db.refresh(user)
+    cnt = db.scalar(
+        select(func.count(Sandbox.id)).where(
+            Sandbox.user_id == user.id, Sandbox.deleted_at.is_(None)
+        )
+    )
+    return _user_out(user, int(cnt or 0))
 
 
 @app.delete("/api/users/{user_id}")
@@ -941,6 +1106,12 @@ def delete_user_endpoint(
             status_code=409,
             detail=f"该用户仍有运行中的沙箱 ({active_sbx.slug})，请先删除沙箱",
         )
+    # Remove soft-deleted sandbox tombstones before deleting the user row.
+    for old_sbx in db.scalars(
+        select(Sandbox).where(Sandbox.user_id == user_id, Sandbox.deleted_at.is_not(None))
+    ).all():
+        db.delete(old_sbx)
+    audit(db, "user.delete", target=user.email)
     db.delete(user)
     db.commit()
     return {"ok": True}
@@ -1056,6 +1227,7 @@ def create_sandbox_endpoint(
             init_repo_url=payload.init_repo_url,
             init_script=payload.init_script,
             auto_install_plugins=payload.auto_install_plugins,
+            initial_password=payload.initial_password,
         )
     except Exception as exc:
         raise _manager_error(exc) from exc
@@ -1246,6 +1418,8 @@ def sandbox_logs(
                 raise HTTPException(status_code=401, detail="请先登录")
             if sandbox.user.email.lower() != email:
                 raise HTTPException(status_code=403, detail="无权查看他人的工作区日志")
+            if sandbox.user.status != "active":
+                raise HTTPException(status_code=403, detail="该账号已被管理员禁用")
         return {"logs": get_docker().logs(sandbox, tail=tail)}
     except HTTPException:
         raise
@@ -1267,6 +1441,8 @@ def sandbox_stats(
                 raise HTTPException(status_code=401, detail="请先登录")
             if sandbox.user.email.lower() != email:
                 raise HTTPException(status_code=403, detail="无权查看他人的工作区状态")
+            if sandbox.user.status != "active":
+                raise HTTPException(status_code=403, detail="该账号已被管理员禁用")
         return get_docker().stats(sandbox)
     except HTTPException:
         raise

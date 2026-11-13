@@ -11,6 +11,7 @@ from .docker_service import DockerService, SandboxRuntimeError
 from .models import AuditLog, LlmProfile, PlatformAdmin, Sandbox, SandboxTemplate, User
 from .ports import PortExhausted, allocate_port
 from .schemas import TemplateCreate, TemplateUpdate
+from .security import hash_password
 
 
 class ManagerError(RuntimeError):
@@ -55,15 +56,26 @@ def unique_slug(db: Session, email: str, wanted: str | None) -> str:
 
 
 def get_or_create_user(
-    db: Session, email: str, display_name: str | None = None
+    db: Session,
+    email: str,
+    display_name: str | None = None,
+    password_hash: str | None = None,
 ) -> User:
     email = email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user:
+        if user.status != "active":
+            raise ManagerError(f"user {email} is disabled; re-enable before provisioning")
         if display_name:
             user.display_name = display_name
+        if password_hash and not user.password_hash:
+            user.password_hash = password_hash
         return user
-    user = User(email=email, display_name=display_name)
+    user = User(
+        email=email,
+        display_name=display_name,
+        password_hash=password_hash,
+    )
     db.add(user)
     db.flush()
     return user
@@ -259,9 +271,11 @@ def create_sandbox(
     image_repo: str | None = None,
     init_script: str | None = None,
     auto_install_plugins: str | None = None,
+    initial_password: str | None = None,
 ) -> Sandbox:
     email = email.strip().lower()
-    user = get_or_create_user(db, email, display_name)
+    pw_hash = hash_password(initial_password) if initial_password else None
+    user = get_or_create_user(db, email, display_name, password_hash=pw_hash)
     final_slug = unique_slug(db, email, slug)
     port = allocate_port(db, settings, docker.used_host_ports())
 

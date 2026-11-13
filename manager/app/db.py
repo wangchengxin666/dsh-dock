@@ -88,6 +88,14 @@ def init_db() -> None:
                 connection.exec_driver_sql(
                     "ALTER TABLE sandboxes ADD COLUMN auto_install_plugins VARCHAR(512)"
                 )
+            user_columns = {
+                row[1]
+                for row in connection.exec_driver_sql("PRAGMA table_info(users)")
+            }
+            if "password_hash" not in user_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"
+                )
 
 
 def get_db() -> Generator[Session, None, None]:

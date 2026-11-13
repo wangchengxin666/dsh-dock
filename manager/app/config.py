@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     allow_self_service_create: bool = False
 
     oidc_issuer_url: str = ""
+    # Optional internal OIDC discovery URL when manager runs inside Docker and
+    # OIDC_ISSUER_URL is only resolvable from the host browser.
+    oidc_discovery_url: str = ""
     oauth2_proxy_client_id: str = ""
     oauth2_proxy_client_secret: str = ""
     oauth2_proxy_cookie_secret: str = ""
