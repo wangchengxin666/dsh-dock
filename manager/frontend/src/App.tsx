@@ -52,7 +52,6 @@ interface AuthMe {
   user_status?: string
   has_password?: boolean
   auth_mode: string
-  sandbox_auth_mode: string
   default_admin_email: string
   public_url: string
   plugin_index_url: string
@@ -63,7 +62,6 @@ interface SandboxItem {
   email: string
   display_name: string | null
   slug: string
-  port: number
   container_id: string | null
   volume_name: string
   image_repo: string
@@ -146,8 +144,6 @@ interface OverviewData {
   default_image_tag: string
   default_cpus: number
   default_memory: string
-  routing_mode: string
-  sandbox_auth_mode: string
   manager_auth_mode: string
   plugin_index_url: string
   local_images: LocalImageItem[]
@@ -1150,7 +1146,6 @@ function AdminConsoleView({
                                 />
                                 {sbx.status}
                               </Badge>
-                              <span className="text-[11px] text-zinc-500">Port {sbx.port}</span>
                             </div>
                             <div className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-indigo-400">
                               <a

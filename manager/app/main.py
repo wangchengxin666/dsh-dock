@@ -9,7 +9,6 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-import httpx
 from authlib.integrations.starlette_client import OAuth
 from fastapi import (
     Depends,
@@ -40,7 +39,6 @@ from .db import SessionLocal, get_db, init_db
 from .docker_service import DockerService, SandboxRuntimeError
 from .models import AuditLog, LlmProfile, Sandbox, SandboxTemplate, User
 from .plugin_registry import PluginRegistryService
-from .ports import PortExhausted
 from .scheduler import BackgroundWorker
 from .schemas import (
     AdminCreate,
@@ -103,11 +101,11 @@ if settings.manager_auth_mode == "oidc" and (
     )
     oauth.register(
         name="oidc",
-        client_id=settings.oauth2_proxy_client_id,
-        client_secret=settings.oauth2_proxy_client_secret,
+        client_id=settings.oidc_client_id,
+        client_secret=settings.oidc_client_secret,
         server_metadata_url=discovery_url,
         client_kwargs={
-            "scope": settings.oauth2_proxy_scope,
+            "scope": settings.oidc_scope,
             **(
                 {"verify": os.environ["SSL_CERT_FILE"]}
                 if os.environ.get("SSL_CERT_FILE")
@@ -135,8 +133,8 @@ async def lifespan(_app: FastAPI):
                 "OIDC_ISSUER_URL (or OIDC_DISCOVERY_URL)": (
                     settings.oidc_issuer_url or settings.oidc_discovery_url
                 ),
-                "OAUTH2_PROXY_CLIENT_ID": settings.oauth2_proxy_client_id,
-                "OAUTH2_PROXY_CLIENT_SECRET": settings.oauth2_proxy_client_secret,
+                "OIDC_CLIENT_ID": settings.oidc_client_id,
+                "OIDC_CLIENT_SECRET": settings.oidc_client_secret,
             }.items()
             if not value
         ]
@@ -199,38 +197,12 @@ def get_plugin_registry() -> PluginRegistryService:
     return PluginRegistryService(settings)
 
 
-def validate_sandbox_config(config: Settings) -> None:
-    if config.sandbox_auth_mode != "oidc":
-        return
-    missing = [
-        name
-        for name, value in {
-            "OIDC_ISSUER_URL": config.oidc_issuer_url,
-            "OAUTH2_PROXY_CLIENT_ID": config.oauth2_proxy_client_id,
-            "OAUTH2_PROXY_CLIENT_SECRET": config.oauth2_proxy_client_secret,
-            "OAUTH2_PROXY_COOKIE_SECRET": config.oauth2_proxy_cookie_secret,
-        }.items()
-        if not value
-    ]
-    if missing:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"SANDBOX_AUTH_MODE=oidc requires config: {', '.join(missing)}",
-        )
-    if len(config.oauth2_proxy_cookie_secret) not in (16, 24, 32):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="OAUTH2_PROXY_COOKIE_SECRET must be 16, 24, or 32 bytes",
-        )
-
-
 def sandbox_out(sandbox: Sandbox) -> SandboxOut:
     return SandboxOut(
         id=sandbox.id,
         email=sandbox.user.email,
         display_name=sandbox.user.display_name,
         slug=sandbox.slug,
-        port=sandbox.port,
         container_id=sandbox.container_id,
         volume_name=sandbox.volume_name,
         image_repo=sandbox.image_repo or settings.dsh_image_repo,
@@ -247,7 +219,7 @@ def sandbox_out(sandbox: Sandbox) -> SandboxOut:
         ),
         memory_limit=sandbox.memory_limit or settings.sandbox_memory,
         status=sandbox.status,
-        url=settings.sandbox_url(sandbox.port, sandbox.slug),
+        url=settings.sandbox_url(sandbox.slug),
         created_at=sandbox.created_at,
         last_seen_at=sandbox.last_seen_at,
         deleted_at=sandbox.deleted_at,
@@ -282,8 +254,6 @@ def _manager_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, Conflict):
         return HTTPException(status_code=409, detail=str(exc))
-    if isinstance(exc, PortExhausted):
-        return HTTPException(status_code=503, detail=str(exc))
     if isinstance(exc, SandboxRuntimeError):
         return HTTPException(status_code=502, detail=str(exc))
     if isinstance(exc, ManagerError):
@@ -466,7 +436,6 @@ def auth_me(request: Request, db: Session = Depends(get_db)):
         "user_status": user_row.status if user_row else "active",
         "has_password": bool(user_row and user_row.password_hash),
         "auth_mode": settings.manager_auth_mode,
-        "sandbox_auth_mode": settings.sandbox_auth_mode,
         "default_admin_email": settings.manager_admin_email,
         "public_url": settings.manager_base_url,
         "plugin_index_url": settings.plugin_index_url,
@@ -642,7 +611,7 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/admin", status_code=303)
     token = await oauth.oidc.authorize_access_token(request)
     userinfo = token.get("userinfo") or {}
-    claim = settings.oauth2_proxy_email_claim
+    claim = settings.oidc_email_claim
     email = userinfo.get(claim) or userinfo.get("email")
     if not email:
         userinfo = await oauth.oidc.parse_id_token(request, token)
@@ -688,9 +657,7 @@ def open_sandbox_with_token(
         or (not is_admin and sandbox.user.status != "active")
     ):
         return verify_sandbox_access(sandbox.slug, request, db)
-    base = settings.sandbox_url(sandbox.port, sandbox.slug).rstrip("/")
-    if settings.sandbox_auth_mode == "oidc":
-        return RedirectResponse(f"{base}/_dsh-token", status_code=302)
+    base = settings.sandbox_url(sandbox.slug).rstrip("/")
     raw_launch = get_docker().launch_token_url(sandbox)
     if raw_launch:
         parsed = urlsplit(raw_launch)
@@ -857,8 +824,6 @@ def api_overview(
         "default_image_tag": settings.dsh_image_tag,
         "default_cpus": settings.sandbox_cpus,
         "default_memory": settings.sandbox_memory,
-        "routing_mode": settings.sandbox_routing_mode,
-        "sandbox_auth_mode": settings.sandbox_auth_mode,
         "manager_auth_mode": settings.manager_auth_mode,
         "plugin_index_url": settings.plugin_index_url,
         "local_images": get_docker().list_local_images(),
@@ -1209,7 +1174,6 @@ def create_sandbox_endpoint(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_api),
 ):
-    validate_sandbox_config(settings)
     try:
         sandbox = create_sandbox(
             db,

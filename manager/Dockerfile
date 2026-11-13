@@ -31,19 +31,27 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Optional Debian mirror override (e.g. mirrors.aliyun.com). Supports both
+# Optional Debian mirror host or URL (e.g. https://mirrors.aliyun.com). Supports both
 # deb822 (debian.sources) and legacy sources.list layouts.
 ARG APT_MIRROR=deb.debian.org
 RUN if [ -n "${APT_MIRROR}" ] && [ "${APT_MIRROR}" != "deb.debian.org" ]; then \
+      case "${APT_MIRROR}" in \
+        http://*|https://*) mirror_url="${APT_MIRROR%/}" ;; \
+        *) mirror_url="https://${APT_MIRROR}" ;; \
+      esac; \
       if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-        sed -i "s|deb.debian.org|${APT_MIRROR}|g; s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+        sed -i "s|https\\?://deb.debian.org|${mirror_url}|g; s|https\\?://security.debian.org|${mirror_url}|g" /etc/apt/sources.list.d/debian.sources; \
       fi; \
       if [ -f /etc/apt/sources.list ]; then \
-        sed -i "s|deb.debian.org|${APT_MIRROR}|g; s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list; \
+        sed -i "s|https\\?://deb.debian.org|${mirror_url}|g; s|https\\?://security.debian.org|${mirror_url}|g" /etc/apt/sources.list; \
+      fi; \
+      if [ ! -s /etc/ssl/certs/ca-certificates.crt ] && case "${mirror_url}" in https://*) true;; *) false;; esac; then \
+        apt-get -o Acquire::Retries=5 -o Acquire::https::Verify-Peer=false update \
+        && apt-get -o Acquire::Retries=5 -o Acquire::https::Verify-Peer=false install -y --no-install-recommends ca-certificates; \
       fi; \
     fi \
- && apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
+ && apt-get -o Acquire::Retries=5 update \
+ && apt-get -o Acquire::Retries=5 install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 # Optional custom/enterprise CA bundle. Installed only if PEM certificates are present.

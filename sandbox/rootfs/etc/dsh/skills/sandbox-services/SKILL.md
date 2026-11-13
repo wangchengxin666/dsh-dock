@@ -124,7 +124,7 @@ sandbox-expose web 5173
 #   mount path:  /s/alice/apps/web/
 ```
 
-The route is **open by default** (no gateway ForwardAuth or oauth2-proxy). If
+The route is **open by default** (no outer gateway ForwardAuth). If
 the service needs authentication, implement it inside the service (session cookie,
 Bearer token, login form, API key). Only DSH routes (`${SANDBOX_BASE_PATH}/`,
 `${SANDBOX_BASE_PATH}/dsh/*`, `${SANDBOX_BASE_PATH}/_dsh-token`) enforce owner/admin identity auth.
@@ -143,7 +143,7 @@ Caddy. The route persists in the home volume. Do not edit generated snippets by
 hand; regenerate them.
 
 Reserved ports (never expose): `2019` (Caddy admin), `3080` (DSH), `3090`
-(token helper), `4180` (oauth2-proxy), `8080` (Caddy). `sandbox-expose` rejects
+(token helper), `8080` (Caddy). `sandbox-expose` rejects
 them, and `/p/<port>/` returns 404 for them.
 
 ## 4. Authentication and base paths
@@ -196,5 +196,5 @@ Then give the user the exact outbound URL (`public URL:` output by `sandbox-expo
 | Service dies after container recreation | Config is persistent and autostart should recover it; check `sandbox-service status` and logs |
 | Port rejected | It is one of the reserved internal ports |
 
-Never expose DSH internals, Caddy admin, or oauth2-proxy; never run user
+Never expose DSH internals or Caddy admin; never run user
 services as root; never use `systemctl`/`linger` inside this container.

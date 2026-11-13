@@ -2,67 +2,59 @@
 
 ## 设计约束
 
-- **一个容器**：DSH、Caddy、oauth2-proxy、supervisor、用户服务都在同一个文件系统里。
-- **一个发布端口**：只映射 `8080`；没有按用户或按服务发布端口。
-- **一个认证入口**：只有 DSH 需要 OIDC；服务鉴权由服务自行实现。
-- **非 root 开发**：DSH 和用户服务以 `dev` 运行；Caddy/oauth2-proxy 使用独立系统用户。
-- **可预期的路径**：所有对外 URL 都是 `/<prefix>/...`，不依赖额外 DNS 或证书。
+- **一个容器**：DSH、Caddy、supervisor、用户服务都在同一个文件系统里。
+- **零容器宿主机端口暴露（托管模式）**：所有外部流量经由外层 Traefik 网关转发至容器内 `:8080` Caddy，不向宿主机暴露 `18000+` 端口。
+- **网关统一鉴权**：只有 DSH 相关路径由 Traefik + `dsh-manager` ForwardAuth（OIDC / 本地密码）校验身份；`/apps/*` 与 `/p/*` 服务默认开放，鉴权由服务自行实现。
+- **非 root 开发**：DSH 和用户服务以 `dev` 运行；Caddy 使用独立系统用户。
+- **可预期的路径**：所有对外 URL 都是 `/s/<slug>/...`（或独立调试时的 `/...`），不依赖额外 DNS 或端口。
 
 ## 进程模型
 
 ```text
 PID 1  supervisord (root)
 ├── caddy             :8080
-├── oauth2-proxy      127.0.0.1:4180
+├── cron
 ├── dsh-token         127.0.0.1:3090
 ├── user-services     用户级 supervisord (dev)
 │   └── 用户定义的服务
 └── dsh               127.0.0.1:3080 (dev)
 ```
 
-容器级 supervisor 保证 Caddy、oauth2-proxy 和用户服务编排器在 DSH 重启时仍然运行。
+容器级 supervisor 保证 Caddy、cron、dsh-token 和用户服务编排器在 DSH 重启时仍然运行。
 DSH 进程自身崩溃时由 supervisor 拉起；用户服务由嵌套 supervisor 管理。
 
 ## 路径规划
 
 ```text
-/                    302 /dsh/
-/dsh/*               DSH Web GUI / API / WebSocket
-/_dsh-token          登录后自动交换 DSH token
-/apps/<name>/*       用户服务（sandbox-expose）
-/p/<port>/*          loopback 端口临时转发
-/oauth2/*            oauth2-proxy 登录与回调
-/healthz             Caddy 健康检查
+/s/<slug>/                302 /s/<slug>/dsh/         (Traefik ForwardAuth: owner / admin)
+/s/<slug>/dsh/*           DSH Web GUI / API / WS     (Traefik ForwardAuth: owner / admin)
+/s/<slug>/_dsh-token      登录后自动交换 DSH token      (Traefik ForwardAuth: owner / admin)
+/s/<slug>/apps/<name>/*   用户服务（sandbox-expose）  (默认公开，服务自行鉴权)
+/s/<slug>/p/<port>/*      loopback 端口临时转发       (默认公开，服务自行鉴权)
+/s/<slug>/healthz         Caddy 健康检查
 ```
 
-除 `/dsh/*` 和 `/_dsh-token` 外，其余路径不经过 oauth2-proxy。
+除 DSH 入口、`/dsh/*` 和 `/_dsh-token` 外，其余路径不经过平台 ForwardAuth。
 
 ## 认证流程
 
 ```text
 Browser
-  │  GET /dsh/
+  │  GET /s/<slug>/dsh/
   ▼
-Caddy ── forward_auth ──▶ dsh-token /check
-                            │  Host + Cookie
-                            ▼
-                         oauth2-proxy /oauth2/auth
-                            │  202 + X-Auth-Request-Email
-                            ▼
-                         DSH_ALLOWED_EMAILS
-                            │  pass / 403 / 302 /oauth2/start
-                            ▼
-                         DSH
+Traefik (:9000) ── ForwardAuth ──▶ dsh-manager /api/auth/verify-sandbox/<slug>
+                                     │  校验 session / OIDC 或本地密码 / owner 或 admin
+                                     │  未登录 → 302 /login 或 /auth/oidc/start
+                                     │  无权限 → 403
+                                     ▼  通过 (200)
+Caddy (:8080) ──▶ dsh-token (/_dsh-token) ──▶ /s/<slug>/dsh/?token=... ──▶ DSH (127.0.0.1:3080)
 ```
 
-oauth2-proxy 只负责 OIDC 认证；email 白名单检查发生在容器内部。未登录时返回
-302 到 `/oauth2/start?rd=<原始 URI>`；email 不匹配时 403。
-
-登录成功后，首次访问 `/dsh/` 会经过：
+登录成功后，首次访问 `/s/<slug>/dsh/`（没有 `dsh_token_seen` cookie）会经过：
 
 ```text
-/dsh/ (no marker) → /_dsh-token → 读取 web.log 中的启动 token
-                  → 302 /dsh/?token=... → DSH 设置 session cookie
+/s/<slug>/dsh/ → /s/<slug>/_dsh-token → 读取 web.log 中的启动 token
+               → 302 /s/<slug>/dsh/?token=... → DSH 设置 session cookie
 ```
 
 ## Caddy 的角色
@@ -89,8 +81,7 @@ Caddy 必须：
 | `2019` | Caddy admin API |
 | `3080` | DSH |
 | `3090` | token helper |
-| `4180` | oauth2-proxy |
-| `8080` | Caddy 自身 |
+| `8080` | Caddy 自身（仅容器网络 / 网关转发，托管模式不暴露到宿主机） |
 
 ## 持久化
 

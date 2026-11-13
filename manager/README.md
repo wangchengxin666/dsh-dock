@@ -5,7 +5,7 @@ Single-host control plane and Traefik v3.7 gateway for per-user persistent DSH A
 - FastAPI + Python 3.13 + SQLite + Docker SDK
 - React 19 + TypeScript + Vite 7 + Tailwind CSS v4 + shadcn/ui SPA (built automatically in Docker multi-stage build)
 - Traefik v3.7 single-domain subpath gateway (`/s/<slug>/...`) with `ForwardAuth` strict owner/admin workspace isolation
-- Flexible auth: `MANAGER_AUTH_MODE=token|oidc|none` and `SANDBOX_AUTH_MODE=none|oidc`
+- Flexible auth: `MANAGER_AUTH_MODE=token|oidc|none` (shared uniformly across `/admin`, `/my`, and `/s/<slug>/dsh/*`)
 - Admin-only workspace provisioning (`/admin`) + Template management + Read/Control/Logs/Backup user portal (`/my`)
 - Dynamic hot-mounted DSH Plugin Discover Index (`/plugins/index.json`), inline icons, `.tgz` packager, and read-only npm registry (`/plugins/npm/*`)
 - Optional LLM Profile pre-configuration injected into sandboxes at creation
@@ -39,12 +39,9 @@ pip install -r requirements.txt
 cp .env.example .env
 
 # Edit .env:
-#   PUBLIC_HOST=127.0.0.1
 #   MANAGER_PUBLIC_URL=http://127.0.0.1:9000
 #   MANAGER_AUTH_MODE=token
 #   MANAGER_ADMIN_TOKEN=my-secret-token
-#   SANDBOX_AUTH_MODE=none
-#   HEALTH_USE_PUBLISHED_PORT=true
 #   SECRET_KEY=<32+ random chars>
 
 export DATABASE_URL="sqlite:///$PWD/data/dsh-manager.db"

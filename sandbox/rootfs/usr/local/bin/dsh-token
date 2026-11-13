@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 /**
- * After OIDC login, <base>/dsh/ is redirected here by Caddy when the browser
- * has no dsh_token_seen cookie. Read the launch token that dsh-web captured in
- * $DSH_HOME/web.log, set a session marker, and redirect to the token URL.
- *
- * Also supports SANDBOX_BASE_PATH (e.g. /s/alice) for single-domain Traefik
- * subpath routing.
+ * When a browser visits <base>/dsh/ without the dsh_token_seen cookie, Caddy
+ * redirects it here (after outer gateway ForwardAuth succeeds). We read the
+ * launch token captured in $DSH_HOME/web.log, set a session marker cookie,
+ * and redirect straight to <mount>/?token=... so DSH issues its session cookie.
  */
 const http = require('node:http')
 const fs = require('node:fs')
@@ -14,49 +12,10 @@ const path = require('node:path')
 const home = process.env.DSH_HOME || '/home/dev/.dsh'
 const basePath = (process.env.SANDBOX_BASE_PATH || '').replace(/\/+$/, '')
 const mount = (process.env.DSH_MOUNT || `${basePath}/dsh`).replace(/\/+$/, '')
-const oauthPrefix = `${basePath}/oauth2`
 const tokenRoute = `${basePath}/_dsh-token`
 const marker = (process.env.DSH_TOKEN_COOKIE_NAME || 'dsh_token_seen').replace(/[^A-Za-z0-9_-]/g, '_')
 const port = Number(process.env.DSH_TOKEN_PORT || 3090)
 const secure = process.env.PUBLIC_SCHEME === 'https'
-const oauthPort = Number(process.env.OAUTH2_PROXY_PORT || 4180)
-const allowed = new Set(
-  (process.env.DSH_ALLOWED_EMAILS || '')
-    .split(',')
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean),
-)
-
-function session(cookie, host, proto) {
-  return new Promise((resolve) => {
-    const request = http.request(
-      {
-        host: '127.0.0.1',
-        port: oauthPort,
-        path: `${oauthPrefix}/auth`,
-        method: 'GET',
-        headers: {
-          Host: host,
-          Cookie: cookie,
-          'X-Forwarded-Proto': proto,
-        },
-        timeout: 5000,
-      },
-      (response) => {
-        response.resume()
-        response.on('end', () => {
-          resolve({
-            status: response.statusCode || 0,
-            email: response.headers['x-auth-request-email'] || '',
-          })
-        })
-      },
-    )
-    request.on('timeout', () => request.destroy(new Error('timeout')))
-    request.on('error', () => resolve({ status: 0, email: '' }))
-    request.end()
-  })
-}
 
 function launchPath() {
   let text
@@ -80,42 +39,8 @@ function launchPath() {
 }
 
 http
-  .createServer(async (req, res) => {
+  .createServer((req, res) => {
     const pathOnly = (req.url || '/').split('?')[0]
-
-    if (pathOnly === '/check') {
-      const host =
-        req.headers['x-forwarded-host'] || req.headers.host || 'localhost'
-      const proto = req.headers['x-forwarded-proto'] || 'http'
-      const uri = req.headers['x-forwarded-uri'] || `${mount}/`
-      const result = await session(req.headers.cookie || '', host, proto)
-      if (result.status === 202 && result.email) {
-        const email = result.email.toLowerCase()
-        if (!allowed.has(email)) {
-          res.writeHead(403, { 'content-type': 'text/plain' })
-          res.end('forbidden: email not allowed\n')
-          return
-        }
-        res.writeHead(200, {
-          'x-auth-request-email': email,
-          'x-auth-request-user': email,
-          'cache-control': 'no-store',
-        })
-        res.end()
-        return
-      }
-      if (result.status === 403) {
-        res.writeHead(403, { 'content-type': 'text/plain' })
-        res.end('forbidden\n')
-        return
-      }
-      res.writeHead(302, {
-        location: `${oauthPrefix}/start?rd=${encodeURIComponent(uri)}`,
-        'cache-control': 'no-store',
-      })
-      res.end()
-      return
-    }
 
     if (
       pathOnly !== '/' &&

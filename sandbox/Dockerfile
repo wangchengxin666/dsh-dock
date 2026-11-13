@@ -5,11 +5,9 @@
 # DOCKER_REGISTRY (e.g. your-registry.example.com/docker) in restricted networks.
 ARG DOCKER_REGISTRY=docker.io/library
 ARG CADDY_VERSION=2.11.9
-ARG OAUTH2_PROXY_VERSION=v7.15.6
 ARG DEBIAN_VERSION=13-slim
 
 FROM ${DOCKER_REGISTRY}/caddy:${CADDY_VERSION}-alpine AS caddy-bin
-FROM quay.io/oauth2-proxy/oauth2-proxy:${OAUTH2_PROXY_VERSION} AS oauth2proxy-bin
 
 # ---------------------------------------------------------------------------
 # Runtime image
@@ -24,7 +22,7 @@ ARG DOTNET_VERSION=10.0.404
 ARG DOTNET_SDK_URL=
 ARG DEV_UID=1000
 ARG DEV_GID=1000
-# Optional Debian mirror hostname (e.g. mirrors.aliyun.com) and npm registry.
+# Optional Debian mirror host or URL (e.g. https://mirrors.aliyun.com) and npm registry.
 ARG APT_MIRROR=deb.debian.org
 ARG NPM_REGISTRY=
 
@@ -44,7 +42,15 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/usr/local/bin:/usr/local/dotnet:/home/dev/.npm-global/bin:/home/dev/.local/bin:/home/dev/.dotnet/tools:/usr/bin:/bin:/usr/sbin:/sbin
 
 RUN if [ -n "${APT_MIRROR}" ] && [ "${APT_MIRROR}" != "deb.debian.org" ]; then \
-      sed -i "s|deb.debian.org|${APT_MIRROR}|g; s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+      case "${APT_MIRROR}" in \
+        http://*|https://*) mirror_url="${APT_MIRROR%/}" ;; \
+        *) mirror_url="https://${APT_MIRROR}" ;; \
+      esac; \
+      sed -i "s|https\\?://deb.debian.org|${mirror_url}|g; s|https\\?://security.debian.org|${mirror_url}|g" /etc/apt/sources.list.d/debian.sources; \
+      if [ ! -s /etc/ssl/certs/ca-certificates.crt ] && case "${mirror_url}" in https://*) true;; *) false;; esac; then \
+        apt-get -o Acquire::Retries=5 -o Acquire::https::Verify-Peer=false update \
+        && apt-get -o Acquire::Retries=5 -o Acquire::https::Verify-Peer=false install -y --no-install-recommends ca-certificates; \
+      fi; \
     fi \
  && apt-get -o Acquire::Retries=5 update \
  && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
@@ -119,10 +125,9 @@ RUN curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/b
  && uv --version
 
 # ---------------------------------------------------------------------------
-# Reverse proxy and identity-aware proxy binaries
+# Reverse proxy binary
 # ---------------------------------------------------------------------------
 COPY --from=caddy-bin /usr/bin/caddy /usr/local/bin/caddy
-COPY --from=oauth2proxy-bin /bin/oauth2-proxy /usr/local/bin/oauth2-proxy
 
 # ---------------------------------------------------------------------------
 # Optional custom / enterprise CA bundle. Installed only if PEM certificates
@@ -145,21 +150,17 @@ ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
     GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
 
 # ---------------------------------------------------------------------------
-# Users: dev is the only account the agent runs as; caddy/oauth run daemons.
+# Users: dev is the only account the agent runs as; caddy runs the proxy daemon.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     groupadd -g "${DEV_GID}" dev; \
     useradd -m -u "${DEV_UID}" -g dev -s /bin/bash dev; \
     groupadd -r caddy; \
     useradd -r -g caddy -d /var/lib/caddy -s /usr/sbin/nologin caddy; \
-    groupadd -r oauth; \
-    useradd -r -g oauth -d /var/lib/oauth2-proxy -s /usr/sbin/nologin oauth; \
     \
     install -d -o dev   -g dev   -m 0755 /home/dev /home/dev/workspace /home/dev/.dsh; \
     install -d -o dev   -g caddy -m 2775 /home/dev/.dsh-sandbox /home/dev/.dsh-sandbox/caddy /home/dev/.dsh-sandbox/caddy/apps.d; \
-    install -d -o oauth -g oauth -m 0750 /home/dev/.dsh-sandbox/oauth2; \
     install -d -o caddy -g caddy -m 0755 /var/lib/caddy /var/lib/caddy/.config /var/lib/caddy/.local/share; \
-    install -d -o oauth -g oauth -m 0755 /var/lib/oauth2-proxy; \
     install -d -o dev   -g dev   -m 0755 /home/dev/.npm-global /home/dev/.local/bin /home/dev/logs; \
     \
     printf '# Drop-in Caddy routes. See sandbox-expose(1).\n' > /home/dev/.dsh-sandbox/caddy/apps.d/00-empty.caddy; \
@@ -196,15 +197,15 @@ RUN HOME=/home/dev DSH_HOME=/home/dev/.dsh dsh --profile web --help >/dev/null
 USER root
 
 # Build-time guard: root-mounted and subpath-mounted (/s/alice) variants must parse.
-RUN CADDY_PORT=8080 DSH_PORT=3080 DSH_MOUNT=/dsh AUTH_MODE=none \
+RUN CADDY_PORT=8080 DSH_PORT=3080 DSH_MOUNT=/dsh \
       APPS_DIR=/home/dev/.dsh-sandbox/caddy/apps.d PUBLIC_SCHEME=http \
-      /usr/local/bin/render-caddyfile.sh /tmp/Caddyfile.none \
- && caddy validate --config /tmp/Caddyfile.none --adapter caddyfile \
- && CADDY_PORT=8080 DSH_PORT=3080 SANDBOX_BASE_PATH=/s/alice DSH_MOUNT=/s/alice/dsh AUTH_MODE=oidc \
+      /usr/local/bin/render-caddyfile.sh /tmp/Caddyfile.root \
+ && caddy validate --config /tmp/Caddyfile.root --adapter caddyfile \
+ && CADDY_PORT=8080 DSH_PORT=3080 SANDBOX_BASE_PATH=/s/alice DSH_MOUNT=/s/alice/dsh \
       APPS_DIR=/home/dev/.dsh-sandbox/caddy/apps.d PUBLIC_SCHEME=https \
       /usr/local/bin/render-caddyfile.sh /tmp/Caddyfile.subpath \
  && caddy validate --config /tmp/Caddyfile.subpath --adapter caddyfile \
- && rm -f /tmp/Caddyfile.none /tmp/Caddyfile.subpath
+ && rm -f /tmp/Caddyfile.root /tmp/Caddyfile.subpath
 
 ENV DSH_HOME=/home/dev/.dsh \
     DSH_PERMISSION_MODE=danger-full-access \

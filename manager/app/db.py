@@ -88,6 +88,9 @@ def init_db() -> None:
                 connection.exec_driver_sql(
                     "ALTER TABLE sandboxes ADD COLUMN auto_install_plugins VARCHAR(512)"
                 )
+            if "port" in columns:
+                connection.exec_driver_sql("DROP INDEX IF EXISTS ix_sandboxes_port")
+                connection.exec_driver_sql("ALTER TABLE sandboxes DROP COLUMN port")
             user_columns = {
                 row[1]
                 for row in connection.exec_driver_sql("PRAGMA table_info(users)")

@@ -75,7 +75,7 @@ docker build \
 ```bash
 docker build \
   --build-arg DOCKER_REGISTRY=your-registry.example.com/docker \
-  --build-arg APT_MIRROR=mirrors.aliyun.com \
+  --build-arg APT_MIRROR=https://mirrors.aliyun.com \
   -t dsh-sandbox:latest .
 ```
 
@@ -118,7 +118,7 @@ docker run -d --name dsh-sandbox -p 18086:8080 \
 curl -fsS http://127.0.0.1:8080/healthz
 ```
 
-容器健康检查只依赖 Caddy 的 `/healthz`；DSH 或 oauth2-proxy 启动失败需要看日志：
+容器健康检查只依赖 Caddy 的 `/healthz`；DSH 启动失败需要看日志：
 
 ```bash
 docker compose logs -f
@@ -151,7 +151,7 @@ fonts-wqy-microhei + fontconfig
 | DSH/npm 全局依赖 | 833 MB |
 | .NET 10 SDK | 681 MB |
 | Node.js | 203 MB |
-| Caddy + oauth2-proxy | 88 MB |
+| `Caddy` | ~45 MB |
 | uv | 32 MB |
 
 可精简的空间：

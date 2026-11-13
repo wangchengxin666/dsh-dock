@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import time
@@ -89,24 +88,8 @@ class DockerService:
     def container_name(self, sandbox: Sandbox) -> str:
         return f"dsh-sbx-{sandbox.slug}"
 
-    def used_host_ports(self) -> set[int]:
-        used: set[int] = set()
-        for container in self.client.containers.list(all=True):
-            bindings = (container.attrs.get("HostConfig") or {}).get("PortBindings") or {}
-            for entries in bindings.values():
-                for entry in entries or []:
-                    value = (entry or {}).get("HostPort")
-                    if value:
-                        try:
-                            used.add(int(value))
-                        except ValueError:
-                            pass
-        return used
-
     def upstream_origin(self, sandbox: Sandbox) -> str:
-        """Return http://<ip_or_127.0.0.1>:<port> reachable from the manager process."""
-        if self.settings.health_use_published_port:
-            return f"http://127.0.0.1:{sandbox.port}"
+        """Return http://<ip_or_container_name>:8080 reachable on DSH_NETWORK."""
         try:
             container = self.get(sandbox)
             container.reload()
@@ -118,7 +101,7 @@ class DockerService:
                 return f"http://{address}:8080"
         except Exception:
             pass
-        return f"http://127.0.0.1:{sandbox.port}"
+        return f"http://{self.container_name(sandbox)}:8080"
 
     def health_url(self, sandbox: Sandbox) -> str:
         return f"{self.upstream_origin(sandbox)}/healthz"
@@ -145,47 +128,35 @@ class DockerService:
         return ",".join(resolved)
 
     def environment(self, sandbox: Sandbox) -> dict[str, str]:
-        scheme = self.settings.public_scheme
-        host = self.settings.public_host
-        port = sandbox.port
-        email = sandbox.user.email
         suffix = sandbox.slug.replace("-", "_")
-        auth_mode = self.settings.sandbox_auth_mode
         manager_url = self.settings.sandbox_reachable_manager_url
+        base_path = f"/s/{sandbox.slug}"
+        dsh_mount = f"{base_path}/dsh"
+        public_origin = self.settings.manager_base_url
+        public_base = f"{public_origin}{base_path}"
+        dsh_public_url = f"{public_base}/dsh/"
 
-        if self.settings.sandbox_routing_mode == "subpath":
-            base_path = f"/s/{sandbox.slug}"
-            dsh_mount = f"{base_path}/dsh"
-            public_origin = self.settings.gateway_base_url
-            public_base = f"{public_origin}{base_path}"
-            dsh_public_url = f"{public_base}/dsh/"
-            gw_host = self.settings.gateway_host_header
-            trusted_hosts = f"{gw_host} {host}:{port} {host} 127.0.0.1:{port} localhost:{port}"
-            whitelist_domains = f"{gw_host},{host}:{port},{host}"
-        else:
-            base_path = ""
-            dsh_mount = "/dsh"
-            public_origin = f"{scheme}://{host}:{port}"
-            public_base = public_origin
-            dsh_public_url = f"{public_base}/dsh/"
-            trusted_hosts = f"{host}:{port} {host}"
-            whitelist_domains = f"{host}:{port},{host}"
-
-        allowed_emails = [email.lower()]
-        if auth_mode == "oidc" and self.settings.manager_admin_email:
-            adm_email = self.settings.manager_admin_email.strip().lower()
-            if adm_email and adm_email not in allowed_emails:
-                allowed_emails.append(adm_email)
+        gw_host = self.settings.public_host_header
+        gw_hostname = gw_host.split(":")[0]
+        trusted_list = [gw_host]
+        if gw_hostname and gw_hostname not in trusted_list:
+            trusted_list.append(gw_hostname)
+        for fallback in (
+            f"{self.container_name(sandbox)}:8080",
+            "127.0.0.1:8080",
+            "localhost:8080",
+        ):
+            if fallback not in trusted_list:
+                trusted_list.append(fallback)
+        trusted_hosts = " ".join(trusted_list)
 
         env: dict[str, str] = {
-            "AUTH_MODE": auth_mode,
             "SANDBOX_BASE_PATH": base_path,
             "SANDBOX_PUBLIC_ORIGIN": public_origin,
             "SANDBOX_PUBLIC_URL": f"{public_base}/",
             "DSH_MOUNT": dsh_mount,
             "DSH_PUBLIC_URL": dsh_public_url,
             "DSH_TRUSTED_HOSTS": trusted_hosts,
-            "DSH_ALLOWED_EMAILS": ",".join(allowed_emails),
             "DSH_TOKEN_COOKIE_NAME": f"dsh_token_seen_{suffix}",
             "DSH_PERMISSION_MODE": self.settings.dsh_permission_mode,
             "DSH_PLUGIN_INDEX_URL": f"{manager_url}/plugins/index.json",
@@ -225,57 +196,6 @@ class DockerService:
             except ValueError:
                 pass
 
-        if auth_mode == "oidc":
-            cookie_secret = hashlib.sha256(
-                f"{self.settings.oauth2_proxy_cookie_secret}:{sandbox.slug}".encode()
-            ).hexdigest()[:32]
-            env.update(
-                {
-                    "OAUTH2_PROXY_PROVIDER": "oidc",
-                    "OAUTH2_PROXY_OIDC_ISSUER_URL": self.settings.oidc_issuer_url,
-                    "OAUTH2_PROXY_CLIENT_ID": self.settings.oauth2_proxy_client_id,
-                    "OAUTH2_PROXY_CLIENT_SECRET": self.settings.oauth2_proxy_client_secret,
-                    "OAUTH2_PROXY_REDIRECT_URL": f"{public_base}/oauth2/callback",
-                    "OAUTH2_PROXY_PROXY_PREFIX": f"{base_path}/oauth2",
-                    "OAUTH2_PROXY_WHITELIST_DOMAINS": whitelist_domains,
-                    "OAUTH2_PROXY_COOKIE_SECRET": cookie_secret,
-                    "OAUTH2_PROXY_COOKIE_NAME": f"dsh_oauth_{suffix}",
-                    "OAUTH2_PROXY_COOKIE_CSRF_PER_REQUEST": "true",
-                    "OAUTH2_PROXY_COOKIE_SECURE": str(
-                        self.settings.oauth2_proxy_cookie_secure
-                    ).lower(),
-                    "OAUTH2_PROXY_COOKIE_SAMESITE": "lax",
-                    "OAUTH2_PROXY_COOKIE_EXPIRE": "168h",
-                    "OAUTH2_PROXY_EMAIL_DOMAINS": "*",
-                    "OAUTH2_PROXY_SCOPE": self.settings.oauth2_proxy_scope,
-                    "OAUTH2_PROXY_OIDC_EMAIL_CLAIM": self.settings.oauth2_proxy_email_claim,
-                    "OAUTH2_PROXY_REVERSE_PROXY": "true",
-                    "OAUTH2_PROXY_HTTP_ADDRESS": "127.0.0.1:4180",
-                    "OAUTH2_PROXY_PORT": "4180",
-                    "OAUTH2_PROXY_UPSTREAMS": "static://202",
-                    "OAUTH2_PROXY_SET_XAUTHREQUEST": "true",
-                    "OAUTH2_PROXY_SKIP_PROVIDER_BUTTON": "true",
-                    "OAUTH2_PROXY_SKIP_CLAIMS_FROM_PROFILE_URL": "true",
-                    "OAUTH2_PROXY_SESSION_COOKIE_MINIMAL": "true",
-                    "OAUTH2_PROXY_TRUSTED_PROXY_IPS": "127.0.0.1/32",
-                    "OAUTH2_PROXY_PASS_USER_HEADERS": "false",
-                    "OAUTH2_PROXY_SILENCE_PING_LOGGING": "true",
-                }
-            )
-            if self.settings.oidc_discovery_url:
-                try:
-                    with httpx.Client(timeout=5.0, trust_env=False) as http:
-                        meta = http.get(self.settings.oidc_discovery_url).json()
-                    auth_ep = meta.get("authorization_endpoint")
-                    token_ep = meta.get("token_endpoint")
-                    jwks_uri = meta.get("jwks_uri")
-                    if auth_ep and token_ep and jwks_uri:
-                        env["OAUTH2_PROXY_SKIP_OIDC_DISCOVERY"] = "true"
-                        env["OAUTH2_PROXY_LOGIN_URL"] = auth_ep
-                        env["OAUTH2_PROXY_REDEEM_URL"] = token_ep
-                        env["OAUTH2_PROXY_OIDC_JWKS_URL"] = jwks_uri
-                except Exception:
-                    pass
         return env
 
     def create(self, sandbox: Sandbox) -> Container:
@@ -313,7 +233,6 @@ class DockerService:
             "dsh.managed": "true",
             "dsh.owner": sandbox.user.email,
             "dsh.slug": sandbox.slug,
-            "dsh.port": str(sandbox.port),
             "dsh.volume": sandbox.volume_name,
             "dsh.template": sandbox.template or "agent-os",
             # Traefik automatic single-domain subpath discovery (/s/<slug>/...)
@@ -337,12 +256,10 @@ class DockerService:
             f"traefik.http.services.{router_name}.loadbalancer.server.port": "8080",
         }
 
-        bind_addr = self.settings.sandbox_port_bind_address or "0.0.0.0"
         return self.client.containers.run(
             self.image_for(sandbox.image_tag, sandbox.image_repo),
             name=self.container_name(sandbox),
             detach=True,
-            ports={"8080/tcp": (bind_addr, sandbox.port)},
             volumes=volumes,
             environment=self.environment(sandbox),
             labels=labels,

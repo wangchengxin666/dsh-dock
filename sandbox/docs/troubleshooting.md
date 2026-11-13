@@ -4,13 +4,13 @@
 
 | 现象 | 排查 |
 | --- | --- |
-| `/` 不是 DSH | Caddy 应 302 到 `/dsh/`；检查 `DSH_MOUNT` 和 Caddy 日志 |
-| `/dsh/` 502 | DSH 或 oauth2-proxy 没起；看 `[program:dsh]` / `[program:oauth2-proxy]` |
-| 一直跳 IdP / 登录循环 | `OAUTH2_PROXY_REDIRECT_URL` 与实际 scheme/host 不一致；IdP 是否登记 `/oauth2/callback` |
-| 登录成功但 403 | email 不在 `DSH_ALLOWED_EMAILS`，或 ID token 没有 email；看容器日志 `forbidden: email not allowed` |
-| 浏览器仍要求 token | 删除 `dsh_token_seen` cookie 后重新访问 `/dsh/`；或查 `web.log` 里的启动 URL |
-| `/apps/*` 不跳 IdP | 正常，apps 是公开的；鉴权由服务自己实现 |
-| `/apps/*` 403 | 服务自己的认证拒绝了请求；与 DSH 的 email 白名单无关 |
+| `/` 不是 DSH | Caddy 应 302 到 `${DSH_MOUNT}/`；检查 `DSH_MOUNT` 和 Caddy 日志 |
+| `/dsh/` 502 | 容器内 DSH 没起，或外层 Traefik 无法连接容器 `:8080`；看 `[program:dsh]` 和 `dsh-manager` 日志 |
+| 一直跳 IdP / 登录循环 | 检查 `manager/.env` 中的 `MANAGER_PUBLIC_URL` 与实际访问 scheme/host 是否一致；IdP 是否登记 `<MANAGER_PUBLIC_URL>/auth/callback` |
+| 登录成功但 403 | 当前登录账号既不是工作区 owner，也不是 `platform_admins`，或账号已被管理员禁用 |
+| 浏览器仍要求 token | 删除 `dsh_token_seen_*` cookie 后重新访问 `/s/<slug>/dsh/`；或查 `/_dsh-token` 和 `web.log` 里的启动 URL |
+| `/apps/*` 不跳登录 | 正常，apps 默认开放；鉴权由服务自己实现 |
+| `/apps/*` 403 | 服务自己的认证拒绝了请求；与网关鉴权无关 |
 
 ## 服务
 
@@ -40,10 +40,9 @@ Git 不记录目录权限；服务器 checkout 的 `umask 027` 会让 `rootfs/us
 | 现象 | 排查 |
 | --- | --- |
 | 改了 `.env` 不生效 | 容器 env 在创建时固定；需要重建容器，不能只 restart |
-| `missing setting: client-secret` | 必须 confidential client；填 `OAUTH2_PROXY_CLIENT_SECRET` |
-| cookie secret 报错 | `OAUTH2_PROXY_COOKIE_SECRET` 必须是 16/24/32 字节 |
+| `MANAGER_AUTH_MODE=oidc` 启动报错 | 确认 `manager/.env` 已配置 `OIDC_ISSUER_URL`（或 `OIDC_DISCOVERY_URL`）、`OIDC_CLIENT_ID`、`OIDC_CLIENT_SECRET` |
 | 构建失败在 Docker Hub | 用 `DOCKER_REGISTRY=your-registry.example.com/docker` 等代理前缀 |
-| apt 很慢 | 设置 `APT_MIRROR=mirrors.aliyun.com` |
+| apt 很慢 | 设置 `APT_MIRROR=https://mirrors.aliyun.com` |
 | Healthcheck 不出现 | Podman 使用 `--format docker` 构建；OCI 会丢弃 HEALTHCHECK |
 | 容器启动后立刻退出 | `docker compose logs` / `podman logs`；常见是 env 缺失或目录权限 |
 

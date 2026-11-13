@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session, joinedload
 from .config import Settings
 from .docker_service import DockerService, SandboxRuntimeError
 from .models import AuditLog, LlmProfile, PlatformAdmin, Sandbox, SandboxTemplate, User
-from .ports import PortExhausted, allocate_port
 from .schemas import TemplateCreate, TemplateUpdate
 from .security import hash_password
 
@@ -277,7 +276,6 @@ def create_sandbox(
     pw_hash = hash_password(initial_password) if initial_password else None
     user = get_or_create_user(db, email, display_name, password_hash=pw_hash)
     final_slug = unique_slug(db, email, slug)
-    port = allocate_port(db, settings, docker.used_host_ports())
 
     llm_profile: LlmProfile | None = None
     if llm_profile_id:
@@ -327,7 +325,6 @@ def create_sandbox(
     sandbox = Sandbox(
         user_id=user.id,
         slug=final_slug,
-        port=port,
         volume_name=f"dsh-{final_slug}-home",
         image_repo=resolved_repo,
         image_tag=resolved_tag,
@@ -371,7 +368,7 @@ def create_sandbox(
 
     sandbox.status = "running"
     sandbox.last_seen_at = utcnow()
-    audit(db, "sandbox.create", target=sandbox.id, detail=f"port={sandbox.port}")
+    audit(db, "sandbox.create", target=sandbox.id, detail=f"slug={sandbox.slug}")
     db.commit()
     db.refresh(sandbox)
     return sandbox

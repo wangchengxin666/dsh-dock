@@ -184,7 +184,6 @@ class SandboxOut(BaseModel):
     email: str
     display_name: str | None = None
     slug: str
-    port: int
     container_id: str | None
     volume_name: str
     image_repo: str | None = "dsh-sandbox"

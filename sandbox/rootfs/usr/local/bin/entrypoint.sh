@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Root entrypoint: prepare the home volume, render runtime configs, then hand
-# the container to supervisord (caddy + oauth2-proxy + dsh).
+# the container to supervisord (caddy + dsh-token + dsh + user-services).
 set -euo pipefail
 
 log() { printf '[entrypoint] %s\n' "$*" >&2; }
@@ -21,9 +21,7 @@ if [ -z "${DSH_MOUNT:-}" ] || { [ -n "${SANDBOX_BASE_PATH}" ] && [ "${DSH_MOUNT}
 fi
 DSH_MOUNT=${DSH_MOUNT%/}
 APPS_DIR=${APPS_DIR:-/home/dev/.dsh-sandbox/caddy/apps.d}
-OAUTH2_PROXY_PORT=${OAUTH2_PROXY_PORT:-4180}
 DSH_TOKEN_PORT=${DSH_TOKEN_PORT:-3090}
-AUTH_MODE=${AUTH_MODE:-oidc}
 
 # ---------------------------------------------------------------------------
 # Public URL
@@ -57,7 +55,7 @@ SANDBOX_PUBLIC_URL="${SANDBOX_PUBLIC_URL}/"
 
 DSH_TRUSTED_HOSTS=${DSH_TRUSTED_HOSTS:-${PUBLIC_HOST}}
 DSH_PUBLIC_URL=${PUBLIC_URL}
-export CADDY_PORT DSH_PORT SANDBOX_BASE_PATH DSH_MOUNT APPS_DIR OAUTH2_PROXY_PORT DSH_TOKEN_PORT AUTH_MODE
+export CADDY_PORT DSH_PORT SANDBOX_BASE_PATH DSH_MOUNT APPS_DIR DSH_TOKEN_PORT
 export PUBLIC_URL PUBLIC_SCHEME PUBLIC_HOST PUBLIC_HOSTNAME PUBLIC_ORIGIN
 export SANDBOX_PUBLIC_ORIGIN SANDBOX_PUBLIC_URL
 export DSH_TRUSTED_HOSTS DSH_PUBLIC_URL
@@ -84,9 +82,7 @@ install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 \
   /home/dev/.dsh-sandbox/services /home/dev/.dsh-sandbox/services/conf.d
 install -d -o "${DEV_USER}" -g caddy -m 2775 \
   /home/dev/.dsh-sandbox /home/dev/.dsh-sandbox/caddy "${APPS_DIR}"
-install -d -o oauth -g oauth -m 0750 /home/dev/.dsh-sandbox/oauth2
 install -d -o caddy -g caddy -m 0755 /var/lib/caddy /var/lib/caddy/.config /var/lib/caddy/.local/share
-install -d -o oauth -g oauth -m 0755 /var/lib/oauth2-proxy
 
 printf '%s\n' "${SANDBOX_BASE_PATH}" >/home/dev/.dsh-sandbox/base-path.txt
 printf '%s\n' "${SANDBOX_PUBLIC_ORIGIN}" >/home/dev/.dsh-sandbox/public-origin.txt
@@ -296,60 +292,8 @@ if [ -n "${DSH_AUTO_INSTALL_PLUGINS:-}" ] && [ "${SANDBOX_TEMPLATE}" != "minimal
   done
 fi
 
-# ---------------------------------------------------------------------------
-# One oauth2-proxy instance
-# ---------------------------------------------------------------------------
+# Clean up any legacy per-container oauth2-proxy supervisor configs from upgrades
 rm -f /etc/supervisor/conf.d/10-oauth2-proxy.conf /etc/supervisor/conf.d/11-oauth2-apps.conf
-
-case "${AUTH_MODE}" in
-  none|oidc) ;;
-  *) die "AUTH_MODE must be 'oidc' or 'none' (got: ${AUTH_MODE})" ;;
-esac
-
-if [ "${AUTH_MODE}" = "oidc" ]; then
-  : "${OAUTH2_PROXY_OIDC_ISSUER_URL:?OAUTH2_PROXY_OIDC_ISSUER_URL is required when AUTH_MODE=oidc}"
-  : "${OAUTH2_PROXY_CLIENT_ID:?OAUTH2_PROXY_CLIENT_ID is required when AUTH_MODE=oidc}"
-  : "${OAUTH2_PROXY_CLIENT_SECRET:?OAUTH2_PROXY_CLIENT_SECRET is required when AUTH_MODE=oidc}"
-  : "${OAUTH2_PROXY_REDIRECT_URL:?OAUTH2_PROXY_REDIRECT_URL is required when AUTH_MODE=oidc}"
-  : "${OAUTH2_PROXY_COOKIE_SECRET:?OAUTH2_PROXY_COOKIE_SECRET is required when AUTH_MODE=oidc}"
-  case "${#OAUTH2_PROXY_COOKIE_SECRET}" in
-    16|24|32) ;;
-    *) die "OAUTH2_PROXY_COOKIE_SECRET must be 16, 24, or 32 bytes (got ${#OAUTH2_PROXY_COOKIE_SECRET})" ;;
-  esac
-
-  DSH_ALLOWED_EMAILS=${DSH_ALLOWED_EMAILS:-}
-  [ -n "${DSH_ALLOWED_EMAILS}" ] || die "DSH_ALLOWED_EMAILS is required when AUTH_MODE=oidc"
-  DSH_ALLOWED_EMAILS=$(printf '%s' "${DSH_ALLOWED_EMAILS}" | tr ',' '\n' \
-    | awk 'NF {gsub(/^[ \t]+|[ \t]+$/, ""); print}' | paste -sd, -)
-  [ -n "${DSH_ALLOWED_EMAILS}" ] || die "DSH_ALLOWED_EMAILS contains no addresses"
-  export DSH_ALLOWED_EMAILS
-
-  export OAUTH2_PROXY_PROVIDER="${OAUTH2_PROXY_PROVIDER:-oidc}"
-  export OAUTH2_PROXY_PORT="${OAUTH2_PROXY_PORT:-4180}"
-  export OAUTH2_PROXY_HTTP_ADDRESS="${OAUTH2_PROXY_HTTP_ADDRESS:-127.0.0.1:${OAUTH2_PROXY_PORT}}"
-  export OAUTH2_PROXY_UPSTREAMS="${OAUTH2_PROXY_UPSTREAMS:-static://202}"
-  export OAUTH2_PROXY_PROXY_PREFIX="${OAUTH2_PROXY_PROXY_PREFIX:-${SANDBOX_BASE_PATH}/oauth2}"
-
-  cat >/etc/supervisor/conf.d/10-oauth2-proxy.conf <<'EOF'
-[program:oauth2-proxy]
-command=/usr/local/bin/oauth2-proxy
-user=oauth
-directory=/var/lib/oauth2-proxy
-environment=HOME="/var/lib/oauth2-proxy"
-priority=15
-autostart=true
-autorestart=true
-startsecs=2
-stopasgroup=true
-killasgroup=true
-stdout_logfile=/dev/stdout
-stdout_logfile_maxbytes=0
-redirect_stderr=true
-EOF
-  log "DSH gate: oauth2-proxy OIDC (${OAUTH2_PROXY_PROVIDER}); email checked inside the container for [${DSH_ALLOWED_EMAILS}]"
-else
-  log "WARN: AUTH_MODE=none - /dsh relies on the DSH token/cookie; all routes are public."
-fi
 
 # ---------------------------------------------------------------------------
 # Runtime configuration

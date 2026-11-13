@@ -53,7 +53,7 @@ handle_path /apps/web/* {
 
 ### 认证
 
-`/apps/*` 是**公开**的，不经过 oauth2-proxy。`sandbox-expose` 不添加任何认证，
+`/apps/*` 是**公开**的，不经过外层 Traefik ForwardAuth。`sandbox-expose` 不添加任何认证，
 `--auth` 已移除。需要登录、Bearer、mTLS 或 API key 时，在服务内部实现。
 
 不要在 Caddy 片段里加认证：该文件由 `sandbox-expose` 管理，重新 expose 会覆盖。
@@ -62,14 +62,14 @@ handle_path /apps/web/* {
 
 ### Base path
 
-应用必须能挂在 `/apps/<name>/` 下：
+应用必须能挂在 `${SANDBOX_BASE_PATH}/apps/<name>/` 下：
 
 ```bash
 # Vite
-npm run dev -- --host 127.0.0.1 --port 5173 --base=/apps/web/
+npm run dev -- --host 127.0.0.1 --port 5173 --base=${SANDBOX_BASE_PATH}/apps/web/
 
 # Next.js
-# next.config.js: basePath: '/apps/web'
+# next.config.js: basePath: `${process.env.SANDBOX_BASE_PATH || ''}/apps/web`
 ```
 
 静态或自写服务应使用相对链接，或读取 `X-Forwarded-Prefix`。如果应用生成绝对路径
@@ -77,8 +77,7 @@ npm run dev -- --host 127.0.0.1 --port 5173 --base=/apps/web/
 
 ### 保留端口
 
-`2019`（Caddy admin）、`3080`（DSH）、`3090`（token helper）、`4180`
-（oauth2-proxy）、`8080`（Caddy）永远不可 expose。
+`2019`（Caddy admin）、`3080`（DSH）、`3090`（token helper）、`8080`（Caddy）永远不可 expose。
 
 ## sandbox-service
 

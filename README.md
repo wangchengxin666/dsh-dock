@@ -20,7 +20,7 @@ Per-user DeepSeek Harness (DSH) remote Agent OS workspaces on a Docker host, plu
 ## Repository layout
 
 ```text
-sandbox/    runtime image: Caddy, optional OIDC (oauth2-proxy), DSH 0.2.2-rc.3,
+sandbox/    runtime image: Caddy, DSH 0.2.2-rc.3,
             dev toolchains, user services, /p/<port> port router, sandbox-services skill
 manager/    control plane: Traefik v3.7 gateway + FastAPI + SQLite + Docker SDK,
             React 19 + shadcn/ui Admin/User SPA, Templates, ForwardAuth, Plugin Registry
@@ -63,15 +63,15 @@ Open:
 
 ## Authentication modes
 
-Both the manager and sandboxes support flexible authentication configured in `manager/.env`:
+Authentication is handled centrally at `dsh-manager` and enforced on sandbox DSH entrypoints (`/s/<slug>/`, `/s/<slug>/dsh/*`, `/s/<slug>/_dsh-token`) via Traefik `ForwardAuth`. User apps (`/s/<slug>/apps/*`, `/s/<slug>/p/*`) are open by default and implement their own authentication when needed. Configure in `manager/.env`:
 
-- **`MANAGER_AUTH_MODE=token` / `SANDBOX_AUTH_MODE=none` (Zero external dependencies)**:
-  - Sign in to `/admin` using `MANAGER_ADMIN_EMAIL` + `MANAGER_ADMIN_TOKEN` (or call `/api/*` with `Authorization: Bearer <MANAGER_ADMIN_TOKEN>`).
-  - Sandboxes use DSH's built-in launch token and session cookie.
-- **`MANAGER_AUTH_MODE=oidc` / `SANDBOX_AUTH_MODE=oidc` (Enterprise SSO)**:
-  - Integrates with any standard OIDC provider (Keycloak, Auth0, Authentik, Okta, etc.).
+- **`MANAGER_AUTH_MODE=token` (Zero external dependencies)**:
+  - Platform admins sign in to `/admin` using `MANAGER_ADMIN_EMAIL` + `MANAGER_ADMIN_TOKEN` (or call `/api/*` with `Authorization: Bearer <MANAGER_ADMIN_TOKEN>`).
+  - Regular users sign in at `/login` with their email and administrator-provisioned password (and can change it at `/my`).
+- **`MANAGER_AUTH_MODE=oidc` (Enterprise SSO)**:
+  - Integrates with any standard OIDC provider (Keycloak, Auth0, Authentik, Okta, etc.) via `OIDC_*`.
   - Platform admins access `/admin`; regular users are directed to `/my` to launch or manage their own workspace.
-  - Each sandbox gets isolated cookie names/secrets and enforces `DSH_ALLOWED_EMAILS`.
+  - Access to each `/s/<slug>/dsh/*` workspace is gated by owner email or platform admin via Traefik `ForwardAuth`.
 
 ## Enterprise / Internal Network Customization (Zero Code Changes)
 
@@ -81,7 +81,7 @@ To run in an internal corporate network (private registry, apt/pip/npm mirrors, 
    ```dotenv
    DOCKER_REGISTRY=your-registry.internal/docker
    PYTHON_IMAGE=your-registry.internal/docker/python:3.12-slim
-   APT_MIRROR=mirrors.aliyun.com
+   APT_MIRROR=https://mirrors.aliyun.com
    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
    NPM_REGISTRY=https://registry.npmmirror.com
    INSTALL_DOTNET=true
@@ -94,7 +94,6 @@ To run in an internal corporate network (private registry, apt/pip/npm mirrors, 
 
 | Port | Purpose |
 |---|---|
-| `9000` | Manager UI, API, and self-hosted `/plugins/*` registry |
-| `8080` | Standalone sandbox, when run directly with its compose |
-| `18000–18999` | Managed per-user sandbox ports |
-| `2019` / `3080` / `4180` / `3090` | Internal Caddy / DSH / oauth2-proxy / token helper, never published |
+| `9000` | Traefik gateway (Manager UI/API, `/s/<slug>/*` sandboxes, and `/plugins/*` registry) |
+| `8080` | Standalone sandbox (`HOST_PORT`), only when running `sandbox/docker-compose.yml` directly; managed sandboxes are not published on host ports |
+| `2019` / `3080` / `3090` | Internal Caddy / DSH / token helper inside sandbox containers, never published |
