@@ -14,21 +14,20 @@
 
 ```bash
 sandbox-expose <name> <port> [prefix]
+sandbox-expose --info
 sandbox-expose --list
 sandbox-expose --remove <name>
 ```
 
-默认前缀：
+默认前缀与完整出站地址（在单域名 Traefik 网关模式下会自动带上 `SANDBOX_BASE_PATH`，如 `/s/alice`）：
 
 ```text
-/apps/<name>/
+挂载路径：${SANDBOX_BASE_PATH}/apps/<name>/   (如 /s/alice/apps/web/)
+出站 URL：${SANDBOX_PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/apps/<name>/  (如 http://localhost:9000/s/alice/apps/web/)
+端口转发：${SANDBOX_PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/p/<port>/
 ```
 
-完整 URL：
-
-```text
-http://<host>:8080/apps/<name>/
-```
+可通过 `sandbox-expose --info` 或环境变量 `$SANDBOX_PUBLIC_ORIGIN`、`$SANDBOX_BASE_PATH`、`$SANDBOX_PUBLIC_URL`、`$DSH_PUBLIC_URL` 查看当前沙箱的真实出站域名和基础路径。
 
 它会：
 

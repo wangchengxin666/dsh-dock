@@ -49,10 +49,17 @@ fi
 PUBLIC_ORIGIN="${PUBLIC_SCHEME}://${PUBLIC_HOST}"
 PUBLIC_HOSTNAME=${PUBLIC_HOST%%:*}
 
+SANDBOX_PUBLIC_ORIGIN=${SANDBOX_PUBLIC_ORIGIN:-${PUBLIC_ORIGIN}}
+SANDBOX_PUBLIC_ORIGIN=${SANDBOX_PUBLIC_ORIGIN%/}
+SANDBOX_PUBLIC_URL=${SANDBOX_PUBLIC_URL:-${SANDBOX_PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/}
+[ "${SANDBOX_PUBLIC_URL%/}" = "${SANDBOX_PUBLIC_URL}" ] || SANDBOX_PUBLIC_URL=${SANDBOX_PUBLIC_URL%/}
+SANDBOX_PUBLIC_URL="${SANDBOX_PUBLIC_URL}/"
+
 DSH_TRUSTED_HOSTS=${DSH_TRUSTED_HOSTS:-${PUBLIC_HOST}}
 DSH_PUBLIC_URL=${PUBLIC_URL}
 export CADDY_PORT DSH_PORT SANDBOX_BASE_PATH DSH_MOUNT APPS_DIR OAUTH2_PROXY_PORT DSH_TOKEN_PORT AUTH_MODE
 export PUBLIC_URL PUBLIC_SCHEME PUBLIC_HOST PUBLIC_HOSTNAME PUBLIC_ORIGIN
+export SANDBOX_PUBLIC_ORIGIN SANDBOX_PUBLIC_URL
 export DSH_TRUSTED_HOSTS DSH_PUBLIC_URL
 
 # ---------------------------------------------------------------------------
@@ -68,9 +75,8 @@ if [ -d /etc/dsh/skills ]; then
   for skill in /etc/dsh/skills/*; do
     [ -e "${skill}" ] || continue
     name=$(basename "${skill}")
-    if [ ! -e "/home/dev/.dsh/skills/${name}" ]; then
-      runuser -u "${DEV_USER}" -- cp -R "${skill}" "/home/dev/.dsh/skills/${name}"
-    fi
+    install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 "/home/dev/.dsh/skills/${name}"
+    runuser -u "${DEV_USER}" -- cp -R "${skill}/." "/home/dev/.dsh/skills/${name}/"
   done
 fi
 install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/logs /home/dev/.npm-global /home/dev/.local/bin
@@ -83,7 +89,30 @@ install -d -o caddy -g caddy -m 0755 /var/lib/caddy /var/lib/caddy/.config /var/
 install -d -o oauth -g oauth -m 0755 /var/lib/oauth2-proxy
 
 printf '%s\n' "${SANDBOX_BASE_PATH}" >/home/dev/.dsh-sandbox/base-path.txt
-chown "${DEV_USER}:${DEV_USER}" /home/dev/.dsh-sandbox/base-path.txt
+printf '%s\n' "${SANDBOX_PUBLIC_ORIGIN}" >/home/dev/.dsh-sandbox/public-origin.txt
+printf '%s\n' "${SANDBOX_PUBLIC_URL}" >/home/dev/.dsh-sandbox/public-url.txt
+jq -n \
+  --arg public_origin "${SANDBOX_PUBLIC_ORIGIN}" \
+  --arg base_path "${SANDBOX_BASE_PATH}" \
+  --arg public_url "${SANDBOX_PUBLIC_URL}" \
+  --arg dsh_mount "${DSH_MOUNT}" \
+  --arg dsh_public_url "${PUBLIC_URL}" \
+  --arg apps_base_url "${SANDBOX_PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/apps/" \
+  --arg port_proxy_base_url "${SANDBOX_PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/p/" \
+  '{
+    public_origin: $public_origin,
+    base_path: $base_path,
+    public_url: $public_url,
+    dsh_mount: $dsh_mount,
+    dsh_public_url: $dsh_public_url,
+    apps_base_url: $apps_base_url,
+    port_proxy_base_url: $port_proxy_base_url
+  }' >/home/dev/.dsh-sandbox/info.json
+chown "${DEV_USER}:${DEV_USER}" \
+  /home/dev/.dsh-sandbox/base-path.txt \
+  /home/dev/.dsh-sandbox/public-origin.txt \
+  /home/dev/.dsh-sandbox/public-url.txt \
+  /home/dev/.dsh-sandbox/info.json
 
 # User-level supervisord: long-running dev services under the home volume.
 if [ ! -f /home/dev/.dsh-sandbox/services/supervisord.conf ]; then

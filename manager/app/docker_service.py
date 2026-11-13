@@ -156,7 +156,8 @@ class DockerService:
         if self.settings.sandbox_routing_mode == "subpath":
             base_path = f"/s/{sandbox.slug}"
             dsh_mount = f"{base_path}/dsh"
-            public_base = f"{self.settings.gateway_base_url}{base_path}"
+            public_origin = self.settings.gateway_base_url
+            public_base = f"{public_origin}{base_path}"
             dsh_public_url = f"{public_base}/dsh/"
             gw_host = self.settings.gateway_host_header
             trusted_hosts = f"{gw_host} {host}:{port} {host} 127.0.0.1:{port} localhost:{port}"
@@ -164,7 +165,8 @@ class DockerService:
         else:
             base_path = ""
             dsh_mount = "/dsh"
-            public_base = f"{scheme}://{host}:{port}"
+            public_origin = f"{scheme}://{host}:{port}"
+            public_base = public_origin
             dsh_public_url = f"{public_base}/dsh/"
             trusted_hosts = f"{host}:{port} {host}"
             whitelist_domains = f"{host}:{port},{host}"
@@ -172,6 +174,8 @@ class DockerService:
         env: dict[str, str] = {
             "AUTH_MODE": auth_mode,
             "SANDBOX_BASE_PATH": base_path,
+            "SANDBOX_PUBLIC_ORIGIN": public_origin,
+            "SANDBOX_PUBLIC_URL": f"{public_base}/",
             "DSH_MOUNT": dsh_mount,
             "DSH_PUBLIC_URL": dsh_public_url,
             "DSH_TRUSTED_HOSTS": trusted_hosts,
@@ -269,10 +273,21 @@ class DockerService:
                 }
 
         router_name = f"dsh-sbx-{sandbox.slug}"
+        dsh_router_name = f"dsh-sbx-{sandbox.slug}-dsh"
         auth_mw = f"dsh-auth-{sandbox.slug}"
         verify_url = (
             f"{self.settings.sandbox_reachable_manager_url}"
             f"/api/auth/verify-sandbox/{sandbox.slug}"
+        )
+        # Protect ONLY DSH-related entrypoints (/s/<slug>/, /s/<slug>/_dsh-token, /s/<slug>/dsh/*).
+        # User-exposed services (/s/<slug>/apps/*, /s/<slug>/p/*, etc.) remain open by default
+        # so applications can implement their own authentication.
+        dsh_rule = (
+            f"Path(`/s/{sandbox.slug}`) || "
+            f"Path(`/s/{sandbox.slug}/`) || "
+            f"Path(`/s/{sandbox.slug}/_dsh-token`) || "
+            f"Path(`/s/{sandbox.slug}/dsh`) || "
+            f"PathPrefix(`/s/{sandbox.slug}/dsh/`)"
         )
         labels = {
             "dsh.managed": "true",
@@ -281,12 +296,19 @@ class DockerService:
             "dsh.port": str(sandbox.port),
             "dsh.volume": sandbox.volume_name,
             "dsh.template": sandbox.template or "agent-os",
-            # Traefik automatic single-domain subpath discovery (/s/<slug>/...) + ForwardAuth
+            # Traefik automatic single-domain subpath discovery (/s/<slug>/...)
             "traefik.enable": "true",
+            # Public router for user services (/s/<slug>/apps/*, /s/<slug>/p/*, healthz, etc.)
             f"traefik.http.routers.{router_name}.rule": f"PathPrefix(`/s/{sandbox.slug}`)",
             f"traefik.http.routers.{router_name}.entrypoints": "web",
             f"traefik.http.routers.{router_name}.priority": "100",
-            f"traefik.http.routers.{router_name}.middlewares": f"{auth_mw}@docker",
+            f"traefik.http.routers.{router_name}.service": router_name,
+            # Protected DSH router (owner & platform admin only via ForwardAuth)
+            f"traefik.http.routers.{dsh_router_name}.rule": dsh_rule,
+            f"traefik.http.routers.{dsh_router_name}.entrypoints": "web",
+            f"traefik.http.routers.{dsh_router_name}.priority": "120",
+            f"traefik.http.routers.{dsh_router_name}.service": router_name,
+            f"traefik.http.routers.{dsh_router_name}.middlewares": f"{auth_mw}@docker",
             f"traefik.http.middlewares.{auth_mw}.forwardauth.address": verify_url,
             f"traefik.http.middlewares.{auth_mw}.forwardauth.trustForwardHeader": "true",
             f"traefik.http.middlewares.{auth_mw}.forwardauth.authResponseHeaders": (

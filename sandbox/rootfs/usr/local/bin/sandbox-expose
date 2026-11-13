@@ -3,7 +3,8 @@
 #
 #   sandbox-expose <name> <port> [prefix]   add/update a route
 #   sandbox-expose --remove <name>          remove it
-#   sandbox-expose --list                   show managed routes
+#   sandbox-expose --list                   show managed routes & public URLs
+#   sandbox-expose --info                   show outbound origin, base path & URL templates
 #
 # When SANDBOX_BASE_PATH is set (e.g. /s/alice), the default prefix is
 # /s/alice/apps/<name>, and a fallback route at /apps/<name> is also registered
@@ -12,12 +13,30 @@ set -euo pipefail
 
 apps_dir=${SANDBOX_APPS_DIR:-/home/dev/.dsh-sandbox/caddy/apps.d}
 config=${SANDBOX_CADDY_CONFIG:-/etc/caddy/Caddyfile}
-base_path_file="/home/dev/.dsh-sandbox/base-path.txt"
+state_dir="/home/dev/.dsh-sandbox"
+
+base_path_file="${state_dir}/base-path.txt"
 if [ -z "${SANDBOX_BASE_PATH:-}" ] && [ -f "${base_path_file}" ]; then
   SANDBOX_BASE_PATH=$(tr -d '\r\n' <"${base_path_file}")
 fi
 SANDBOX_BASE_PATH=${SANDBOX_BASE_PATH:-}
 SANDBOX_BASE_PATH=${SANDBOX_BASE_PATH%/}
+
+origin_file="${state_dir}/public-origin.txt"
+if [ -z "${SANDBOX_PUBLIC_ORIGIN:-}" ] && [ -f "${origin_file}" ]; then
+  SANDBOX_PUBLIC_ORIGIN=$(tr -d '\r\n' <"${origin_file}")
+fi
+if [ -z "${SANDBOX_PUBLIC_ORIGIN:-}" ] && [ -n "${DSH_PUBLIC_URL:-}" ]; then
+  if [[ "${DSH_PUBLIC_URL}" =~ ^(https?://[^/]+) ]]; then
+    SANDBOX_PUBLIC_ORIGIN="${BASH_REMATCH[1]}"
+  fi
+fi
+SANDBOX_PUBLIC_ORIGIN=${SANDBOX_PUBLIC_ORIGIN:-http://localhost:${CADDY_PORT:-8080}}
+SANDBOX_PUBLIC_ORIGIN=${SANDBOX_PUBLIC_ORIGIN%/}
+
+SANDBOX_PUBLIC_URL=${SANDBOX_PUBLIC_URL:-${SANDBOX_PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/}
+[ "${SANDBOX_PUBLIC_URL%/}" = "${SANDBOX_PUBLIC_URL}" ] || SANDBOX_PUBLIC_URL=${SANDBOX_PUBLIC_URL%/}
+SANDBOX_PUBLIC_URL="${SANDBOX_PUBLIC_URL}/"
 
 die() { printf 'sandbox-expose: %s\n' "$*" >&2; exit 1; }
 reload_caddy() {
@@ -26,12 +45,36 @@ reload_caddy() {
 }
 
 case "${1:-}" in
+  --info)
+    if [ -f "${state_dir}/info.json" ]; then
+      cat "${state_dir}/info.json"
+    else
+      printf 'SANDBOX_PUBLIC_ORIGIN=%s\n' "${SANDBOX_PUBLIC_ORIGIN}"
+      printf 'SANDBOX_BASE_PATH=%s\n' "${SANDBOX_BASE_PATH}"
+      printf 'SANDBOX_PUBLIC_URL=%s\n' "${SANDBOX_PUBLIC_URL}"
+      printf 'APPS_BASE_URL=%s%s/apps/\n' "${SANDBOX_PUBLIC_ORIGIN}" "${SANDBOX_BASE_PATH}"
+      printf 'PORT_PROXY_BASE_URL=%s%s/p/\n' "${SANDBOX_PUBLIC_ORIGIN}" "${SANDBOX_BASE_PATH}"
+    fi
+    exit 0
+    ;;
   --list)
     shopt -s nullglob
+    found=0
     for file in "${apps_dir}"/*.caddy; do
       [ "$(basename "${file}")" = "00-empty.caddy" ] && continue
-      printf '%s\n' "${file}"
+      found=1
+      app_line=$(grep -m1 '^# App:' "${file}" 2>/dev/null || true)
+      if [[ "${app_line}" =~ ^#\ App:\ ([^\ ]+)\ -\>\ ([^\ ]+)\ mounted\ at\ ([^\ ]+) ]]; then
+        r_name=${BASH_REMATCH[1]}
+        r_target=${BASH_REMATCH[2]}
+        r_mount=${BASH_REMATCH[3]}
+        printf '%-16s -> %-16s  path: %-26s  url: %s%s\n' \
+          "${r_name}" "${r_target}" "${r_mount}" "${SANDBOX_PUBLIC_ORIGIN}" "${r_mount}"
+      else
+        printf '%s\n' "${file}"
+      fi
     done
+    [ "${found}" -eq 1 ] || echo "no exposed services"
     exit 0
     ;;
   --remove)
@@ -45,7 +88,7 @@ case "${1:-}" in
     exit 0
     ;;
   ''|-h|--help)
-    sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
     ;;
 esac
@@ -57,7 +100,7 @@ fi
 name=$1
 port=${2:-}
 default_prefix="${SANDBOX_BASE_PATH}/apps/${name}"
-prefix=${3:-${default_prefix}}
+raw_prefix=${3:-${default_prefix}}
 
 case "${name}" in
   *[!a-z0-9_-]*|'') die "name must match [a-z0-9_-]+" ;;
@@ -69,12 +112,32 @@ esac
 for reserved in "${CADDY_ADMIN_PORT:-2019}" "${DSH_PORT:-3080}" "${OAUTH2_PROXY_PORT:-4180}" "${DSH_TOKEN_PORT:-3090}" "${CADDY_PORT:-8080}"; do
   [ "${port}" != "${reserved}" ] || die "port ${port} is reserved (Caddy admin / DSH / oauth2-proxy)"
 done
-case "${prefix}" in
+case "${raw_prefix}" in
   /*) ;;
   *) die "prefix must start with /" ;;
 esac
-prefix=${prefix%/}
-[ -n "${prefix}" ] || die "prefix must not be /"
+raw_prefix=${raw_prefix%/}
+[ -n "${raw_prefix}" ] || die "prefix must not be /"
+
+direct_fallback=""
+if [ -n "${SANDBOX_BASE_PATH}" ]; then
+  if [ "${raw_prefix}" = "${SANDBOX_BASE_PATH}" ]; then
+    die "prefix must not collide with SANDBOX_BASE_PATH (${SANDBOX_BASE_PATH})"
+  elif [[ "${raw_prefix}" == "${SANDBOX_BASE_PATH}/"* ]]; then
+    prefix="${raw_prefix}"
+    rel_part="${raw_prefix#"${SANDBOX_BASE_PATH}"}"
+    if [ "${rel_part}" = "/apps/${name}" ]; then
+      direct_fallback="/apps/${name}"
+    fi
+  else
+    # Caller supplied a relative path like /apps/custom or /api; automatically scope
+    # it under SANDBOX_BASE_PATH for Traefik while keeping direct port fallback.
+    prefix="${SANDBOX_BASE_PATH}${raw_prefix}"
+    direct_fallback="${raw_prefix}"
+  fi
+else
+  prefix="${raw_prefix}"
+fi
 
 matcher="@app_${name}Bare"
 matcher=${matcher//-/_}
@@ -98,18 +161,16 @@ handle_path ${prefix}/* {
 }
 EOF
 
-  # When SANDBOX_BASE_PATH is active and the user used the default prefix,
-  # also register /apps/<name>/* for direct container port access.
-  if [ -n "${SANDBOX_BASE_PATH}" ] && [ "${prefix}" = "${SANDBOX_BASE_PATH}/apps/${name}" ]; then
+  if [ -n "${direct_fallback}" ]; then
     direct_matcher="${matcher}_direct"
     cat <<EOF
 
-${direct_matcher} path /apps/${name}
-redir ${direct_matcher} /apps/${name}/ 308
+${direct_matcher} path ${direct_fallback}
+redir ${direct_matcher} ${direct_fallback}/ 308
 
-handle_path /apps/${name}/* {
+handle_path ${direct_fallback}/* {
 	reverse_proxy 127.0.0.1:${port} {
-		header_up X-Forwarded-Prefix /apps/${name}
+		header_up X-Forwarded-Prefix ${direct_fallback}
 	}
 }
 EOF
@@ -124,6 +185,11 @@ if ! reload_caddy; then
   die "Caddy rejected the new route; it was rolled back"
 fi
 
-printf 'exposed %s -> 127.0.0.1:%s at %s/ (public; implement auth inside the service)\n' \
-  "${name}" "${port}" "${prefix}"
-printf 'set the app base path to %s/ (or make it prefix-agnostic)\n' "${prefix}"
+public_app_url="${SANDBOX_PUBLIC_ORIGIN}${prefix}/"
+public_port_url="${SANDBOX_PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/p/${port}/"
+
+printf 'exposed %s -> 127.0.0.1:%s\n' "${name}" "${port}"
+printf '  public URL:  %s  (open by default; implement auth inside the service if needed)\n' "${public_app_url}"
+printf '  port URL:    %s\n' "${public_port_url}"
+printf '  mount path:  %s/\n' "${prefix}"
+printf 'set the app base path to %s/ (or use relative asset links)\n' "${prefix}"
