@@ -1,0 +1,41 @@
+services:
+  sandbox:
+    build:
+      context: .
+      args:
+        # Match the host user so bind mounts on Linux are writable.
+        DEV_UID: ${DEV_UID:-1000}
+        DEV_GID: ${DEV_GID:-1000}
+        NODE_VERSION: ${NODE_VERSION:-24.22.3}
+        DSH_VERSION: ${DSH_VERSION:-0.2.2-rc.3}
+        INSTALL_DOTNET: ${INSTALL_DOTNET:-false}
+        DOTNET_VERSION: ${DOTNET_VERSION:-10.0.404}
+        DOTNET_SDK_URL: ${DOTNET_SDK_URL:-}
+        # Override in .env when using private mirrors or internal registries.
+        DOCKER_REGISTRY: ${DOCKER_REGISTRY:-docker.io/library}
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+    image: ${DSH_IMAGE_REPO:-dsh-sandbox}:${DSH_IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-dsh-sandbox}
+    init: true
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      # The only published port. Everything else is reachable only through
+      # this Caddy listener, by design.
+      - "${HOST_PORT:-8080}:8080"
+    volumes:
+      # /home/dev holds the workspace, DSH sessions, and drop-in Caddy routes.
+      - dsh-home:/home/dev
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:$${CADDY_PORT:-8080}/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+volumes:
+  dsh-home:
+    name: ${CONTAINER_NAME:-dsh-sandbox}-home

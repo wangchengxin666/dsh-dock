@@ -1,0 +1,5 @@
+# Optional custom / enterprise CA certificate bundle (PEM format).
+# Leave this file without certificates for standard public CAs.
+# For internal/corporate PKI environments, append one or more PEM blocks
+# (-----BEGIN CERTIFICATE----- ... -----END CERTIFICATE-----) here before building,
+# or mount a certificate bundle and set SSL_CERT_FILE at runtime.

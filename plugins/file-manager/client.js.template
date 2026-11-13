@@ -1,0 +1,92 @@
+/**
+ * File manager — browser bundle.
+ *
+ * Registers one lazy factory with the module loader. Everything except the
+ * `load` call lives INSIDE the factory: the loader executes this script during
+ * boot but materializes the factory only on first use, and code outside the
+ * factory would run without a `require` in scope. The browser copy has no
+ * `./client.js` chunk, so the page modules are inlined into the factory body by
+ * `scripts/bundle-client.mjs`; edit `src/client/*.js`, then re-run that script.
+ */
+window.__ModuleLoader__.load({
+  id: '@local/dsh-plugin-file-manager',
+  factory(require) {
+    /*__MODULES__*/
+
+    return {
+      inject: ['slots', 'locale', 'remote'],
+      async apply(ctx) {
+        try {
+          return await start(ctx)
+        } catch (error) {
+          // One thrown activation hides the whole feature, including the sidebar
+          // row, so the failure is named in the console before it propagates.
+          console.error('[file-manager] client activation failed:', error)
+          throw error
+        }
+      },
+    }
+
+    /**
+     * Mount the Remote contribution, register the copy, and contribute the
+     * sidebar row and the page.
+     * @param ctx - browser plugin context.
+     * @returns the disposer that unmounts the Remote contribution.
+     */
+    async function start(ctx) {
+      const React = require('react')
+      const zod = require('zod')
+      const { page, contract, locale, icon } = modules()
+
+      // Mount the contribution in the plugin's own fiber, so unloading the
+      // plugin takes the `remote.fileManager` namespace with it.
+      const unmount = await ctx.remote.$mount(contract.clientContribution(zod))
+      // The mounted namespace is handed to the page through the slot's inject
+      // face: a `main` component receives the standard hooks, never `remote`.
+      // It is read with ctx.get(), not ctx.remote.fileManager: Cordis refuses a
+      // property read for a service the fiber did not declare in `inject`, and
+      // this namespace cannot be declared there because this plugin creates it.
+      const fileManager = ctx.get('remote.fileManager')
+        ?? ctx.reflect?.get?.('remote.fileManager', false)
+      if (fileManager === undefined) throw new Error('fileManager namespace did not mount')
+
+      const disposeLocale = ctx.locale.register('fileManager', { en: locale.en, zh: locale.zh })
+      const t = ctx.locale.bind('fileManager')
+      const h = React.createElement
+      const Page = page.createPageComponent({ React, ReactDOM: require('react-dom') })
+
+      /**
+       * The left-sidebar glyph; the sidebar owns the button, label, and state.
+       * @param props - requested square edge.
+       * @returns the icon element.
+       */
+      const panelIcon = ({ size }) => h('svg', {
+        viewBox: icon.ICON_VIEWBOX,
+        width: size,
+        height: size,
+        'aria-hidden': 'true',
+        focusable: 'false',
+        style: { display: 'block' },
+      }, icon.ICON_PATHS.map((shape, index) => h('path', { key: index, ...shape })))
+
+      ctx.effect(() => [
+        disposeLocale,
+        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+          name: 'sidebar.panellist',
+          id: 'file-manager',
+          order: 20,
+          label: () => t('panel'),
+          locale: 'fileManager',
+        }, panelIcon)),
+        ctx.slots.inject('main', () => ctx.slots.register({
+          name: 'main',
+          key: 'file-manager',
+          locale: 'fileManager',
+          inject: () => ({ fileManager }),
+        }, Page)),
+      ], 'file-manager: client contributions')
+
+      return () => unmount()
+    }
+  },
+})

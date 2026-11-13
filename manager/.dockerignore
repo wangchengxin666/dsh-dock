@@ -1,0 +1,10 @@
+.env
+.venv/
+app/web_dist/
+frontend/node_modules/
+frontend/.yarn/
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+.pytest_cache/

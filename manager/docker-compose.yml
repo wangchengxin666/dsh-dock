@@ -1,0 +1,56 @@
+services:
+  traefik:
+    image: ${TRAEFIK_IMAGE:-traefik:v3.7}
+    container_name: dsh-gateway
+    restart: unless-stopped
+    environment:
+      - DOCKER_API_VERSION=${DOCKER_API_VERSION:-1.44}
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=dsh-manager"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "${GATEWAY_PORT:-9000}:80"
+    volumes:
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    networks:
+      - sandbox-net
+
+  manager:
+    build:
+      context: .
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.13-slim}
+        NODE_IMAGE: ${NODE_IMAGE:-node:24-bookworm-slim}
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple/}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+    image: ${MANAGER_IMAGE_REPO:-dsh-manager}:${MANAGER_IMAGE_TAG:-latest}
+    container_name: dsh-manager
+    init: true
+    restart: unless-stopped
+    expose:
+      - "9000"
+    env_file:
+      - .env
+    volumes:
+      - manager-data:/data
+      - ../plugins:/app/plugins:ro
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dsh-manager.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.dsh-manager.entrypoints=web"
+      - "traefik.http.routers.dsh-manager.priority=1"
+      - "traefik.http.services.dsh-manager.loadbalancer.server.port=9000"
+    networks:
+      - sandbox-net
+
+volumes:
+  manager-data:
+    name: dsh-manager-data
+
+networks:
+  sandbox-net:
+    name: dsh-manager

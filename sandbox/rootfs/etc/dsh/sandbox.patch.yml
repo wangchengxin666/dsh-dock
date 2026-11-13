@@ -1,0 +1,7 @@
+# Deployment defaults for the containerized Web GUI.
+# The Host resolves the first-use workspace under <documentsDirectory>/
+# deepseek-harness/default-workspace; without this override it shells out to
+# xdg-user-dir, which a slim container does not ship.
+- id: workspace-controller
+  config:
+    documentsDirectory: /home/dev

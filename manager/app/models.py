@@ -1,0 +1,121 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, Unicode
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .db import Base
+
+
+def new_id() -> str:
+    return str(uuid.uuid4())
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    email: Mapped[str] = mapped_column(Unicode(320), unique=True, index=True)
+    display_name: Mapped[str | None] = mapped_column(Unicode(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(32), default="user")
+    status: Mapped[str] = mapped_column(String(32), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    sandboxes: Mapped[list[Sandbox]] = relationship(back_populates="user")
+
+
+class PlatformAdmin(Base):
+    __tablename__ = "platform_admins"
+
+    email: Mapped[str] = mapped_column(Unicode(320), primary_key=True)
+    display_name: Mapped[str | None] = mapped_column(Unicode(255), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class LlmProfile(Base):
+    __tablename__ = "llm_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(Unicode(128))
+    base_url: Mapped[str] = mapped_column(Unicode(512))
+    model: Mapped[str] = mapped_column(Unicode(128))
+    api_key_ciphertext: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class SandboxTemplate(Base):
+    __tablename__ = "sandbox_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(Unicode(128))
+    description: Mapped[str | None] = mapped_column(Unicode(512), nullable=True)
+    image_repo: Mapped[str] = mapped_column(String(255), default="dsh-sandbox")
+    image_tag: Mapped[str] = mapped_column(String(128), default="latest")
+    default_cpu_limit: Mapped[float] = mapped_column(Float, default=2.0)
+    default_memory_limit: Mapped[str] = mapped_column(String(32), default="4g")
+    auto_install_plugins: Mapped[str | None] = mapped_column(
+        Unicode(512), default="file-manager", nullable=True
+    )
+    init_script: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_env_json: Mapped[str | None] = mapped_column(Text, default="{}", nullable=True)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow
+    )
+
+
+class Sandbox(Base):
+    __tablename__ = "sandboxes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    port: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    container_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    volume_name: Mapped[str] = mapped_column(String(128))
+    image_repo: Mapped[str | None] = mapped_column(
+        String(255), default="dsh-sandbox", nullable=True
+    )
+    image_tag: Mapped[str] = mapped_column(String(128))
+    template: Mapped[str | None] = mapped_column(
+        String(64), default="agent-os", nullable=True
+    )
+    init_repo_url: Mapped[str | None] = mapped_column(Unicode(512), nullable=True)
+    init_script: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extra_env_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auto_install_plugins: Mapped[str | None] = mapped_column(
+        Unicode(512), nullable=True
+    )
+    cpu_limit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    memory_limit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="creating")
+    llm_profile_id: Mapped[str | None] = mapped_column(
+        ForeignKey("llm_profiles.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="sandboxes")
+    llm_profile: Mapped[LlmProfile | None] = relationship()
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    actor: Mapped[str | None] = mapped_column(Unicode(255), nullable=True)
+    action: Mapped[str] = mapped_column(String(64))
+    target: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

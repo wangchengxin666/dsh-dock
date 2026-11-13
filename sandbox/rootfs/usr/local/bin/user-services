@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Run the user-level supervisord as dev. The container-level supervisord keeps
+# this process alive across DSH restarts; the user-level instance owns the
+# programs under ~/.dsh-sandbox/services/conf.d.
+set -euo pipefail
+
+: "${HOME:=/home/dev}"
+config="${HOME}/.dsh-sandbox/services/supervisord.conf"
+
+if [ ! -f "${config}" ]; then
+  echo "user-services: missing ${config}" >&2
+  exit 1
+fi
+
+exec supervisord -c "${config}"

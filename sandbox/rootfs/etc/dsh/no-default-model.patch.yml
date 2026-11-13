@@ -1,0 +1,23 @@
+# Remove the shipped DeepSeek model setup. The browser's first-run default is
+# written into the profile patch by dsh-web (once); a saved selection replaces
+# it there, so this runtime layer must not override the user's choice.
+# DeepSeek official / account / API-key model routes.
+- id: llm-deepseek
+  disabled: true
+- id: llm-deepseek-account
+  disabled: true
+- id: deepseek-account
+  disabled: true
+- id: deepseek-llm-api-extensions
+  disabled: true
+- id: plugin-package-inventory-deepseek
+  disabled: true
+
+# DeepSeek-specific consumers that would otherwise wait for the disabled
+# providers and log "did not activate" warnings.
+- id: session-log-deepseek
+  disabled: true
+- id: account-controller
+  disabled: true
+- id: ui-settings-account
+  disabled: true

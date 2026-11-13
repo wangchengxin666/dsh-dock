@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Launch the DSH Web profile on loopback. Caddy is the only public listener.
+set -euo pipefail
+
+: "${DSH_HOME:=/home/dev/.dsh}"
+export DSH_HOME
+
+# Launcher flags must come before the app's own flags. The second patch
+# removes the shipped DeepSeek model default; users configure a provider in
+# Settings -> Models (or via injected DSH_DEFAULT_LLM_* defaults).
+args=(--profile web --patch /etc/dsh/sandbox.patch.yml --patch /etc/dsh/no-default-model.patch.yml)
+
+# First run: write a default-model row into the profile patch. Settings ->
+# Models later replaces this row with the user's provider/model, and this
+# check skips it, so a saved selection survives restarts.
+profile_patch="${DSH_HOME}/profiles/web/cordis.patch.yml"
+if [ -f "${profile_patch}" ] && ! grep -q 'agent-default-model' "${profile_patch}"; then
+  tmp_patch="$(mktemp "${profile_patch}.XXXXXX")"
+  # A freshly initialized profile patch is the empty-flow sequence `[]`;
+  # appending a block item after it would be invalid YAML.
+  sed '/^[[:space:]]*\[\][[:space:]]*$/d' "${profile_patch}" >"${tmp_patch}"
+  default_provider="${DSH_DEFAULT_LLM_PROVIDER:-}"
+  default_model="${DSH_DEFAULT_LLM_MODEL:-}"
+  cat >>"${tmp_patch}" <<EOF
+
+- id: agent-default-model
+  config:
+    provider: '${default_provider}'
+    model: '${default_model}'
+EOF
+  mv "${tmp_patch}" "${profile_patch}"
+fi
+
+# Automatically enable the DSH Plugin Market (Discover tab) and inject the
+# platform's self-hosted plugin index URL when configured.
+plugin_index_url="${DSH_PLUGIN_INDEX_URL:-}"
+if [ -z "${plugin_index_url}" ] && [ -s /home/dev/.dsh-sandbox/plugin-index-url.txt ]; then
+  plugin_index_url="$(head -n 1 /home/dev/.dsh-sandbox/plugin-index-url.txt | tr -d '\r\n')"
+fi
+if [ -n "${plugin_index_url}" ]; then
+  PLUGIN_INDEX_URL="${plugin_index_url}" DSH_PROFILE_DIR="${DSH_HOME}/profiles/web" node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const dir = process.env.DSH_PROFILE_DIR;
+    const indexUrl = process.env.PLUGIN_INDEX_URL;
+    const pkgPath = path.join(dir, "package.json");
+    const patchPath = path.join(dir, "cordis.patch.yml");
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      pkg.dsh = pkg.dsh || {};
+      pkg.dsh.profile = pkg.dsh.profile || {};
+      pkg.dsh.profile.bundles = Array.isArray(pkg.dsh.profile.bundles) ? pkg.dsh.profile.bundles : [];
+      const marketBundle = "@deepseek-ai/dsh-experimental-plugin-market-bundle";
+      if (!pkg.dsh.profile.bundles.includes(marketBundle)) {
+        pkg.dsh.profile.bundles.push(marketBundle);
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+      }
+    }
+    if (fs.existsSync(patchPath)) {
+      let content = fs.readFileSync(patchPath, "utf8").replace(/^\s*\[\]\s*$/m, "");
+      if (!content.includes("id: plugin-market")) {
+        content = content.trimEnd() + "\n\n- id: plugin-market\n  name: \"@deepseek-ai/dsh-plugin-market\"\n  config:\n    indexes:\n      - " + JSON.stringify(indexUrl) + "\n";
+        fs.writeFileSync(patchPath, content);
+      } else if (!content.includes(indexUrl)) {
+        content = content.replace(/(- id: plugin-market[\s\S]*?indexes:)\s*\[\s*\]/, "$1\n      - " + JSON.stringify(indexUrl));
+        if (!content.includes(indexUrl)) {
+          content = content.replace(/(- id: plugin-market[\s\S]*?indexes:)/, "$1\n      - " + JSON.stringify(indexUrl));
+        }
+        fs.writeFileSync(patchPath, content);
+      }
+    }
+  ' || true
+fi
+
+args+=(--no-open --host 127.0.0.1 --port "${DSH_PORT:-3080}")
+
+if [ -n "${DSH_PUBLIC_URL:-}" ]; then
+  args+=(--public-url "${DSH_PUBLIC_URL}")
+fi
+
+read -r -a trusted_hosts <<<"${DSH_TRUSTED_HOSTS:-}"
+for host in "${trusted_hosts[@]}"; do
+  [ -n "${host}" ] || continue
+  args+=(--trusted-host "${host}")
+done
+
+# The token helper reads the launch URL from this file after OIDC login.
+mkdir -p "${DSH_HOME}"
+exec > >(tee -a "${DSH_HOME}/web.log") 2>&1
+exec dsh "${args[@]}"

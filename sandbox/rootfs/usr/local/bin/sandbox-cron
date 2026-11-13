@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Manage persistent user crontab stored in /home/dev/.dsh-sandbox/crontab.
+# Survives container restarts and image upgrades.
+set -euo pipefail
+
+: "${HOME:=/home/dev}"
+cron_file="${HOME}/.dsh-sandbox/crontab"
+mkdir -p "$(dirname "${cron_file}")"
+touch "${cron_file}"
+
+usage() {
+  cat <<'EOF'
+usage:
+  sandbox-cron list                     show persistent crontab entries
+  sandbox-cron set <file>               replace crontab from a file
+  sandbox-cron add "<schedule> <cmd>"   append a cron entry and reload
+  sandbox-cron clear                    remove all entries
+
+Entries are persisted in ~/.dsh-sandbox/crontab and loaded into the system
+cron daemon for user 'dev' on container startup.
+EOF
+}
+
+sync_crontab() {
+  crontab "${cron_file}"
+}
+
+cmd=${1:-}
+shift || true
+
+case "${cmd}" in
+  list)
+    cat "${cron_file}"
+    ;;
+  set)
+    src=${1:-}
+    [ -n "${src}" ] && [ -f "${src}" ] || { echo "sandbox-cron: file required" >&2; exit 1; }
+    cp "${src}" "${cron_file}"
+    sync_crontab
+    echo "crontab updated from ${src}"
+    ;;
+  add)
+    line="$*"
+    [ -n "${line}" ] || { echo "sandbox-cron: cron expression and command required" >&2; exit 1; }
+    printf '%s\n' "${line}" >>"${cron_file}"
+    sync_crontab
+    echo "added cron entry: ${line}"
+    ;;
+  clear)
+    : >"${cron_file}"
+    crontab -r 2>/dev/null || true
+    echo "crontab cleared"
+    ;;
+  sync)
+    if [ -s "${cron_file}" ]; then
+      sync_crontab
+    fi
+    ;;
+  ''|-h|--help|help)
+    usage
+    ;;
+  *)
+    echo "sandbox-cron: unknown command: ${cmd}" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

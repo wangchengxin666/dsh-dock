@@ -1,0 +1,187 @@
+from __future__ import annotations
+
+import re
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+_MEMORY_RE = re.compile(r"^[1-9][0-9]*(\.[0-9]+)?[kmg]$", re.IGNORECASE)
+
+
+def _normalize_memory(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip().lower()
+    if not _MEMORY_RE.fullmatch(value):
+        raise ValueError("memory_limit must look like 512m, 4g, or 16g")
+    return value
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    display_name: str | None = None
+    role: Literal["user", "admin"] = "user"
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    email: str
+    display_name: str | None
+    role: str
+    status: str
+
+
+class AdminCreate(BaseModel):
+    email: EmailStr
+    display_name: str | None = None
+
+
+class AdminOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    email: str
+    display_name: str | None
+    active: bool
+    created_at: datetime
+
+
+class TemplateCreate(BaseModel):
+    key: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+    name: str = Field(min_length=1, max_length=128)
+    description: str | None = None
+    image_repo: str = "dsh-sandbox"
+    image_tag: str = "latest"
+    default_cpu_limit: float = Field(default=2.0, gt=0, le=64)
+    default_memory_limit: str = "4g"
+    auto_install_plugins: str | None = "file-manager"
+    init_script: str | None = None
+    default_env_json: str | None = "{}"
+
+    @field_validator("default_memory_limit")
+    @classmethod
+    def validate_memory(cls, value: str) -> str:
+        return _normalize_memory(value) or "4g"
+
+
+class TemplateUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    image_repo: str | None = None
+    image_tag: str | None = None
+    default_cpu_limit: float | None = Field(default=None, gt=0, le=64)
+    default_memory_limit: str | None = None
+    auto_install_plugins: str | None = None
+    init_script: str | None = None
+    default_env_json: str | None = None
+
+    @field_validator("default_memory_limit")
+    @classmethod
+    def validate_memory(cls, value: str | None) -> str | None:
+        return _normalize_memory(value)
+
+
+class TemplateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    key: str
+    name: str
+    description: str | None
+    image_repo: str
+    image_tag: str
+    default_cpu_limit: float
+    default_memory_limit: str
+    auto_install_plugins: str | None
+    init_script: str | None
+    default_env_json: str | None
+    is_builtin: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class SandboxCreate(BaseModel):
+    email: EmailStr
+    slug: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+    display_name: str | None = None
+    image_repo: str | None = None
+    image_tag: str | None = None
+    template: str = "agent-os"
+    init_repo_url: str | None = None
+    init_script: str | None = None
+    auto_install_plugins: str | None = None
+    llm_profile_id: str | None = None
+    cpu_limit: float | None = Field(default=None, gt=0, le=64)
+    memory_limit: str | None = None
+
+    @field_validator("memory_limit")
+    @classmethod
+    def validate_memory(cls, value: str | None) -> str | None:
+        return _normalize_memory(value)
+
+
+class SandboxPatch(BaseModel):
+    image_repo: str | None = None
+    image_tag: str | None = None
+    llm_profile_id: str | None = None
+    cpu_limit: float | None = Field(default=None, gt=0, le=64)
+    memory_limit: str | None = None
+
+    @field_validator("memory_limit")
+    @classmethod
+    def validate_memory(cls, value: str | None) -> str | None:
+        return _normalize_memory(value)
+
+
+class SandboxOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    email: str
+    display_name: str | None = None
+    slug: str
+    port: int
+    container_id: str | None
+    volume_name: str
+    image_repo: str | None = "dsh-sandbox"
+    image_tag: str
+    template: str | None = "agent-os"
+    init_repo_url: str | None = None
+    auto_install_plugins: str | None = None
+    llm_profile_id: str | None = None
+    llm_profile_name: str | None = None
+    cpu_limit: float | None
+    memory_limit: str | None
+    status: str
+    url: str
+    created_at: datetime
+    last_seen_at: datetime | None
+    deleted_at: datetime | None
+
+
+class SandboxList(BaseModel):
+    items: list[SandboxOut]
+
+
+class HealthOut(BaseModel):
+    status: str
+    database: str
+    docker: str
+
+
+class LlmProfileCreate(BaseModel):
+    name: str
+    base_url: str
+    model: str
+    api_key: str
+
+
+class LlmProfileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    base_url: str
+    model: str

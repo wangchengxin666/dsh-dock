@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "title": {
+    "en": "DSH Sandbox Plugins",
+    "zh": "DSH 沙箱平台插件"
+  },
+  "description": {
+    "en": "Plugins maintained in the dsh-sandbox platform.",
+    "zh": "由 dsh-sandbox 平台维护与托管的插件。"
+  },
+  "plugins": [
+    {
+      "name": "@local/dsh-plugin-file-manager",
+      "title": {
+        "en": "Server file manager",
+        "zh": "服务器文件管理"
+      },
+      "description": {
+        "en": "A file manager page in the left sidebar: browse any server directory with breadcrumbs and a path bar, upload, download (including ZIP of a directory or selection), preview text and images, create folders, rename, and delete.",
+        "zh": "左侧栏里的服务器文件管理页面：面包屑与路径直达，上传、下载（含目录或选区的 ZIP 打包）、文本与图片预览、新建文件夹、重命名、删除。"
+      },
+      "icon": "icons/file-manager.svg",
+      "author": "DSH Sandbox Platform",
+      "homepage": "https://example.com/dsh-sandbox/tree/main/plugins/file-manager",
+      "repository": {
+        "url": "https://example.com/dsh-sandbox"
+      },
+      "keywords": [
+        "files",
+        "file manager",
+        "upload",
+        "download",
+        "zip",
+        "sidebar"
+      ],
+      "versions": [
+        {
+          "version": "1.0.0",
+          "publishTimestamp": 1794564442,
+          "source": {
+            "type": "npm",
+            "registry": "http://localhost:9000/plugins/npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.0 <0.3.0"
+          }
+        }
+      ]
+    }
+  ]
+}

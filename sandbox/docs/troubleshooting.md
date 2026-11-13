@@ -1,0 +1,74 @@
+# 故障排查
+
+## 入口与认证
+
+| 现象 | 排查 |
+| --- | --- |
+| `/` 不是 DSH | Caddy 应 302 到 `/dsh/`；检查 `DSH_MOUNT` 和 Caddy 日志 |
+| `/dsh/` 502 | DSH 或 oauth2-proxy 没起；看 `[program:dsh]` / `[program:oauth2-proxy]` |
+| 一直跳 IdP / 登录循环 | `OAUTH2_PROXY_REDIRECT_URL` 与实际 scheme/host 不一致；IdP 是否登记 `/oauth2/callback` |
+| 登录成功但 403 | email 不在 `DSH_ALLOWED_EMAILS`，或 ID token 没有 email；看容器日志 `forbidden: email not allowed` |
+| 浏览器仍要求 token | 删除 `dsh_token_seen` cookie 后重新访问 `/dsh/`；或查 `web.log` 里的启动 URL |
+| `/apps/*` 不跳 IdP | 正常，apps 是公开的；鉴权由服务自己实现 |
+| `/apps/*` 403 | 服务自己的认证拒绝了请求；与 DSH 的 email 白名单无关 |
+
+## 服务
+
+| 现象 | 排查 |
+| --- | --- |
+| `sandbox-service` 找不到服务 | `sandbox-service list`；检查 `~/.dsh-sandbox/services/conf.d` |
+| 服务 FATAL / 反复重启 | `sandbox-service logs <name>` 和 `~/logs/<name>.err` |
+| `/apps/x/` 404 | `sandbox-expose --list`；确认端口和前缀；检查 Caddy 日志 |
+| `/apps/x/` 502 | 路由存在但后端没监听；`curl 127.0.0.1:<port>` |
+| 页面能开但 JS/CSS 404 | 应用 base path 不是 `/apps/<name>/` |
+| WebSocket 反复重连 | 外层代理是否转发 Upgrade；Caddy 内已配置长连接 |
+| `/p/<port>/` 502 | 端口没有服务；检查服务是否监听 `127.0.0.1:<port>` |
+| `/p/<port>/` 404 | 命中了保留端口，或端口不合法 |
+
+## 非 root 无法执行系统命令
+
+| 现象 | 原因 / 处理 |
+| --- | --- |
+| `runuser: failed to execute env/cp: Permission denied` | 检查 `/usr`、`/etc` 是否被 `COPY rootfs/ /` 带成了 `750`；Dockerfile 必须在 COPY 后 `chmod 0755 /usr /etc /usr/local /usr/local/bin` |
+| `libc.so.6: cannot open shared object file: Permission denied` | 同上，通常是 `/usr` 或 `/usr/lib` 父目录不可穿过，不是 libc 文件本身 |
+
+Git 不记录目录权限；服务器 checkout 的 `umask 027` 会让 `rootfs/usr` 变成 `750`，
+`COPY rootfs/ /` 再把目标 `/usr` 设成 `750`。所以必须显式规范化目录模式。
+
+## 环境与启动
+
+| 现象 | 排查 |
+| --- | --- |
+| 改了 `.env` 不生效 | 容器 env 在创建时固定；需要重建容器，不能只 restart |
+| `missing setting: client-secret` | 必须 confidential client；填 `OAUTH2_PROXY_CLIENT_SECRET` |
+| cookie secret 报错 | `OAUTH2_PROXY_COOKIE_SECRET` 必须是 16/24/32 字节 |
+| 构建失败在 Docker Hub | 用 `DOCKER_REGISTRY=your-registry.example.com/docker` 等代理前缀 |
+| apt 很慢 | 设置 `APT_MIRROR=mirrors.aliyun.com` |
+| Healthcheck 不出现 | Podman 使用 `--format docker` 构建；OCI 会丢弃 HEALTHCHECK |
+| 容器启动后立刻退出 | `docker compose logs` / `podman logs`；常见是 env 缺失或目录权限 |
+
+## 持久化与权限
+
+| 现象 | 排查 |
+| --- | --- |
+| 容器重建后 workspace 丢失 | volume 没挂到 `/home/dev` |
+| bind mount 不可写 | `sudo chown -R 1000:1000 ./home`，或用 `DEV_UID/DEV_GID` 重建 |
+| 容器重建后服务没恢复 | 检查 `~/.dsh-sandbox/services/conf.d` 是否在 volume 中；`sandbox-service list` |
+| 修改 skill 不生效 | 确认在 `~/.dsh/skills`，并开新会话；DSH 监视目录变化 |
+
+## 快速诊断命令
+
+```bash
+docker compose logs -f
+docker compose exec sandbox curl -fsS http://127.0.0.1:8080/healthz
+docker compose exec sandbox supervisorctl -c /etc/supervisor/supervisord.conf status
+docker compose exec -u dev sandbox supervisorctl -c /home/dev/.dsh-sandbox/services/supervisord.conf status
+docker compose exec -u dev sandbox sandbox-expose --list
+```
+
+外层代理/隧道还需要确认：
+
+- 保留了原始 `Host`；
+- 转发 WebSocket `Upgrade`；
+- 没有把 `X-Forwarded-Proto` 固定错；
+- 没有额外的 path rewrite。

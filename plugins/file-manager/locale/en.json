@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Server file manager",
+    "description": "A file manager page in the left sidebar for the whole server. Browse any readable directory with breadcrumbs, a path bar you can type into, and shortcut chips; open text, images, and PDFs inline; upload files (button or drag-and-drop), download files, create folders, rename, and delete. It is not tied to a workspace or Session. Paths are checked on the Host against the configured roots; by default the whole filesystem is browsable and writable by the DSH process user, so change roots or allowOutsideRoots in the plugin's config to narrow it. Uploads are capped at 1 GiB per request."
+  }
+}

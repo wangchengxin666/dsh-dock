@@ -1,0 +1,17 @@
+.env
+.env.local
+.env.*.local
+.venv/
+**/.venv/
+**/data/
+**/node_modules/
+manager/frontend/.yarn/
+manager/app/web_dist/
+dist/
+*.tsbuildinfo
+*.log
+**/__pycache__/
+**/.pytest_cache/
+**/*.db
+**/*.db-wal
+**/*.db-shm

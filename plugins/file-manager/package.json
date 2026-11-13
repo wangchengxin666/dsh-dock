@@ -1,0 +1,52 @@
+{
+  "name": "@local/dsh-plugin-file-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Server file manager page in the left sidebar: browse any server directory with breadcrumbs and a path bar, then upload, download, preview, rename, create folders, and delete.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "client.js.template",
+    "src",
+    "scripts",
+    "locale/*.json",
+    "icon.svg",
+    ".test",
+    "cordis.patch.yml"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0 <0.3.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "external": [
+        "zod"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.2.2-rc.2 <0.3.0"
+  }
+}

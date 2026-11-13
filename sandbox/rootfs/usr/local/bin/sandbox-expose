@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Expose a loopback service through the sandbox's public port / Traefik subpath.
+#
+#   sandbox-expose <name> <port> [prefix]   add/update a route
+#   sandbox-expose --remove <name>          remove it
+#   sandbox-expose --list                   show managed routes
+#
+# When SANDBOX_BASE_PATH is set (e.g. /s/alice), the default prefix is
+# /s/alice/apps/<name>, and a fallback route at /apps/<name> is also registered
+# so both Traefik subpath access and direct port access work seamlessly.
+set -euo pipefail
+
+apps_dir=${SANDBOX_APPS_DIR:-/home/dev/.dsh-sandbox/caddy/apps.d}
+config=${SANDBOX_CADDY_CONFIG:-/etc/caddy/Caddyfile}
+base_path_file="/home/dev/.dsh-sandbox/base-path.txt"
+if [ -z "${SANDBOX_BASE_PATH:-}" ] && [ -f "${base_path_file}" ]; then
+  SANDBOX_BASE_PATH=$(tr -d '\r\n' <"${base_path_file}")
+fi
+SANDBOX_BASE_PATH=${SANDBOX_BASE_PATH:-}
+SANDBOX_BASE_PATH=${SANDBOX_BASE_PATH%/}
+
+die() { printf 'sandbox-expose: %s\n' "$*" >&2; exit 1; }
+reload_caddy() {
+  caddy validate --config "${config}" --adapter caddyfile >/dev/null
+  caddy reload --config "${config}" --adapter caddyfile >/dev/null
+}
+
+case "${1:-}" in
+  --list)
+    shopt -s nullglob
+    for file in "${apps_dir}"/*.caddy; do
+      [ "$(basename "${file}")" = "00-empty.caddy" ] && continue
+      printf '%s\n' "${file}"
+    done
+    exit 0
+    ;;
+  --remove)
+    name=${2:-}
+    [ -n "${name}" ] || die "usage: sandbox-expose --remove <name>"
+    file="${apps_dir}/${name}.caddy"
+    [ -f "${file}" ] || die "no such route: ${name}"
+    rm -f "${file}"
+    reload_caddy
+    printf 'removed %s\n' "${name}"
+    exit 0
+    ;;
+  ''|-h|--help)
+    sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+esac
+
+if [ "${1:-}" = "--auth" ]; then
+  die "--auth is no longer supported; routes are public and authentication belongs inside the service"
+fi
+
+name=$1
+port=${2:-}
+default_prefix="${SANDBOX_BASE_PATH}/apps/${name}"
+prefix=${3:-${default_prefix}}
+
+case "${name}" in
+  *[!a-z0-9_-]*|'') die "name must match [a-z0-9_-]+" ;;
+esac
+case "${port}" in
+  ''|*[!0-9]*) die "port must be numeric" ;;
+esac
+[ "${port}" -ge 1 ] && [ "${port}" -le 65535 ] || die "port must be 1..65535"
+for reserved in "${CADDY_ADMIN_PORT:-2019}" "${DSH_PORT:-3080}" "${OAUTH2_PROXY_PORT:-4180}" "${DSH_TOKEN_PORT:-3090}" "${CADDY_PORT:-8080}"; do
+  [ "${port}" != "${reserved}" ] || die "port ${port} is reserved (Caddy admin / DSH / oauth2-proxy)"
+done
+case "${prefix}" in
+  /*) ;;
+  *) die "prefix must start with /" ;;
+esac
+prefix=${prefix%/}
+[ -n "${prefix}" ] || die "prefix must not be /"
+
+matcher="@app_${name}Bare"
+matcher=${matcher//-/_}
+file="${apps_dir}/${name}.caddy"
+tmp=$(mktemp "${apps_dir}/.${name}.XXXXXX")
+trap 'rm -f "${tmp}"' EXIT
+
+{
+  cat <<EOF
+# Managed by sandbox-expose(1); regenerate instead of editing by hand.
+# App: ${name} -> 127.0.0.1:${port} mounted at ${prefix}/
+# Public. Authentication (if any) is implemented inside the service.
+
+${matcher} path ${prefix}
+redir ${matcher} ${prefix}/ 308
+
+handle_path ${prefix}/* {
+	reverse_proxy 127.0.0.1:${port} {
+		header_up X-Forwarded-Prefix ${prefix}
+	}
+}
+EOF
+
+  # When SANDBOX_BASE_PATH is active and the user used the default prefix,
+  # also register /apps/<name>/* for direct container port access.
+  if [ -n "${SANDBOX_BASE_PATH}" ] && [ "${prefix}" = "${SANDBOX_BASE_PATH}/apps/${name}" ]; then
+    direct_matcher="${matcher}_direct"
+    cat <<EOF
+
+${direct_matcher} path /apps/${name}
+redir ${direct_matcher} /apps/${name}/ 308
+
+handle_path /apps/${name}/* {
+	reverse_proxy 127.0.0.1:${port} {
+		header_up X-Forwarded-Prefix /apps/${name}
+	}
+}
+EOF
+  fi
+} >"${tmp}"
+
+mv "${tmp}" "${file}"
+chmod 0644 "${file}"
+
+if ! reload_caddy; then
+  rm -f "${file}"
+  die "Caddy rejected the new route; it was rolled back"
+fi
+
+printf 'exposed %s -> 127.0.0.1:%s at %s/ (public; implement auth inside the service)\n' \
+  "${name}" "${port}" "${prefix}"
+printf 'set the app base path to %s/ (or make it prefix-agnostic)\n' "${prefix}"
