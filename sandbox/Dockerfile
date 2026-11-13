@@ -17,9 +17,6 @@ FROM ${DOCKER_REGISTRY}/debian:${DEBIAN_VERSION}
 ARG NODE_VERSION=24.22.3
 ARG DSH_VERSION=0.2.2-rc.3
 ARG INSTALL_BROWSER=false
-ARG INSTALL_DOTNET=false
-ARG DOTNET_VERSION=10.0.404
-ARG DOTNET_SDK_URL=
 ARG DEV_UID=1000
 ARG DEV_GID=1000
 # Optional Debian mirror host or URL (e.g. https://mirrors.aliyun.com) and npm registry.
@@ -30,16 +27,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     TZ=UTC \
-    DOTNET_ROOT=/usr/local/dotnet \
-    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
-    DOTNET_NOLOGO=1 \
+    TOOLCHAIN_DIR=/opt/toolchain \
     CHROME_BIN=/usr/bin/chromium \
     CHROMIUM_PATH=/usr/bin/chromium \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium \
-    PATH=/usr/local/bin:/usr/local/dotnet:/home/dev/.npm-global/bin:/home/dev/.local/bin:/home/dev/.dotnet/tools:/usr/bin:/bin:/usr/sbin:/sbin
+    PATH=/opt/toolchain/bin:/usr/local/bin:/home/dev/.npm-global/bin:/home/dev/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 RUN if [ -n "${APT_MIRROR}" ] && [ "${APT_MIRROR}" != "deb.debian.org" ]; then \
       case "${APT_MIRROR}" in \
@@ -102,25 +97,8 @@ RUN set -eux; \
  && npm cache clean --force
 
 # ---------------------------------------------------------------------------
-# Optional .NET SDK (enable with --build-arg INSTALL_DOTNET=true) and uv (Python)
+# uv (Python package & runtime manager)
 # ---------------------------------------------------------------------------
-RUN set -eux; \
-    if [ "${INSTALL_DOTNET}" = "true" ]; then \
-      case "${TARGETARCH}" in \
-        amd64) dotnet_arch=x64 ;; \
-        arm64) dotnet_arch=arm64 ;; \
-        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
-      esac; \
-      url="${DOTNET_SDK_URL:-https://dotnetcli.azureedge.net/dotnet/Sdk/${DOTNET_VERSION}/dotnet-sdk-${DOTNET_VERSION}-linux-${dotnet_arch}.tar.gz}"; \
-      echo "downloading ${url}"; \
-      curl -fL --retry 3 "$url" -o /tmp/dotnet-sdk.tar.gz; \
-      mkdir -p /usr/local/dotnet; \
-      tar -xzf /tmp/dotnet-sdk.tar.gz -C /usr/local/dotnet; \
-      ln -sf /usr/local/dotnet/dotnet /usr/local/bin/dotnet; \
-      rm -f /tmp/dotnet-sdk.tar.gz; \
-      dotnet --version; \
-    fi
-
 RUN curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh \
  && uv --version
 
@@ -148,6 +126,17 @@ ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
     CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
     GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
+
+# ---------------------------------------------------------------------------
+# Optional custom toolchains (installed into /opt/toolchain when INSTALL_TOOLCHAIN=true).
+# Scripts in sandbox/toolchain/toolchain.d/*.sh run in sorted filename order.
+# ---------------------------------------------------------------------------
+ARG INSTALL_TOOLCHAIN=false
+COPY toolchain/ /tmp/toolchain-src/
+RUN find /tmp/toolchain-src -type f -name '*.sh' -exec sed -i 's/\r$//' {} + \
+ && chmod +x /tmp/toolchain-src/install.sh \
+ && INSTALL_TOOLCHAIN="${INSTALL_TOOLCHAIN}" TARGETARCH="${TARGETARCH}" /tmp/toolchain-src/install.sh \
+ && rm -rf /tmp/toolchain-src
 
 # ---------------------------------------------------------------------------
 # Users: dev is the only account the agent runs as; caddy runs the proxy daemon.
@@ -184,11 +173,14 @@ RUN sed -i 's/\r$//' \
       /usr/local/bin/sandbox-service \
       /usr/local/bin/user-services \
       /etc/dsh/*.yml \
+      /etc/profile.d/toolchain.sh \
       /etc/supervisor/supervisord.conf \
- && chmod 0755 /usr /usr/local /usr/local/bin /etc /etc/dsh /etc/supervisor \
+ && chmod 0755 /usr /usr/local /usr/local/bin /etc /etc/dsh /etc/profile.d /etc/supervisor \
  && chmod -R a+rX /etc/dsh \
  && chmod 0755 /usr/local/bin/* \
- && chmod 0644 /etc/supervisor/supervisord.conf
+ && chmod 0644 /etc/profile.d/toolchain.sh /etc/supervisor/supervisord.conf \
+ && grep -Fq '/opt/toolchain/env.sh' /etc/bash.bashrc \
+    || printf '\n[ -r /opt/toolchain/env.sh ] && . /opt/toolchain/env.sh\n' >> /etc/bash.bashrc
 
 # Pre-initialize the Web profile so the first start does not need extra work
 # and so a bind-mounted empty HOME still has a template to fall back on.

@@ -62,9 +62,7 @@ docker build \
 | --- | --- | --- |
 | `DSH_VERSION` | `0.2.2-rc.2` | `@deepseek-ai/dsh` 版本 |
 | `NODE_VERSION` | `24.22.3` | Node 运行时 |
-| `INSTALL_DOTNET` | `false` | 是否安装 .NET SDK |
-| `DOTNET_VERSION` | `10.0.404` | .NET SDK 精确版本 |
-| `DOTNET_SDK_URL` | 空 → Azure CDN | 覆盖 SDK tarball URL，可指向内部 artifact |
+| `INSTALL_TOOLCHAIN` | `false` | 是否在构建期按顺序执行 `sandbox/toolchain/toolchain.d/*.sh` 将自定义工具链安装至 `/opt/toolchain`（默认提供 `10-dotnet.sh`） |
 | `DEV_UID` / `DEV_GID` | `1000` | dev 用户 UID/GID |
 | `DOCKER_REGISTRY` | `docker.io/library` | 基础镜像完整前缀 |
 | `APT_MIRROR` | `deb.debian.org` | Debian 镜像源主机名 |

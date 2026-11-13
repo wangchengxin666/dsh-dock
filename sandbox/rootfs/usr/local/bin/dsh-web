@@ -5,6 +5,11 @@ set -euo pipefail
 : "${DSH_HOME:=/home/dev/.dsh}"
 export DSH_HOME
 
+if [ -r /opt/toolchain/env.sh ]; then
+  # shellcheck disable=SC1091
+  . /opt/toolchain/env.sh
+fi
+
 # Launcher flags must come before the app's own flags. The second patch
 # removes the shipped DeepSeek model default; users configure a provider in
 # Settings -> Models (or via injected DSH_DEFAULT_LLM_* defaults).

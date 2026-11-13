@@ -1389,7 +1389,7 @@ function AdminConsoleView({
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">宿主机可用 Docker 镜像列表</CardTitle>
                 <CardDescription>
-                  模板或沙箱可直接绑定以下任意本地镜像，也可通过 `docker build` 构建定制化沙箱镜像（如开启 `INSTALL_BROWSER=true` 或 `INSTALL_DOTNET=true`）。
+                  模板或沙箱可直接绑定以下任意本地镜像，也可通过 `docker build` 构建定制化沙箱镜像（如开启 `INSTALL_BROWSER=true` 或 `INSTALL_TOOLCHAIN=true`）。
                 </CardDescription>
               </CardHeader>
               <CardContent>

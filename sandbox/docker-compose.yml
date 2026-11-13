@@ -8,9 +8,7 @@ services:
         DEV_GID: ${DEV_GID:-1000}
         NODE_VERSION: ${NODE_VERSION:-24.22.3}
         DSH_VERSION: ${DSH_VERSION:-0.2.2-rc.3}
-        INSTALL_DOTNET: ${INSTALL_DOTNET:-false}
-        DOTNET_VERSION: ${DOTNET_VERSION:-10.0.404}
-        DOTNET_SDK_URL: ${DOTNET_SDK_URL:-}
+        INSTALL_TOOLCHAIN: ${INSTALL_TOOLCHAIN:-false}
         # Override in .env when using private mirrors or internal registries.
         DOCKER_REGISTRY: ${DOCKER_REGISTRY:-docker.io/library}
         APT_MIRROR: ${APT_MIRROR:-deb.debian.org}

@@ -84,7 +84,7 @@ To run in an internal corporate network (private registry, apt/pip/npm mirrors, 
    APT_MIRROR=https://mirrors.aliyun.com
    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
    NPM_REGISTRY=https://registry.npmmirror.com
-   INSTALL_DOTNET=true
+   INSTALL_TOOLCHAIN=true
    ```
 2. **Corporate CA Certificates**:
    - Paste PEM certificates into `sandbox/ca-bundle.crt` and `manager/ca-bundle.crt` before building, **or**

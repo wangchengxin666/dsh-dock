@@ -7,6 +7,11 @@ set -euo pipefail
 : "${HOME:=/home/dev}"
 config="${HOME}/.dsh-sandbox/services/supervisord.conf"
 
+if [ -r /opt/toolchain/env.sh ]; then
+  # shellcheck disable=SC1091
+  . /opt/toolchain/env.sh
+fi
+
 if [ ! -f "${config}" ]; then
   echo "user-services: missing ${config}" >&2
   exit 1

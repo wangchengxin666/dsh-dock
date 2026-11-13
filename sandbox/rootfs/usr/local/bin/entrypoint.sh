@@ -323,7 +323,7 @@ redirect_stderr=true
 command=/usr/local/bin/user-services
 user=dev
 directory=/home/dev
-environment=HOME="/home/dev",PATH="/home/dev/.npm-global/bin:/home/dev/.local/bin:/usr/local/dotnet:/home/dev/.dotnet/tools:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+environment=HOME="/home/dev",PATH="/home/dev/.npm-global/bin:/home/dev/.local/bin:/opt/toolchain/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 priority=22
 autostart=true
 autorestart=true
@@ -367,7 +367,7 @@ redirect_stderr=true
 command=/usr/local/bin/dsh-web
 user=dev
 directory=/home/dev
-environment=HOME="/home/dev",DSH_HOME="/home/dev/.dsh",DOTNET_CLI_HOME="/home/dev",PATH="/home/dev/.npm-global/bin:/home/dev/.local/bin:/usr/local/dotnet:/home/dev/.dotnet/tools:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+environment=HOME="/home/dev",DSH_HOME="/home/dev/.dsh",PATH="/home/dev/.npm-global/bin:/home/dev/.local/bin:/opt/toolchain/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 priority=20
 autostart=true
 autorestart=true

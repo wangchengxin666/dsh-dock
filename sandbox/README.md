@@ -2,7 +2,7 @@
 
 一个容器、一个端口，交付完整的 DeepSeek Harness 开发环境。
 
-`Node 24` · `Python 3.13` · `.NET 10` · `Caddy` · `supervisor`
+`Node 24` · `Python 3.13` · `Caddy` · `supervisor`（可选 `/opt/toolchain` 扩展 `.NET` 等工具链）
 
 ---
 
@@ -14,7 +14,7 @@ DSH Sandbox 把 DSH Web、开发工具链和长期运行的服务收进一个**�
 | 能力 | 说明 |
 | --- | --- |
 | **单一入口** | 对外统一经由 Traefik 网关进入容器 `:8080` Caddy（独立运行可映射 `${HOST_PORT:-8080}:8080`） |
-| **开箱即用** | Node、Python、.NET、git、tmux、uv、pnpm、企业 CA、中文 locale/字体 |
+| **开箱即用** | Node、Python、git、tmux、uv、pnpm、企业 CA、中文 locale/字体，支持通过 `INSTALL_TOOLCHAIN=true` 在镜像构建时按顺序执行 `toolchain/toolchain.d/*.sh` 安装自定义工具链至 `/opt/toolchain` |
 | **DSH 专属认证** | `/s/<slug>/dsh/*` 由 Traefik + `dsh-manager` ForwardAuth（OIDC 或本地密码）鉴权；`/apps/*` 与 `/p/*` 默认开放 |
 | **服务模型** | `sandbox-service` 管常驻进程，`sandbox-expose` 挂载 `/apps/<name>/` |
 | **临时端口** | `/p/<port>/` 始终可用，适合快速验证 |
