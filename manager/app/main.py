@@ -686,7 +686,7 @@ def backup_sandbox_workspace(
         stream = get_docker().export_workspace_tar(sandbox)
     except Exception as exc:
         raise _manager_error(exc) from exc
-    filename = f"{sandbox.slug}-workspace.tar"
+    filename = f"{sandbox.slug}-home.tar"
     return StreamingResponse(
         stream,
         media_type="application/x-tar",

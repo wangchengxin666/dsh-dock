@@ -50,7 +50,7 @@ Git 不记录目录权限；服务器 checkout 的 `umask 027` 会让 `rootfs/us
 
 | 现象 | 排查 |
 | --- | --- |
-| 容器重建后 workspace 丢失 | volume 没挂到 `/home/dev` |
+| 容器重建后工作文件丢失 | volume 没挂到 `/home/dev` |
 | bind mount 不可写 | `sudo chown -R 1000:1000 ./home`，或用 `DEV_UID/DEV_GID` 重建 |
 | 容器重建后服务没恢复 | 检查 `~/.dsh-sandbox/services/conf.d` 是否在 volume 中；`sandbox-service list` |
 | 修改 skill 不生效 | 确认在 `~/.dsh/skills`，并开新会话；DSH 监视目录变化 |

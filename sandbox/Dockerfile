@@ -158,7 +158,7 @@ RUN set -eux; \
     groupadd -r caddy; \
     useradd -r -g caddy -d /var/lib/caddy -s /usr/sbin/nologin caddy; \
     \
-    install -d -o dev   -g dev   -m 0755 /home/dev /home/dev/workspace /home/dev/.dsh; \
+    install -d -o dev   -g dev   -m 0755 /home/dev /home/dev/.dsh; \
     install -d -o dev   -g caddy -m 2775 /home/dev/.dsh-sandbox /home/dev/.dsh-sandbox/caddy /home/dev/.dsh-sandbox/caddy/apps.d; \
     install -d -o caddy -g caddy -m 0755 /var/lib/caddy /var/lib/caddy/.config /var/lib/caddy/.local/share; \
     install -d -o dev   -g dev   -m 0755 /home/dev/.npm-global /home/dev/.local/bin /home/dev/logs; \
@@ -214,7 +214,7 @@ ENV DSH_HOME=/home/dev/.dsh \
     DSH_MOUNT=/dsh \
     APPS_DIR=/home/dev/.dsh-sandbox/caddy/apps.d
 
-WORKDIR /home/dev/workspace
+WORKDIR /home/dev
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \

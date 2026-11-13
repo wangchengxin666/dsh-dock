@@ -155,6 +155,8 @@ def ensure_default_templates(db: Session, settings: Settings) -> None:
         if extra is not None:
             db.delete(extra)
 
+    default_init_script = "#!/usr/bin/env bash\nmkdir -p /home/dev/projects\n"
+    legacy_init_script = "#!/usr/bin/env bash\nmkdir -p /home/dev/workspace/projects\n"
     default_tpl = db.scalar(
         select(SandboxTemplate).where(SandboxTemplate.key == "agent-os")
     )
@@ -170,11 +172,13 @@ def ensure_default_templates(db: Session, settings: Settings) -> None:
                 default_memory_limit=settings.sandbox_memory,
                 auto_install_plugins=settings.sandbox_auto_install_plugins
                 or "file-manager",
-                init_script="#!/usr/bin/env bash\nmkdir -p /home/dev/workspace/projects\n",
+                init_script=default_init_script,
                 default_env_json="{}",
                 is_builtin=True,
             )
         )
+    elif default_tpl.init_script == legacy_init_script:
+        default_tpl.init_script = default_init_script
     db.commit()
 
 

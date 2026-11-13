@@ -84,7 +84,7 @@ npm run dev -- --host 127.0.0.1 --port 5173 --base=${SANDBOX_BASE_PATH}/apps/web
 `sandbox-service` 管理用户级 supervisord，让服务在 DSH 重启和容器重启后自动恢复。
 
 ```bash
-cd ~/workspace/web
+cd ~/web
 
 sandbox-service add web "npm run dev -- --host 127.0.0.1 --port 5173 --base=/apps/web/"
 sandbox-service list
@@ -98,7 +98,7 @@ sandbox-service remove web
 复杂命令：
 
 ```bash
-sandbox-service add web "bash -lc 'cd ~/workspace/web && npm run dev -- --host 127.0.0.1 --port 5173'"
+sandbox-service add web "bash -lc 'cd ~/web && npm run dev -- --host 127.0.0.1 --port 5173'"
 ```
 
 配置和日志：
@@ -136,7 +136,7 @@ http://<host>:8080/p/5173/
 本地插件安装到 web profile：
 
 ```bash
-dsh plugin --profile web add /home/dev/workspace/my-dsh-plugin
+dsh plugin --profile web add /home/dev/my-dsh-plugin
 ```
 
 在 **Settings → Plugins** 启用。client 插件通常 HMR；Host 插件需要重启 DSH 进程。

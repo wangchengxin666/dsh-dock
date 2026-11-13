@@ -33,7 +33,7 @@ Expose its loopback port separately:
   sandbox-expose <name> <port>
 
 Use a shell when the command needs pipes/redirection:
-  sandbox-service add web "bash -lc 'cd ~/workspace/web && npm run dev -- --host 127.0.0.1 --port 5173'"
+  sandbox-service add web "bash -lc 'cd ~/web && npm run dev -- --host 127.0.0.1 --port 5173'"
 EOF
 }
 

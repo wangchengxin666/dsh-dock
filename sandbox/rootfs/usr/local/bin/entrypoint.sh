@@ -63,7 +63,7 @@ export DSH_TRUSTED_HOSTS DSH_PUBLIC_URL
 # ---------------------------------------------------------------------------
 # Home volume and directories
 # ---------------------------------------------------------------------------
-install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev /home/dev/workspace /home/dev/.dsh
+install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev /home/dev/.dsh
 install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/deepseek-harness
 install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/.dsh/skills
 # Existing volumes may contain root-owned skill dirs from older images.
@@ -177,8 +177,8 @@ if [ ! -f "${template_marker}" ]; then
   log "initializing workspace template: ${SANDBOX_TEMPLATE}"
   case "${SANDBOX_TEMPLATE}" in
     fullstack-web)
-      install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/workspace/web-app
-      cat >/home/dev/workspace/web-app/server.js <<'EOF'
+      install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/web-app
+      cat >/home/dev/web-app/server.js <<'EOF'
 const http = require('node:http');
 const port = Number(process.env.PORT || 5173);
 http.createServer((req, res) => {
@@ -191,11 +191,11 @@ http.createServer((req, res) => {
   </body></html>`);
 }).listen(port, '127.0.0.1', () => console.log('listening on 127.0.0.1:' + port));
 EOF
-      chown "${DEV_USER}:${DEV_USER}" /home/dev/workspace/web-app/server.js
+      chown "${DEV_USER}:${DEV_USER}" /home/dev/web-app/server.js
       ;;
     python-data)
-      install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/workspace/data-lab
-      cat >/home/dev/workspace/data-lab/main.py <<'EOF'
+      install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/data-lab
+      cat >/home/dev/data-lab/main.py <<'EOF'
 """Starter Python data & automation script in your persistent Agent OS."""
 import platform
 import sys
@@ -206,13 +206,13 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 EOF
-      chown "${DEV_USER}:${DEV_USER}" /home/dev/workspace/data-lab/main.py
+      chown "${DEV_USER}:${DEV_USER}" /home/dev/data-lab/main.py
       ;;
     minimal)
       ;;
     *)
-      if [ ! -f /home/dev/workspace/README.md ]; then
-        cat >/home/dev/workspace/README.md <<EOF
+      if [ ! -f /home/dev/README.md ]; then
+        cat >/home/dev/README.md <<EOF
 # Agent OS Workspace
 
 Welcome to your persistent remote DeepSeek Harness environment.
@@ -220,10 +220,10 @@ Welcome to your persistent remote DeepSeek Harness environment.
 - **DSH URL**: \`${PUBLIC_URL}\`
 - **Expose a web service**: \`sandbox-service add web "node server.js"\` + \`sandbox-expose web 5173\` -> \`${PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/apps/web/\`
 - **Quick port forward**: \`${PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/p/<port>/\`
-- **Persistent cron**: \`sandbox-cron add "0 9 * * * /home/dev/workspace/task.sh"\`
+- **Persistent cron**: \`sandbox-cron add "0 9 * * * /home/dev/task.sh"\`
 - **Headless Chromium**: \`/usr/bin/chromium --headless --dump-dom https://example.com\`
 EOF
-        chown "${DEV_USER}:${DEV_USER}" /home/dev/workspace/README.md
+        chown "${DEV_USER}:${DEV_USER}" /home/dev/README.md
       fi
       ;;
   esac
@@ -239,7 +239,7 @@ if [ -n "${SANDBOX_INIT_SCRIPT:-}" ]; then
     chown "${DEV_USER}:${DEV_USER}" /home/dev/.dsh-sandbox/init-template.sh
     chmod 0755 /home/dev/.dsh-sandbox/init-template.sh
     if runuser -u "${DEV_USER}" -- env HOME=/home/dev DSH_HOME=/home/dev/.dsh \
-      bash -lc "cd /home/dev/workspace && /home/dev/.dsh-sandbox/init-template.sh"; then
+      bash -lc "cd /home/dev && /home/dev/.dsh-sandbox/init-template.sh"; then
       date -u +"%Y-%m-%dT%H:%M:%SZ" >"${script_marker}"
       chown "${DEV_USER}:${DEV_USER}" "${script_marker}"
     else
@@ -253,7 +253,7 @@ if [ -n "${SANDBOX_INIT_REPO_URL:-}" ]; then
   if [ ! -f "${repo_marker}" ]; then
     log "cloning initial repository: ${SANDBOX_INIT_REPO_URL}"
     repo_name=$(basename "${SANDBOX_INIT_REPO_URL}" .git)
-    target_dir="/home/dev/workspace/${repo_name}"
+    target_dir="/home/dev/${repo_name}"
     if [ ! -e "${target_dir}" ]; then
       if runuser -u "${DEV_USER}" -- git clone "${SANDBOX_INIT_REPO_URL}" "${target_dir}"; then
         printf '%s\n' "${SANDBOX_INIT_REPO_URL}" >"${repo_marker}"
@@ -366,7 +366,7 @@ redirect_stderr=true
 [program:dsh]
 command=/usr/local/bin/dsh-web
 user=dev
-directory=/home/dev/workspace
+directory=/home/dev
 environment=HOME="/home/dev",DSH_HOME="/home/dev/.dsh",DOTNET_CLI_HOME="/home/dev",PATH="/home/dev/.npm-global/bin:/home/dev/.local/bin:/usr/local/dotnet:/home/dev/.dotnet/tools:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 priority=20
 autostart=true

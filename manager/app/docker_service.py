@@ -404,9 +404,9 @@ class DockerService:
         }
 
     def export_workspace_tar(self, sandbox: Sandbox):
-        """Stream a tar archive of /home/dev/workspace from the sandbox container."""
+        """Stream a tar archive of /home/dev from the sandbox container."""
         container = self.get(sandbox)
-        bits, _stat = container.get_archive("/home/dev/workspace")
+        bits, _stat = container.get_archive("/home/dev")
         return bits
 
     def sync_plugin_market(

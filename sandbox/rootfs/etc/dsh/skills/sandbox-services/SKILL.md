@@ -60,7 +60,7 @@ backend; the plugin itself still rides on `${SANDBOX_BASE_PATH}/dsh/`.
 For scheduled / periodic jobs that survive container restarts, use `sandbox-cron`:
 
 ```bash
-sandbox-cron add "0 9 * * * /home/dev/workspace/daily-report.sh >> /home/dev/logs/cron.log 2>&1"
+sandbox-cron add "0 9 * * * /home/dev/daily-report.sh >> /home/dev/logs/cron.log 2>&1"
 sandbox-cron list
 sandbox-cron clear
 ```
@@ -72,7 +72,7 @@ the home volume. User services automatically inherit `SANDBOX_PUBLIC_ORIGIN`,
 `SANDBOX_BASE_PATH`, `SANDBOX_PUBLIC_URL`, `DSH_PUBLIC_URL`, and `PATH`.
 
 ```bash
-cd ~/workspace/web
+cd ~/web
 
 # Always use ${SANDBOX_BASE_PATH}/apps/<name>/ as the base path!
 sandbox-service add web "npm run dev -- --host 127.0.0.1 --port 5173 --base=${SANDBOX_BASE_PATH}/apps/web/"
@@ -88,7 +88,7 @@ sandbox-service remove web
 Complex shell commands:
 
 ```bash
-sandbox-service add web "bash -lc 'cd ~/workspace/web && npm run dev -- --host 127.0.0.1 --port 5173 --base=${SANDBOX_BASE_PATH}/apps/web/'"
+sandbox-service add web "bash -lc 'cd ~/web && npm run dev -- --host 127.0.0.1 --port 5173 --base=${SANDBOX_BASE_PATH}/apps/web/'"
 ```
 
 Paths:
@@ -164,7 +164,7 @@ them, and `/p/<port>/` returns 404 for them.
 Install a local plugin bundle into the web profile:
 
 ```bash
-dsh plugin --profile web add /home/dev/workspace/my-dsh-plugin
+dsh plugin --profile web add /home/dev/my-dsh-plugin
 ```
 
 Then enable it in **Settings -> Plugins** (or the plugin manager). The profile

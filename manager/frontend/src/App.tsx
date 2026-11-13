@@ -827,7 +827,7 @@ function AdminConsoleView({
       default_cpu_limit: '2.0',
       default_memory_limit: '4g',
       auto_install_plugins: 'file-manager',
-      init_script: '#!/usr/bin/env bash\nmkdir -p /home/dev/workspace/projects\n',
+      init_script: '#!/usr/bin/env bash\nmkdir -p /home/dev/projects\n',
       default_env_json: '{}',
     })
     setTplModalOpen(true)
@@ -1251,7 +1251,7 @@ function AdminConsoleView({
                               <Button
                                 variant="outline"
                                 size="icon"
-                                title="导出工作区备份 (.tar)"
+                                title="导出用户根目录备份 (.tar)"
                                 onClick={() => window.open(`/api/sandboxes/${sbx.id}/backup`, '_blank')}
                               >
                                 <Download className="h-3.5 w-3.5" />
@@ -2245,7 +2245,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>工作区首次启动初始化脚本 (`init_script`，以 dev 用户在 `/home/dev/workspace` 执行)</Label>
+              <Label>工作区首次启动初始化脚本 (`init_script`，以 dev 用户在 `/home/dev` 执行)</Label>
               <Textarea
                 rows={4}
                 value={tplForm.init_script}

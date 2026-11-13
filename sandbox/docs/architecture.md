@@ -87,7 +87,7 @@ Caddy 必须：
 
 `/home/dev` 是唯一需要持久化的目录：
 
-- `workspace/`
+- 用户工作区与项目文件直接保存在 `/home/dev/` 下
 - `.dsh/`（profile、session、模型配置、skill）
 - `.dsh-sandbox/`（Caddy apps 路由、用户 supervisord 配置）
 - `logs/`
