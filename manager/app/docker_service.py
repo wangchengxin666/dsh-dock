@@ -167,7 +167,7 @@ class DockerService:
         if sandbox.init_repo_url:
             env["SANDBOX_INIT_REPO_URL"] = sandbox.init_repo_url
 
-        if sandbox.init_script:
+        if sandbox.init_script and sandbox.init_script.strip():
             env["SANDBOX_INIT_SCRIPT"] = sandbox.init_script
 
         auto_plugins = self._resolve_auto_install_plugins(

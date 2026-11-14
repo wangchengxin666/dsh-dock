@@ -66,7 +66,25 @@ def test_default_templates_migration_and_crud(db_session):
     assert "fullstack-web" not in keys
     assert "python-data" not in keys
     agent_os = next(t for t in templates if t.key == "agent-os")
-    assert "/home/workspace/projects" in (agent_os.init_script or "")
+    assert agent_os.init_script is None
+
+    # Legacy untouched built-in agent-os script should be cleared automatically on startup
+    agent_os.init_script = "#!/usr/bin/env bash\nmkdir -p /home/workspace/projects\n"
+    db_session.commit()
+    ensure_default_templates(db_session, settings)
+    db_session.refresh(agent_os)
+    assert agent_os.init_script is None
+
+    # Custom script on agent-os is preserved
+    agent_os.init_script = "#!/usr/bin/env bash\necho custom\n"
+    db_session.commit()
+    ensure_default_templates(db_session, settings)
+    db_session.refresh(agent_os)
+    assert agent_os.init_script == "#!/usr/bin/env bash\necho custom\n"
+
+    # Reset back to empty default for subsequent assertions
+    agent_os.init_script = None
+    db_session.commit()
 
     custom = create_template(
         db_session,
@@ -75,8 +93,10 @@ def test_default_templates_migration_and_crud(db_session):
             name="Rust Dev",
             default_cpu_limit=4.0,
             default_memory_limit="8g",
+            init_script="   \n",
         ),
     )
+    assert custom.init_script is None
     updated = update_template(db_session, custom.id, TemplateUpdate(name="Rust Workstation", default_cpu_limit=6.0))
     assert updated.name == "Rust Workstation"
     assert updated.default_cpu_limit == 6.0
@@ -107,6 +127,7 @@ def test_sandbox_lifecycle_rollback_and_upgrade(db_session, fake_docker):
     )
     assert sbx.slug == "alice"
     assert sbx.status == "running"
+    assert sbx.init_script is None
     assert sbx.container_id == "cid-alice"
     assert ("create", "alice") in fake_docker.calls
     assert ("wait_healthy", "alice") in fake_docker.calls

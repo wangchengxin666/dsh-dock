@@ -143,6 +143,12 @@ def audit(
     )
 
 
+def _normalize_init_script(script: str | None) -> str | None:
+    if script is None or not script.strip():
+        return None
+    return script
+
+
 def ensure_default_templates(db: Session, settings: Settings) -> None:
     # Keep a single clean built-in default template ('agent-os'); admins can create custom ones.
     for extra_key in ("fullstack-web", "python-data", "minimal"):
@@ -155,7 +161,7 @@ def ensure_default_templates(db: Session, settings: Settings) -> None:
         if extra is not None:
             db.delete(extra)
 
-    default_init_script = "#!/usr/bin/env bash\nmkdir -p /home/workspace/projects\n"
+    legacy_default_init_script = "#!/usr/bin/env bash\nmkdir -p /home/workspace/projects\n"
     default_tpl = db.scalar(
         select(SandboxTemplate).where(SandboxTemplate.key == "agent-os")
     )
@@ -171,11 +177,16 @@ def ensure_default_templates(db: Session, settings: Settings) -> None:
                 default_memory_limit=settings.sandbox_memory,
                 auto_install_plugins=settings.sandbox_auto_install_plugins
                 or "file-manager",
-                init_script=default_init_script,
+                init_script=None,
                 default_env_json="{}",
                 is_builtin=True,
             )
         )
+    elif (
+        default_tpl.is_builtin
+        and default_tpl.init_script == legacy_default_init_script
+    ):
+        default_tpl.init_script = None
     db.commit()
 
 
@@ -205,7 +216,7 @@ def create_template(db: Session, payload: TemplateCreate) -> SandboxTemplate:
         default_cpu_limit=payload.default_cpu_limit,
         default_memory_limit=payload.default_memory_limit,
         auto_install_plugins=payload.auto_install_plugins,
-        init_script=payload.init_script,
+        init_script=_normalize_init_script(payload.init_script),
         default_env_json=payload.default_env_json or "{}",
         is_builtin=False,
     )
@@ -237,7 +248,7 @@ def update_template(
     if payload.auto_install_plugins is not None:
         tpl.auto_install_plugins = payload.auto_install_plugins
     if payload.init_script is not None:
-        tpl.init_script = payload.init_script
+        tpl.init_script = _normalize_init_script(payload.init_script)
     if payload.default_env_json is not None:
         tpl.default_env_json = payload.default_env_json
     audit(db, "template.update", target=tpl.key)
@@ -316,7 +327,7 @@ def create_sandbox(
             else settings.sandbox_auto_install_plugins
         )
     )
-    resolved_script = (
+    resolved_script = _normalize_init_script(
         init_script
         if init_script is not None
         else (tpl_obj.init_script if tpl_obj else None)

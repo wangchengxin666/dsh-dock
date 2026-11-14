@@ -302,7 +302,21 @@ export default function App() {
   }, [loadAuth])
 
   const handleLogout = async () => {
-    await apiFetch('/api/auth/logout', { method: 'POST' })
+    try {
+      const res = await apiFetch<{ ok: boolean; logout_url?: string | null }>('/api/auth/logout', {
+        method: 'POST',
+      })
+      setAuth((prev) =>
+        prev ? { ...prev, authenticated: false, email: '', admin: false } : null,
+      )
+      if (res.logout_url) {
+        window.location.assign(res.logout_url)
+        return
+      }
+    } catch (err: any) {
+      notify(err?.message || 'Logout failed', 'error')
+      return
+    }
     window.history.pushState({}, '', '/login')
     await loadAuth()
   }
@@ -393,10 +407,12 @@ export default function App() {
                   <Badge variant="secondary" className="hidden md:inline-flex">
                     {auth.email}
                   </Badge>
-                  <Button variant="ghost" size="sm" onClick={handleLogout}>
-                    <LogOut className="h-3.5 w-3.5" />
-                    {t('app.logout')}
-                  </Button>
+                  {auth.auth_mode !== 'none' && (
+                    <Button variant="ghost" size="sm" onClick={handleLogout}>
+                      <LogOut className="h-3.5 w-3.5" />
+                      {t('app.logout')}
+                    </Button>
+                  )}
                 </>
               )}
               <LocaleToggle />
@@ -676,7 +692,7 @@ function AdminConsoleView({
     default_cpu_limit: '2.0',
     default_memory_limit: '4g',
     auto_install_plugins: 'file-manager',
-    init_script: '#!/usr/bin/env bash\n',
+    init_script: '',
     default_env_json: '{}',
   })
   const [savingTpl, setSavingTpl] = useState(false)
@@ -910,7 +926,7 @@ function AdminConsoleView({
       default_cpu_limit: '2.0',
       default_memory_limit: '4g',
       auto_install_plugins: 'file-manager',
-      init_script: '#!/usr/bin/env bash\nmkdir -p /home/workspace/projects\n',
+      init_script: '',
       default_env_json: '{}',
     })
     setTplModalOpen(true)
@@ -2249,6 +2265,7 @@ function AdminConsoleView({
               <Label>{t('dialog.provision.initScriptLabel')}</Label>
               <Textarea
                 rows={3}
+                placeholder="#!/usr/bin/env bash"
                 value={sbxForm.init_script}
                 onChange={(e) => setSbxForm({ ...sbxForm, init_script: e.target.value })}
               />
@@ -2383,6 +2400,7 @@ function AdminConsoleView({
               <Label>{t('dialog.template.initScriptLabel')}</Label>
               <Textarea
                 rows={4}
+                placeholder="#!/usr/bin/env bash"
                 value={tplForm.init_script}
                 onChange={(e) => setTplForm({ ...tplForm, init_script: e.target.value })}
               />

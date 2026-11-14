@@ -79,6 +79,9 @@ def test_environment_generation_and_plugin_resolution(tmp_path):
         == "http://dsh-manager:9000/plugins/packages/extra-plugin.tgz,https://custom.example.com/p.tgz"
     )
 
+    blank_script_sbx = _make_sandbox(init_script="   \n  ")
+    assert "SANDBOX_INIT_SCRIPT" not in svc.environment(blank_script_sbx)
+
 
 def test_create_container_uses_no_host_ports_and_traefik_forwardauth(tmp_path):
     ca_file = tmp_path / "ca.crt"

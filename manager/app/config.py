@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     oidc_client_secret: str = ""
     oidc_scope: str = "openid profile email"
     oidc_email_claim: str = "email"
+    # Optional explicit OIDC logout endpoint override (defaults to discovery `end_session_endpoint`).
+    oidc_logout_url: str = ""
 
     manager_admin_email: str = "admin@example.com"
     manager_admin_token: str = ""

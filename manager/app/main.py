@@ -7,7 +7,7 @@ import os
 from contextlib import asynccontextmanager, suppress
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import (
@@ -90,6 +90,9 @@ from .services import (
 logger = logging.getLogger("dsh-manager")
 settings = get_settings()
 WEB_DIST_DIR = Path(__file__).parent / "web_dist"
+SESSION_COOKIE_NAME = "dsh_manager_session"
+OIDC_ID_TOKEN_COOKIE = "dsh_manager_id_token"
+OIDC_PROMPT_LOGIN_COOKIE = "dsh_oidc_prompt_login"
 
 oauth = OAuth()
 if settings.manager_auth_mode == "oidc" and (
@@ -174,7 +177,7 @@ app = FastAPI(
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
-    session_cookie="dsh_manager_session",
+    session_cookie=SESSION_COOKIE_NAME,
     same_site="lax",
     https_only=settings.manager_base_url.startswith("https"),
 )
@@ -421,7 +424,8 @@ class LoginPayload(BaseModel):
 
 @app.get("/api/auth/me")
 @app.get("/auth/me", include_in_schema=False)
-def auth_me(request: Request, db: Session = Depends(get_db)):
+def auth_me(request: Request, response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "no-store"
     email = session_email(request)
     admin = _is_authenticated_admin(request, db)
     user_row = (
@@ -589,10 +593,113 @@ def api_auth_login(
     raise HTTPException(status_code=400, detail="当前已启用 OIDC 登录，请通过 SSO 跳转")
 
 
-@app.post("/api/auth/logout")
-def api_auth_logout(request: Request):
+def _set_auth_cookie(response: Response, key: str, value: str) -> None:
+    response.set_cookie(
+        key,
+        value,
+        httponly=True,
+        samesite="lax",
+        secure=settings.manager_base_url.startswith("https"),
+        path="/",
+    )
+
+
+def _delete_auth_cookie(response: Response, key: str) -> None:
+    response.delete_cookie(
+        key,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=settings.manager_base_url.startswith("https"),
+    )
+
+
+async def _build_oidc_logout_url(id_token: str | None = None) -> str | None:
+    if settings.manager_auth_mode != "oidc":
+        return None
+
+    endpoint = settings.oidc_logout_url.strip()
+    if not endpoint:
+        oidc_client = getattr(oauth, "oidc", None)
+        if oidc_client is None:
+            return None
+        metadata: dict = {}
+        server_metadata = getattr(oidc_client, "server_metadata", None)
+        if isinstance(server_metadata, dict) and server_metadata.get(
+            "end_session_endpoint"
+        ):
+            metadata = server_metadata
+        elif hasattr(oidc_client, "load_server_metadata"):
+            try:
+                loaded = await oidc_client.load_server_metadata()
+                if isinstance(loaded, dict):
+                    metadata = loaded
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load OIDC discovery metadata for logout: %s", exc
+                )
+        endpoint = str(metadata.get("end_session_endpoint") or "").strip()
+
+    if not endpoint:
+        return None
+
+    if settings.oidc_discovery_url and settings.oidc_issuer_url:
+        disc_parts = urlsplit(settings.oidc_discovery_url.strip())
+        issuer_parts = urlsplit(settings.oidc_issuer_url.strip())
+        ep_parts = urlsplit(endpoint)
+        if (
+            disc_parts.scheme
+            and disc_parts.netloc
+            and issuer_parts.scheme
+            and issuer_parts.netloc
+            and ep_parts.scheme == disc_parts.scheme
+            and ep_parts.netloc == disc_parts.netloc
+            and (ep_parts.scheme, ep_parts.netloc)
+            != (issuer_parts.scheme, issuer_parts.netloc)
+        ):
+            endpoint = urlunsplit(
+                (
+                    issuer_parts.scheme,
+                    issuer_parts.netloc,
+                    ep_parts.path,
+                    ep_parts.query,
+                    ep_parts.fragment,
+                )
+            )
+
+    query: dict[str, str] = {
+        "post_logout_redirect_uri": f"{settings.manager_base_url}/login",
+    }
+    if id_token:
+        query["id_token_hint"] = id_token
+    if settings.oidc_client_id:
+        query["client_id"] = settings.oidc_client_id
+
+    sep = "&" if "?" in endpoint else "?"
+    return f"{endpoint}{sep}{urlencode(query)}"
+
+
+async def _perform_logout(request: Request, response: Response) -> str | None:
+    id_token = request.cookies.get(OIDC_ID_TOKEN_COOKIE)
+    had_session_data = bool(request.session)
     request.session.clear()
-    return {"ok": True}
+    if SESSION_COOKIE_NAME in request.cookies and not had_session_data:
+        _delete_auth_cookie(response, SESSION_COOKIE_NAME)
+    _delete_auth_cookie(response, OIDC_ID_TOKEN_COOKIE)
+
+    logout_url = await _build_oidc_logout_url(id_token=id_token)
+    if settings.manager_auth_mode == "oidc" and not logout_url:
+        _set_auth_cookie(response, OIDC_PROMPT_LOGIN_COOKIE, "1")
+    else:
+        _delete_auth_cookie(response, OIDC_PROMPT_LOGIN_COOKIE)
+    return logout_url
+
+
+@app.post("/api/auth/logout")
+async def api_auth_logout(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    logout_url = await _perform_logout(request, response)
+    return {"ok": True, "logout_url": logout_url}
 
 
 @app.get("/auth/oidc/start", include_in_schema=False)
@@ -602,6 +709,12 @@ async def auth_oidc_start(request: Request):
     if settings.manager_auth_mode != "oidc":
         return RedirectResponse("/login", status_code=303)
     redirect_uri = f"{settings.manager_base_url}/auth/callback"
+    if request.cookies.get(OIDC_PROMPT_LOGIN_COOKIE) == "1":
+        resp = await oauth.oidc.authorize_redirect(
+            request, redirect_uri, prompt="login"
+        )
+        _delete_auth_cookie(resp, OIDC_PROMPT_LOGIN_COOKIE)
+        return resp
     return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
 
@@ -623,19 +736,32 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
         existing_user = db.scalar(select(User).where(User.email == email))
         if existing_user and existing_user.status != "active":
             request.session.clear()
-            return RedirectResponse("/login?error=disabled", status_code=303)
+            resp = RedirectResponse("/login?error=disabled", status_code=303)
+            _delete_auth_cookie(resp, OIDC_ID_TOKEN_COOKIE)
+            return resp
     request.session["email"] = email
     request.session["name"] = userinfo.get("name") or email
     next_url = request.session.pop("next", "/admin")
-    if not is_platform_admin(db, email):
-        return RedirectResponse("/my", status_code=303)
-    return RedirectResponse(safe_next(next_url), status_code=303)
+    target = "/my" if not is_platform_admin(db, email) else safe_next(next_url)
+    resp = RedirectResponse(target, status_code=303)
+    _delete_auth_cookie(resp, OIDC_PROMPT_LOGIN_COOKIE)
+    id_token = token.get("id_token")
+    if isinstance(id_token, str) and id_token:
+        _set_auth_cookie(resp, OIDC_ID_TOKEN_COOKIE, id_token)
+    return resp
 
 
 @app.get("/auth/logout", include_in_schema=False)
-def auth_logout(request: Request):
-    request.session.clear()
-    return RedirectResponse("/login", status_code=303)
+async def auth_logout(request: Request):
+    # RedirectResponse is created after _perform_logout determines target; apply cookies onto it.
+    temp_resp = Response()
+    logout_url = await _perform_logout(request, temp_resp)
+    resp = RedirectResponse(logout_url or "/login", status_code=303)
+    for k, v in temp_resp.raw_headers:
+        if k.lower() == b"set-cookie":
+            resp.raw_headers.append((k, v))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # ---------------------------------------------------------------------------

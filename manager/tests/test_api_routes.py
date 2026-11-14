@@ -301,14 +301,29 @@ def test_none_and_oidc_auth_modes(api_env, monkeypatch):
     # Mode: oidc
     monkeypatch.setattr(main_mod.settings, "manager_auth_mode", "oidc")
     monkeypatch.setattr(main_mod.settings, "oidc_email_claim", "email")
+    monkeypatch.setattr(main_mod.settings, "oidc_client_id", "dsh-client")
+    monkeypatch.setattr(main_mod.settings, "oidc_logout_url", "")
+    monkeypatch.setattr(main_mod.settings, "oidc_issuer_url", "")
+    monkeypatch.setattr(main_mod.settings, "oidc_discovery_url", "")
 
-    async def fake_authorize_redirect(_request, redirect_uri):
+    redirect_calls: list[dict] = []
+
+    async def fake_authorize_redirect(_request, redirect_uri, **kwargs):
         from fastapi.responses import RedirectResponse
 
+        redirect_calls.append({"redirect_uri": redirect_uri, "kwargs": kwargs})
         return RedirectResponse(f"https://idp.example.com/auth?redirect_uri={redirect_uri}", status_code=302)
 
     async def fake_authorize_access_token(_request):
-        return {"userinfo": {"email": "sso-user@example.com", "name": "SSO User"}}
+        return {
+            "id_token": "fake-id-token-jwt",
+            "userinfo": {"email": "sso-user@example.com", "name": "SSO User"},
+        }
+
+    async def fake_load_server_metadata():
+        return {
+            "end_session_endpoint": "https://idp.example.com/protocol/openid-connect/logout",
+        }
 
     monkeypatch.setattr(
         main_mod.oauth,
@@ -316,6 +331,8 @@ def test_none_and_oidc_auth_modes(api_env, monkeypatch):
         SimpleNamespace(
             authorize_redirect=fake_authorize_redirect,
             authorize_access_token=fake_authorize_access_token,
+            load_server_metadata=fake_load_server_metadata,
+            server_metadata={},
         ),
         raising=False,
     )
@@ -331,13 +348,62 @@ def test_none_and_oidc_auth_modes(api_env, monkeypatch):
     start_res = client.get("/auth/oidc/start?next=/my", follow_redirects=False)
     assert start_res.status_code == 302
     assert "idp.example.com" in start_res.headers["location"]
+    assert redirect_calls[-1]["kwargs"] == {}
 
     cb_res = client.get("/auth/callback", follow_redirects=False)
     assert cb_res.status_code == 303
     assert cb_res.headers["location"] == "/my"
+    assert client.cookies.get("dsh_manager_id_token") == "fake-id-token-jwt"
 
     me_oidc = client.get("/api/auth/me").json()
     assert me_oidc["authenticated"] is True
     assert me_oidc["email"] == "sso-user@example.com"
     assert me_oidc["admin"] is False
     assert client.get("/api/auth/verify-sandbox/sso-user").status_code == 200
+
+    # API logout clears local session + id_token and returns RP-Initiated Logout URL
+    logout_res = client.post("/api/auth/logout")
+    assert logout_res.status_code == 200
+    logout_url = logout_res.json()["logout_url"]
+    assert logout_url.startswith("https://idp.example.com/protocol/openid-connect/logout?")
+    assert "id_token_hint=fake-id-token-jwt" in logout_url
+    assert "client_id=dsh-client" in logout_url
+    assert "post_logout_redirect_uri=" in logout_url
+    assert "%2Flogin" in logout_url
+    assert client.get("/api/auth/me").json()["authenticated"] is False
+    assert client.get("/api/auth/verify-sandbox/sso-user").status_code == 401
+
+    # Browser GET /auth/logout redirects to IdP logout URL and rewrites split-horizon internal origin
+    monkeypatch.setattr(main_mod.settings, "oidc_discovery_url", "http://dsh-keycloak:8080/realms/main/.well-known/openid-configuration")
+    monkeypatch.setattr(main_mod.settings, "oidc_issuer_url", "https://sso.example.com/realms/main")
+    main_mod.oauth.oidc.server_metadata = {
+        "end_session_endpoint": "http://dsh-keycloak:8080/realms/main/protocol/openid-connect/logout"
+    }
+    assert client.get("/auth/callback", follow_redirects=False).status_code == 303
+    get_logout = client.get("/auth/logout", follow_redirects=False)
+    assert get_logout.status_code == 303
+    assert get_logout.headers["location"].startswith("https://sso.example.com/realms/main/protocol/openid-connect/logout?")
+    assert client.get("/api/auth/me").json()["authenticated"] is False
+
+    # Fallback when IdP lacks end_session_endpoint: next login forces prompt=login
+    monkeypatch.setattr(main_mod.settings, "oidc_discovery_url", "")
+    monkeypatch.setattr(main_mod.settings, "oidc_issuer_url", "")
+    main_mod.oauth.oidc.server_metadata = {}
+
+    async def empty_metadata():
+        return {}
+
+    main_mod.oauth.oidc.load_server_metadata = empty_metadata
+    assert client.get("/auth/callback", follow_redirects=False).status_code == 303
+    fallback_logout = client.post("/api/auth/logout")
+    assert fallback_logout.status_code == 200
+    assert fallback_logout.json()["logout_url"] is None
+    assert client.get("/api/auth/me").json()["authenticated"] is False
+    assert client.get("/auth/oidc/start", follow_redirects=False).status_code == 302
+    assert redirect_calls[-1]["kwargs"] == {"prompt": "login"}
+
+    # Explicit OIDC_LOGOUT_URL override
+    monkeypatch.setattr(main_mod.settings, "oidc_logout_url", "https://custom-idp.example.com/v2/logout")
+    assert client.get("/auth/callback", follow_redirects=False).status_code == 303
+    override_logout = client.post("/api/auth/logout")
+    assert override_logout.json()["logout_url"].startswith("https://custom-idp.example.com/v2/logout?")

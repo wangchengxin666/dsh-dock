@@ -41,6 +41,11 @@ OIDC_EMAIL_CLAIM=email
   <MANAGER_PUBLIC_URL>/auth/callback
   ```
   例如 `https://sandbox.example.com/auth/callback` 或本地调试 `http://localhost:9000/auth/callback`；
+- Post-logout Redirect URI（用于退出登录时同步注销 IdP 单点登录会话）：
+  ```text
+  <MANAGER_PUBLIC_URL>/login
+  ```
+  （在 Keycloak 等 IdP 的 **Valid post logout redirect URIs** 中登记 `<MANAGER_PUBLIC_URL>/login` 或 `<MANAGER_PUBLIC_URL>/*`；若 IdP 未提供标准 `end_session_endpoint`，可在 `manager/.env` 中通过 `OIDC_LOGOUT_URL` 显式指定注销地址）；
 - Scope 至少包含 `openid profile email`；
 - Manager 通过 `OIDC_EMAIL_CLAIM`（默认 `email`，如改用 `preferred_username` 可相应修改）提取用户邮箱，并与 `platform_admins` 或沙箱 owner 邮箱（大小写不敏感）比对；
 - 已登录但被管理员禁用（`status != "active"`）的普通用户在访问 `/login`、`/auth/callback`、`/my` 或 `/s/<slug>/dsh/*` 时会被拒绝（403 / 提示账号已禁用）。
