@@ -202,7 +202,7 @@ class DockerService:
         self._ensure_network()
         self._ensure_image(sandbox.image_tag, sandbox.image_repo)
         volumes: dict[str, dict[str, str]] = {
-            sandbox.volume_name: {"bind": "/home/dev", "mode": "rw"}
+            sandbox.volume_name: {"bind": "/home/workspace", "mode": "rw"}
         }
         if self.settings.custom_ca_bundle_path:
             ca_path = Path(self.settings.custom_ca_bundle_path)
@@ -404,9 +404,9 @@ class DockerService:
         }
 
     def export_workspace_tar(self, sandbox: Sandbox):
-        """Stream a tar archive of /home/dev from the sandbox container."""
+        """Stream a tar archive of /home/workspace from the sandbox container."""
         container = self.get(sandbox)
-        bits, _stat = container.get_archive("/home/dev")
+        bits, _stat = container.get_archive("/home/workspace")
         return bits
 
     def sync_plugin_market(
@@ -422,11 +422,11 @@ class DockerService:
         node_script = """
 const fs = require('fs');
 const indexUrl = process.env.INDEX_URL;
-try { fs.rmSync('/home/dev/.cache/pnpm', { recursive: true, force: true }); } catch {}
-fs.mkdirSync('/home/dev/.dsh-sandbox', { recursive: true });
-fs.writeFileSync('/home/dev/.dsh-sandbox/plugin-index-url.txt', indexUrl + '\\n');
-const pkgPath = '/home/dev/.dsh/profiles/web/package.json';
-const patchPath = '/home/dev/.dsh/profiles/web/cordis.patch.yml';
+try { fs.rmSync('/home/workspace/.cache/pnpm', { recursive: true, force: true }); } catch {}
+fs.mkdirSync('/home/workspace/.dsh-sandbox', { recursive: true });
+fs.writeFileSync('/home/workspace/.dsh-sandbox/plugin-index-url.txt', indexUrl + '\\n');
+const pkgPath = '/home/workspace/.dsh/profiles/web/package.json';
+const patchPath = '/home/workspace/.dsh/profiles/web/cordis.patch.yml';
 if (fs.existsSync(pkgPath)) {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
   pkg.dsh = pkg.dsh || {};
@@ -455,8 +455,8 @@ if (fs.existsSync(patchPath)) {
 """
         ec1, out1 = container.exec_run(
             ["node", "-e", node_script],
-            user="dev",
-            environment={"INDEX_URL": index_url, "HOME": "/home/dev"},
+            user="workspace",
+            environment={"INDEX_URL": index_url, "HOME": "/home/workspace"},
         )
         if ec1 != 0:
             text1 = out1.decode("utf-8", errors="replace").strip() if out1 else ""
@@ -466,8 +466,8 @@ if (fs.existsSync(patchPath)) {
             for tgz_url in reinstall_plugins:
                 container.exec_run(
                     ["dsh", "plugin", "--profile", "web", "add", tgz_url],
-                    user="dev",
-                    environment={"HOME": "/home/dev", "DSH_HOME": "/home/dev/.dsh"},
+                    user="workspace",
+                    environment={"HOME": "/home/workspace", "DSH_HOME": "/home/workspace/.dsh"},
                 )
 
         ec2, out2 = container.exec_run(

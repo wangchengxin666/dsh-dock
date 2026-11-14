@@ -51,5 +51,5 @@ OIDC_EMAIL_CLAIM=email
 
 1. Traefik 先调用 `/api/auth/verify-sandbox/<slug>`：未登录会 302 跳转至 OIDC 登录（或本地 `/login`）；登录身份既非 owner 也非管理员则返回 403；
 2. 鉴权通过后请求抵达沙箱 Caddy；Caddy 若检测到浏览器没有 `dsh_token_seen_<slug>` cookie，自动 302 到 `/s/<slug>/_dsh-token`；
-3. `/_dsh-token` 从 `/home/dev/.dsh/web.log` 读取最新 launch token，种下标记 cookie 并 302 到 `/s/<slug>/dsh/?token=...`；
+3. `/_dsh-token` 从 `/home/workspace/.dsh/web.log` 读取最新 launch token，种下标记 cookie 并 302 到 `/s/<slug>/dsh/?token=...`；
 4. DSH 完成 token 交换并签发自己的 session cookie。

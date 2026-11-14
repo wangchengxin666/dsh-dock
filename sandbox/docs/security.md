@@ -22,19 +22,19 @@
 
 ## 容器边界
 
-- 容器是安全边界。DSH 以 `dev` 运行，`DSH_PERMISSION_MODE=danger-full-access`，
+- 容器是安全边界。DSH 以 `workspace` 运行，`DSH_PERMISSION_MODE=danger-full-access`，
   agent 在容器内有完整文件/终端权限。
-- OIDC client secret 保存在外层 `dsh-manager` 控制面，不再注入各个用户沙箱容器，降低了单容器内 secret 暴露面；用户配置的模型 API key 位于 `/home/dev/.dsh`。
+- OIDC client secret 保存在外层 `dsh-manager` 控制面，不再注入各个用户沙箱容器，降低了单容器内 secret 暴露面；用户配置的模型 API key 位于 `/home/workspace/.dsh`。
 - 如需进一步限制出站访问，可通过防火墙或网络策略限制容器访问权限。
-- 不要让 `dev` 获得宿主机 Docker socket 或特权容器能力。
+- 不要让 `workspace` 获得宿主机 Docker socket 或特权容器能力。
 
 ## 密钥
 
 | 密钥 | 存放 |
 | --- | --- |
 | OIDC client secret / `SECRET_KEY` | `manager/.env`（gitignored，仅在控制面） |
-| 模型 API key | 用户通过 Settings → Models 写入 `/home/dev/.dsh` |
-| DSH session 签名密钥 | `/home/dev/.dsh` |
+| 模型 API key | 用户通过 Settings → Models 写入 `/home/workspace/.dsh` |
+| DSH session 签名密钥 | `/home/workspace/.dsh` |
 | CA 私钥 | 不在仓库中 |
 
 `.env` 不提交。构建参数在 Dockerfile ARG 默认值里；仓库只包含

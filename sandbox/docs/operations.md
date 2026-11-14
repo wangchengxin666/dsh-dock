@@ -63,7 +63,7 @@ docker build \
 | `DSH_VERSION` | `0.2.2-rc.3` | `@deepseek-ai/dsh` 版本 |
 | `NODE_VERSION` | `24.22.3` | Node 运行时 |
 | `INSTALL_TOOLCHAIN` | `false` | 是否在构建期按顺序执行 `sandbox/toolchain/toolchain.d/*.sh` 将自定义工具链安装至 `/opt/toolchain`（默认提供 `10-dotnet.sh`） |
-| `DEV_UID` / `DEV_GID` | `1000` | dev 用户 UID/GID |
+| `WORKSPACE_UID` / `WORKSPACE_GID` | `1000` | workspace 用户 UID/GID |
 | `DOCKER_REGISTRY` | `docker.io/library` | 基础镜像完整前缀 |
 | `APT_MIRROR` | `deb.debian.org` | Debian 镜像源主机名或完整 URL（如 `https://mirrors.aliyun.com`） |
 | `NPM_REGISTRY` | 空 → 官方 npm | npm 镜像源 URL |
@@ -104,7 +104,7 @@ make expose NAME=web PORT=5173
 ```bash
 docker run -d --name dsh-sandbox -p 18086:8080 \
   --env-file .env \
-  -v dsh-sandbox-home:/home/dev \
+  -v dsh-sandbox-home:/home/workspace \
   dsh-sandbox:latest
 ```
 
@@ -158,12 +158,12 @@ fonts-wqy-microhei + fontconfig
 
 ```yaml
 volumes:
-  - dsh-home:/home/dev
+  - dsh-home:/home/workspace
 ```
 
-`/home/dev` 是沙箱默认工作目录与持久卷挂载点（`WORKDIR /home/dev`），包含用户项目代码、DSH profile/session、模型配置、skill、用户服务、`sandbox-cron`、`apps.d` 路由和日志（平台 `/api/sandboxes/{id}/backup` 亦完整打包 `/home/dev` 为 `<slug>-home.tar`）。删除容器不会删除 volume；`docker compose down -v` 才会。
+`/home/workspace` 是沙箱默认工作目录与持久卷挂载点（`WORKDIR /home/workspace`），包含用户项目代码、DSH profile/session、模型配置、skill、用户服务、`sandbox-cron`、`apps.d` 路由和日志（平台 `/api/sandboxes/{id}/backup` 亦完整打包 `/home/workspace` 为 `<slug>-home.tar`）。删除容器不会删除 volume；`docker compose down -v` 才会。
 
-自定义 SDK 放在 `/opt/toolchain` 下，既不污染 `/home/dev` 备份归档，又能随容器重建立即恢复。
+自定义 SDK 放在 `/opt/toolchain` 下，既不污染 `/home/workspace` 备份归档，又能随容器重建立即恢复。
 
 bind mount 时保证 UID/GID 1000 可写：
 
@@ -171,7 +171,7 @@ bind mount 时保证 UID/GID 1000 可写：
 sudo chown -R 1000:1000 ./home
 ```
 
-或者用 `DEV_UID` / `DEV_GID` 重新构建。
+或者用 `WORKSPACE_UID` / `WORKSPACE_GID` 重新构建。
 
 ## 升级
 
@@ -179,7 +179,7 @@ sudo chown -R 1000:1000 ./home
 2. `make build`；
 3. 重新创建容器，保留 home volume。
 
-DSH cookie 的签名密钥在 `/home/dev/.dsh` 中，升级后旧浏览器 cookie 仍然有效；启动 token
+DSH cookie 的签名密钥在 `/home/workspace/.dsh` 中，升级后旧浏览器 cookie 仍然有效；启动 token
 是进程级的，会随 DSH 重启变化。
 
 ## CA

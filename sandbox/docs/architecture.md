@@ -5,7 +5,7 @@
 - **一个容器**：DSH、Caddy、supervisor、用户服务都在同一个文件系统里。
 - **零容器宿主机端口暴露（托管模式）**：所有外部流量经由外层 Traefik 网关转发至容器内 `:8080` Caddy，不向宿主机暴露 `18000+` 端口。
 - **网关统一鉴权**：只有 DSH 相关路径由 Traefik + `dsh-manager` ForwardAuth（OIDC / 本地密码）校验身份；`/apps/*` 与 `/p/*` 服务默认开放，鉴权由服务自行实现。
-- **非 root 开发**：DSH 和用户服务以 `dev` 运行；Caddy 使用独立系统用户。
+- **非 root 用户隔离**：DSH 和用户服务以 `workspace` 运行；Caddy 使用独立系统用户。
 - **可预期的路径**：所有对外 URL 都是 `/s/<slug>/...`（或独立调试时的 `/...`），不依赖额外 DNS 或端口。
 
 ## 进程模型
@@ -15,9 +15,9 @@ PID 1  supervisord (root)
 ├── caddy             :8080
 ├── cron
 ├── dsh-token         127.0.0.1:3090
-├── user-services     用户级 supervisord (dev)
+├── user-services     用户级 supervisord (workspace)
 │   └── 用户定义的服务
-└── dsh               127.0.0.1:3080 (dev)
+└── dsh               127.0.0.1:3080 (workspace)
 ```
 
 容器级 supervisor 保证 Caddy、cron、dsh-token 和用户服务编排器在 DSH 重启时仍然运行。
@@ -85,9 +85,9 @@ Caddy 必须：
 
 ## 持久化
 
-`/home/dev` 是唯一需要持久化的目录：
+`/home/workspace` 是唯一需要持久化的目录：
 
-- 用户工作区与项目文件直接保存在 `/home/dev/` 下
+- 用户工作区与项目文件直接保存在 `/home/workspace/` 下
 - `.dsh/`（profile、session、模型配置、skill）
 - `.dsh-sandbox/`（Caddy apps 路由、用户 supervisord 配置）
 - `logs/`

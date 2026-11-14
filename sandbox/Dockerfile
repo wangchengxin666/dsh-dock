@@ -17,8 +17,8 @@ FROM ${DOCKER_REGISTRY}/debian:${DEBIAN_VERSION}
 ARG NODE_VERSION=24.22.3
 ARG DSH_VERSION=0.2.2-rc.3
 ARG INSTALL_BROWSER=false
-ARG DEV_UID=1000
-ARG DEV_GID=1000
+ARG WORKSPACE_UID=1000
+ARG WORKSPACE_GID=1000
 # Optional Debian mirror host or URL (e.g. https://mirrors.aliyun.com) and npm registry.
 ARG APT_MIRROR=deb.debian.org
 ARG NPM_REGISTRY=
@@ -34,7 +34,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium \
-    PATH=/opt/toolchain/bin:/usr/local/bin:/home/dev/.npm-global/bin:/home/dev/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+    PATH=/opt/toolchain/bin:/usr/local/bin:/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 RUN if [ -n "${APT_MIRROR}" ] && [ "${APT_MIRROR}" != "deb.debian.org" ]; then \
       case "${APT_MIRROR}" in \
@@ -140,25 +140,25 @@ RUN find /tmp/toolchain-src -type f -name '*.sh' -exec sed -i 's/\r$//' {} + \
  && rm -rf /tmp/toolchain-src
 
 # ---------------------------------------------------------------------------
-# Users: dev is the only account the agent runs as; caddy runs the proxy daemon.
+# Users: workspace is the only account the agent runs as; caddy runs the proxy daemon.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
-    groupadd -g "${DEV_GID}" dev; \
-    useradd -m -u "${DEV_UID}" -g dev -s /bin/bash dev; \
+    groupadd -g "${WORKSPACE_GID}" workspace; \
+    useradd -m -u "${WORKSPACE_UID}" -g workspace -s /bin/bash workspace; \
     groupadd -r caddy; \
     useradd -r -g caddy -d /var/lib/caddy -s /usr/sbin/nologin caddy; \
     \
-    install -d -o dev   -g dev   -m 0755 /home/dev /home/dev/.dsh; \
-    install -d -o dev   -g caddy -m 2775 /home/dev/.dsh-sandbox /home/dev/.dsh-sandbox/caddy /home/dev/.dsh-sandbox/caddy/apps.d; \
-    install -d -o caddy -g caddy -m 0755 /var/lib/caddy /var/lib/caddy/.config /var/lib/caddy/.local/share; \
-    install -d -o dev   -g dev   -m 0755 /home/dev/.npm-global /home/dev/.local/bin /home/dev/logs; \
+    install -d -o workspace -g workspace -m 0755 /home/workspace /home/workspace/.dsh; \
+    install -d -o workspace -g caddy     -m 2775 /home/workspace/.dsh-sandbox /home/workspace/.dsh-sandbox/caddy /home/workspace/.dsh-sandbox/caddy/apps.d; \
+    install -d -o caddy     -g caddy     -m 0755 /var/lib/caddy /var/lib/caddy/.config /var/lib/caddy/.local/share; \
+    install -d -o workspace -g workspace -m 0755 /home/workspace/.npm-global /home/workspace/.local /home/workspace/.local/bin /home/workspace/logs; \
     \
-    printf '# Drop-in Caddy routes. See sandbox-expose(1).\n' > /home/dev/.dsh-sandbox/caddy/apps.d/00-empty.caddy; \
-    chown dev:caddy /home/dev/.dsh-sandbox/caddy/apps.d/00-empty.caddy; \
-    chmod 0644 /home/dev/.dsh-sandbox/caddy/apps.d/00-empty.caddy; \
+    printf '# Drop-in Caddy routes. See sandbox-expose(1).\n' > /home/workspace/.dsh-sandbox/caddy/apps.d/00-empty.caddy; \
+    chown workspace:caddy /home/workspace/.dsh-sandbox/caddy/apps.d/00-empty.caddy; \
+    chmod 0644 /home/workspace/.dsh-sandbox/caddy/apps.d/00-empty.caddy; \
     \
-    printf 'prefix=/home/dev/.npm-global\n' > /home/dev/.npmrc; \
-    chown dev:dev /home/dev/.npmrc
+    printf 'prefix=/home/workspace/.npm-global\n' > /home/workspace/.npmrc; \
+    chown workspace:workspace /home/workspace/.npmrc
 
 # ---------------------------------------------------------------------------
 # Application files
@@ -185,29 +185,29 @@ RUN sed -i 's/\r$//' \
 
 # Pre-initialize the Web profile so the first start does not need extra work
 # and so a bind-mounted empty HOME still has a template to fall back on.
-USER dev
-RUN HOME=/home/dev DSH_HOME=/home/dev/.dsh dsh --profile web --help >/dev/null
+USER workspace
+RUN HOME=/home/workspace DSH_HOME=/home/workspace/.dsh dsh --profile web --help >/dev/null
 USER root
 
 # Build-time guard: root-mounted and subpath-mounted (/s/alice) variants must parse.
 RUN CADDY_PORT=8080 DSH_PORT=3080 DSH_MOUNT=/dsh \
-      APPS_DIR=/home/dev/.dsh-sandbox/caddy/apps.d PUBLIC_SCHEME=http \
+      APPS_DIR=/home/workspace/.dsh-sandbox/caddy/apps.d PUBLIC_SCHEME=http \
       /usr/local/bin/render-caddyfile.sh /tmp/Caddyfile.root \
  && caddy validate --config /tmp/Caddyfile.root --adapter caddyfile \
  && CADDY_PORT=8080 DSH_PORT=3080 SANDBOX_BASE_PATH=/s/alice DSH_MOUNT=/s/alice/dsh \
-      APPS_DIR=/home/dev/.dsh-sandbox/caddy/apps.d PUBLIC_SCHEME=https \
+      APPS_DIR=/home/workspace/.dsh-sandbox/caddy/apps.d PUBLIC_SCHEME=https \
       /usr/local/bin/render-caddyfile.sh /tmp/Caddyfile.subpath \
  && caddy validate --config /tmp/Caddyfile.subpath --adapter caddyfile \
  && rm -f /tmp/Caddyfile.root /tmp/Caddyfile.subpath
 
-ENV DSH_HOME=/home/dev/.dsh \
+ENV DSH_HOME=/home/workspace/.dsh \
     DSH_PERMISSION_MODE=danger-full-access \
     CADDY_PORT=8080 \
     DSH_PORT=3080 \
     DSH_MOUNT=/dsh \
-    APPS_DIR=/home/dev/.dsh-sandbox/caddy/apps.d
+    APPS_DIR=/home/workspace/.dsh-sandbox/caddy/apps.d
 
-WORKDIR /home/dev
+WORKDIR /home/workspace
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \

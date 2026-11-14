@@ -2,7 +2,7 @@
 # Launch the DSH Web profile on loopback. Caddy is the only public listener.
 set -euo pipefail
 
-: "${DSH_HOME:=/home/dev/.dsh}"
+: "${DSH_HOME:=/home/workspace/.dsh}"
 export DSH_HOME
 
 if [ -r /opt/toolchain/env.sh ]; then
@@ -39,8 +39,8 @@ fi
 # Automatically enable the DSH Plugin Market (Discover tab) and inject the
 # platform's self-hosted plugin index URL when configured.
 plugin_index_url="${DSH_PLUGIN_INDEX_URL:-}"
-if [ -z "${plugin_index_url}" ] && [ -s /home/dev/.dsh-sandbox/plugin-index-url.txt ]; then
-  plugin_index_url="$(head -n 1 /home/dev/.dsh-sandbox/plugin-index-url.txt | tr -d '\r\n')"
+if [ -z "${plugin_index_url}" ] && [ -s /home/workspace/.dsh-sandbox/plugin-index-url.txt ]; then
+  plugin_index_url="$(head -n 1 /home/workspace/.dsh-sandbox/plugin-index-url.txt | tr -d '\r\n')"
 fi
 if [ -n "${plugin_index_url}" ]; then
   PLUGIN_INDEX_URL="${plugin_index_url}" DSH_PROFILE_DIR="${DSH_HOME}/profiles/web" node -e '

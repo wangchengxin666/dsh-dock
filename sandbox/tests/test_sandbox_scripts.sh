@@ -15,7 +15,7 @@ rm -rf "${TMP_WORK}/tc-src/toolchain.d"
 mkdir -p "${TMP_WORK}/tc-src/toolchain.d"
 cat >"${TMP_WORK}/tc-src/toolchain.d/10-first.sh" <<'EOF'
 #!/usr/bin/env bash
-echo "first:${TARGETARCH}:${DEV_UID}:${DEV_GID}" >>"${TOOLCHAIN_DIR}/order.log"
+echo "first:${TARGETARCH}:${WORKSPACE_UID}:${WORKSPACE_GID}" >>"${TOOLCHAIN_DIR}/order.log"
 mkdir -p "${TOOLCHAIN_DIR}/fake/bin"
 printf '#!/usr/bin/env bash\necho fake-cli\n' >"${TOOLCHAIN_DIR}/fake/bin/fakecli"
 chmod +x "${TOOLCHAIN_DIR}/fake/bin/fakecli"
@@ -40,7 +40,7 @@ test ! -f "${TC_OFF}/order.log"
 
 # Case B: enabled
 TC_ON="${TMP_WORK}/opt-tc-on"
-INSTALL_TOOLCHAIN=true TARGETARCH=amd64 DEV_UID=1000 DEV_GID=1000 TOOLCHAIN_DIR="${TC_ON}" "${TMP_WORK}/tc-src/install.sh"
+INSTALL_TOOLCHAIN=true TARGETARCH=amd64 WORKSPACE_UID=1000 WORKSPACE_GID=1000 TOOLCHAIN_DIR="${TC_ON}" "${TMP_WORK}/tc-src/install.sh"
 test -f "${TC_ON}/order.log"
 order=$(cat "${TC_ON}/order.log")
 [ "${order}" = $'first:amd64:1000:1000\nsecond' ]

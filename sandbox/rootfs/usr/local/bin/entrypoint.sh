@@ -8,7 +8,7 @@ die() { log "ERROR: $*"; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "entrypoint must run as root"
 
-DEV_USER=dev
+WORKSPACE_USER=workspace
 CADDY_PORT=${CADDY_PORT:-8080}
 DSH_PORT=${DSH_PORT:-3080}
 SANDBOX_BASE_PATH=${SANDBOX_BASE_PATH:-}
@@ -20,7 +20,7 @@ if [ -z "${DSH_MOUNT:-}" ] || { [ -n "${SANDBOX_BASE_PATH}" ] && [ "${DSH_MOUNT}
   DSH_MOUNT="${SANDBOX_BASE_PATH}/dsh"
 fi
 DSH_MOUNT=${DSH_MOUNT%/}
-APPS_DIR=${APPS_DIR:-/home/dev/.dsh-sandbox/caddy/apps.d}
+APPS_DIR=${APPS_DIR:-/home/workspace/.dsh-sandbox/caddy/apps.d}
 DSH_TOKEN_PORT=${DSH_TOKEN_PORT:-3090}
 
 # ---------------------------------------------------------------------------
@@ -63,30 +63,30 @@ export DSH_TRUSTED_HOSTS DSH_PUBLIC_URL
 # ---------------------------------------------------------------------------
 # Home volume and directories
 # ---------------------------------------------------------------------------
-install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev /home/dev/.dsh
-install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/deepseek-harness
-install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/.dsh/skills
+install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 /home/workspace /home/workspace/.dsh
+install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 /home/workspace/deepseek-harness
+install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 /home/workspace/.dsh/skills
 # Existing volumes may contain root-owned skill dirs from older images.
-chown -R "${DEV_USER}:${DEV_USER}" /home/dev/.dsh/skills 2>/dev/null || true
-chmod -R a+rX /home/dev/.dsh/skills 2>/dev/null || true
+chown -R "${WORKSPACE_USER}:${WORKSPACE_USER}" /home/workspace/.dsh/skills 2>/dev/null || true
+chmod -R a+rX /home/workspace/.dsh/skills 2>/dev/null || true
 if [ -d /etc/dsh/skills ]; then
   for skill in /etc/dsh/skills/*; do
     [ -e "${skill}" ] || continue
     name=$(basename "${skill}")
-    install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 "/home/dev/.dsh/skills/${name}"
-    runuser -u "${DEV_USER}" -- cp -R "${skill}/." "/home/dev/.dsh/skills/${name}/"
+    install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 "/home/workspace/.dsh/skills/${name}"
+    runuser -u "${WORKSPACE_USER}" -- cp -R "${skill}/." "/home/workspace/.dsh/skills/${name}/"
   done
 fi
-install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/logs /home/dev/.npm-global /home/dev/.local/bin
-install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 \
-  /home/dev/.dsh-sandbox/services /home/dev/.dsh-sandbox/services/conf.d
-install -d -o "${DEV_USER}" -g caddy -m 2775 \
-  /home/dev/.dsh-sandbox /home/dev/.dsh-sandbox/caddy "${APPS_DIR}"
+install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 /home/workspace/logs /home/workspace/.npm-global /home/workspace/.local /home/workspace/.local/bin
+install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 \
+  /home/workspace/.dsh-sandbox/services /home/workspace/.dsh-sandbox/services/conf.d
+install -d -o "${WORKSPACE_USER}" -g caddy -m 2775 \
+  /home/workspace/.dsh-sandbox /home/workspace/.dsh-sandbox/caddy "${APPS_DIR}"
 install -d -o caddy -g caddy -m 0755 /var/lib/caddy /var/lib/caddy/.config /var/lib/caddy/.local/share
 
-printf '%s\n' "${SANDBOX_BASE_PATH}" >/home/dev/.dsh-sandbox/base-path.txt
-printf '%s\n' "${SANDBOX_PUBLIC_ORIGIN}" >/home/dev/.dsh-sandbox/public-origin.txt
-printf '%s\n' "${SANDBOX_PUBLIC_URL}" >/home/dev/.dsh-sandbox/public-url.txt
+printf '%s\n' "${SANDBOX_BASE_PATH}" >/home/workspace/.dsh-sandbox/base-path.txt
+printf '%s\n' "${SANDBOX_PUBLIC_ORIGIN}" >/home/workspace/.dsh-sandbox/public-origin.txt
+printf '%s\n' "${SANDBOX_PUBLIC_URL}" >/home/workspace/.dsh-sandbox/public-url.txt
 jq -n \
   --arg public_origin "${SANDBOX_PUBLIC_ORIGIN}" \
   --arg base_path "${SANDBOX_BASE_PATH}" \
@@ -103,40 +103,40 @@ jq -n \
     dsh_public_url: $dsh_public_url,
     apps_base_url: $apps_base_url,
     port_proxy_base_url: $port_proxy_base_url
-  }' >/home/dev/.dsh-sandbox/info.json
-chown "${DEV_USER}:${DEV_USER}" \
-  /home/dev/.dsh-sandbox/base-path.txt \
-  /home/dev/.dsh-sandbox/public-origin.txt \
-  /home/dev/.dsh-sandbox/public-url.txt \
-  /home/dev/.dsh-sandbox/info.json
+  }' >/home/workspace/.dsh-sandbox/info.json
+chown "${WORKSPACE_USER}:${WORKSPACE_USER}" \
+  /home/workspace/.dsh-sandbox/base-path.txt \
+  /home/workspace/.dsh-sandbox/public-origin.txt \
+  /home/workspace/.dsh-sandbox/public-url.txt \
+  /home/workspace/.dsh-sandbox/info.json
 
-# User-level supervisord: long-running dev services under the home volume.
-if [ ! -f /home/dev/.dsh-sandbox/services/supervisord.conf ]; then
-  cat >/home/dev/.dsh-sandbox/services/supervisord.conf <<'EOF'
+# User-level supervisord: long-running services under the home volume.
+if [ ! -f /home/workspace/.dsh-sandbox/services/supervisord.conf ]; then
+  cat >/home/workspace/.dsh-sandbox/services/supervisord.conf <<'EOF'
 [supervisord]
 nodaemon=true
-logfile=/home/dev/logs/user-supervisord.log
+logfile=/home/workspace/logs/user-supervisord.log
 logfile_maxbytes=10MB
 logfile_backups=3
 loglevel=info
-pidfile=/home/dev/.dsh-sandbox/services/supervisord.pid
-childlogdir=/home/dev/logs
+pidfile=/home/workspace/.dsh-sandbox/services/supervisord.pid
+childlogdir=/home/workspace/logs
 
 [unix_http_server]
-file=/home/dev/.dsh-sandbox/services/supervisor.sock
+file=/home/workspace/.dsh-sandbox/services/supervisor.sock
 chmod=0700
 
 [rpcinterface:supervisor]
 supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
 
 [supervisorctl]
-serverurl=unix:///home/dev/.dsh-sandbox/services/supervisor.sock
+serverurl=unix:///home/workspace/.dsh-sandbox/services/supervisor.sock
 
 [include]
-files = /home/dev/.dsh-sandbox/services/conf.d/*.conf
+files = /home/workspace/.dsh-sandbox/services/conf.d/*.conf
 EOF
-  chown "${DEV_USER}:${DEV_USER}" /home/dev/.dsh-sandbox/services/supervisord.conf
-  chmod 0644 /home/dev/.dsh-sandbox/services/supervisord.conf
+  chown "${WORKSPACE_USER}:${WORKSPACE_USER}" /home/workspace/.dsh-sandbox/services/supervisord.conf
+  chmod 0644 /home/workspace/.dsh-sandbox/services/supervisord.conf
 fi
 
 install -d -m 0755 /etc/caddy /etc/supervisor/conf.d /var/log/supervisor
@@ -158,13 +158,13 @@ fi
 if [ ! -f "${APPS_DIR}/00-empty.caddy" ]; then
   printf '# Drop-in Caddy routes. See sandbox-expose(1).\n' >"${APPS_DIR}/00-empty.caddy"
 fi
-chown "${DEV_USER}:caddy" "${APPS_DIR}/00-empty.caddy"
+chown "${WORKSPACE_USER}:caddy" "${APPS_DIR}/00-empty.caddy"
 chmod 0644 "${APPS_DIR}/00-empty.caddy"
 
 # A bind-mounted empty HOME has no pre-built profile; build it once here.
-if [ ! -f /home/dev/.dsh/profiles/web/package.json ]; then
-  log "initializing the DSH web profile under /home/dev/.dsh"
-  runuser -u "${DEV_USER}" -- env HOME=/home/dev DSH_HOME=/home/dev/.dsh \
+if [ ! -f /home/workspace/.dsh/profiles/web/package.json ]; then
+  log "initializing the DSH web profile under /home/workspace/.dsh"
+  runuser -u "${WORKSPACE_USER}" -- env HOME=/home/workspace DSH_HOME=/home/workspace/.dsh \
     dsh --profile web --help >/dev/null
 fi
 
@@ -172,13 +172,13 @@ fi
 # Workspace Template & Initial Git Repository Clone
 # ---------------------------------------------------------------------------
 SANDBOX_TEMPLATE=${SANDBOX_TEMPLATE:-agent-os}
-template_marker="/home/dev/.dsh-sandbox/.template_initialized"
+template_marker="/home/workspace/.dsh-sandbox/.template_initialized"
 if [ ! -f "${template_marker}" ]; then
   log "initializing workspace template: ${SANDBOX_TEMPLATE}"
   case "${SANDBOX_TEMPLATE}" in
     fullstack-web)
-      install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/web-app
-      cat >/home/dev/web-app/server.js <<'EOF'
+      install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 /home/workspace/web-app
+      cat >/home/workspace/web-app/server.js <<'EOF'
 const http = require('node:http');
 const port = Number(process.env.PORT || 5173);
 http.createServer((req, res) => {
@@ -191,11 +191,11 @@ http.createServer((req, res) => {
   </body></html>`);
 }).listen(port, '127.0.0.1', () => console.log('listening on 127.0.0.1:' + port));
 EOF
-      chown "${DEV_USER}:${DEV_USER}" /home/dev/web-app/server.js
+      chown "${WORKSPACE_USER}:${WORKSPACE_USER}" /home/workspace/web-app/server.js
       ;;
     python-data)
-      install -d -o "${DEV_USER}" -g "${DEV_USER}" -m 0755 /home/dev/data-lab
-      cat >/home/dev/data-lab/main.py <<'EOF'
+      install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 /home/workspace/data-lab
+      cat >/home/workspace/data-lab/main.py <<'EOF'
 """Starter Python data & automation script in your persistent Agent OS."""
 import platform
 import sys
@@ -206,13 +206,13 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 EOF
-      chown "${DEV_USER}:${DEV_USER}" /home/dev/data-lab/main.py
+      chown "${WORKSPACE_USER}:${WORKSPACE_USER}" /home/workspace/data-lab/main.py
       ;;
     minimal)
       ;;
     *)
-      if [ ! -f /home/dev/README.md ]; then
-        cat >/home/dev/README.md <<EOF
+      if [ ! -f /home/workspace/README.md ]; then
+        cat >/home/workspace/README.md <<EOF
 # Agent OS Workspace
 
 Welcome to your persistent remote DeepSeek Harness environment.
@@ -220,28 +220,28 @@ Welcome to your persistent remote DeepSeek Harness environment.
 - **DSH URL**: \`${PUBLIC_URL}\`
 - **Expose a web service**: \`sandbox-service add web "node server.js"\` + \`sandbox-expose web 5173\` -> \`${PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/apps/web/\`
 - **Quick port forward**: \`${PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/p/<port>/\`
-- **Persistent cron**: \`sandbox-cron add "0 9 * * * /home/dev/task.sh"\`
+- **Persistent cron**: \`sandbox-cron add "0 9 * * * /home/workspace/task.sh"\`
 - **Headless Chromium**: \`/usr/bin/chromium --headless --dump-dom https://example.com\`
 EOF
-        chown "${DEV_USER}:${DEV_USER}" /home/dev/README.md
+        chown "${WORKSPACE_USER}:${WORKSPACE_USER}" /home/workspace/README.md
       fi
       ;;
   esac
   printf '%s\n' "${SANDBOX_TEMPLATE}" >"${template_marker}"
-  chown "${DEV_USER}:${DEV_USER}" "${template_marker}"
+  chown "${WORKSPACE_USER}:${WORKSPACE_USER}" "${template_marker}"
 fi
 
 if [ -n "${SANDBOX_INIT_SCRIPT:-}" ]; then
-  script_marker="/home/dev/.dsh-sandbox/.init_script_executed"
+  script_marker="/home/workspace/.dsh-sandbox/.init_script_executed"
   if [ ! -f "${script_marker}" ]; then
     log "executing template initialization script"
-    printf '%s\n' "${SANDBOX_INIT_SCRIPT}" >/home/dev/.dsh-sandbox/init-template.sh
-    chown "${DEV_USER}:${DEV_USER}" /home/dev/.dsh-sandbox/init-template.sh
-    chmod 0755 /home/dev/.dsh-sandbox/init-template.sh
-    if runuser -u "${DEV_USER}" -- env HOME=/home/dev DSH_HOME=/home/dev/.dsh \
-      bash -lc "cd /home/dev && /home/dev/.dsh-sandbox/init-template.sh"; then
+    printf '%s\n' "${SANDBOX_INIT_SCRIPT}" >/home/workspace/.dsh-sandbox/init-template.sh
+    chown "${WORKSPACE_USER}:${WORKSPACE_USER}" /home/workspace/.dsh-sandbox/init-template.sh
+    chmod 0755 /home/workspace/.dsh-sandbox/init-template.sh
+    if runuser -u "${WORKSPACE_USER}" -- env HOME=/home/workspace DSH_HOME=/home/workspace/.dsh \
+      bash -lc "cd /home/workspace && /home/workspace/.dsh-sandbox/init-template.sh"; then
       date -u +"%Y-%m-%dT%H:%M:%SZ" >"${script_marker}"
-      chown "${DEV_USER}:${DEV_USER}" "${script_marker}"
+      chown "${WORKSPACE_USER}:${WORKSPACE_USER}" "${script_marker}"
     else
       log "WARN: template initialization script exited non-zero; continuing startup"
     fi
@@ -249,15 +249,15 @@ if [ -n "${SANDBOX_INIT_SCRIPT:-}" ]; then
 fi
 
 if [ -n "${SANDBOX_INIT_REPO_URL:-}" ]; then
-  repo_marker="/home/dev/.dsh-sandbox/.init_repo_cloned"
+  repo_marker="/home/workspace/.dsh-sandbox/.init_repo_cloned"
   if [ ! -f "${repo_marker}" ]; then
     log "cloning initial repository: ${SANDBOX_INIT_REPO_URL}"
     repo_name=$(basename "${SANDBOX_INIT_REPO_URL}" .git)
-    target_dir="/home/dev/${repo_name}"
+    target_dir="/home/workspace/${repo_name}"
     if [ ! -e "${target_dir}" ]; then
-      if runuser -u "${DEV_USER}" -- git clone "${SANDBOX_INIT_REPO_URL}" "${target_dir}"; then
+      if runuser -u "${WORKSPACE_USER}" -- git clone "${SANDBOX_INIT_REPO_URL}" "${target_dir}"; then
         printf '%s\n' "${SANDBOX_INIT_REPO_URL}" >"${repo_marker}"
-        chown "${DEV_USER}:${DEV_USER}" "${repo_marker}"
+        chown "${WORKSPACE_USER}:${WORKSPACE_USER}" "${repo_marker}"
       else
         log "WARN: git clone ${SANDBOX_INIT_REPO_URL} failed; continuing startup"
       fi
@@ -267,22 +267,22 @@ fi
 
 # Record self-hosted plugin index URL and auto-install configured plugins
 if [ -n "${DSH_PLUGIN_INDEX_URL:-}" ]; then
-  printf '%s\n' "${DSH_PLUGIN_INDEX_URL}" >/home/dev/.dsh-sandbox/plugin-index-url.txt
-  chown "${DEV_USER}:${DEV_USER}" /home/dev/.dsh-sandbox/plugin-index-url.txt
+  printf '%s\n' "${DSH_PLUGIN_INDEX_URL}" >/home/workspace/.dsh-sandbox/plugin-index-url.txt
+  chown "${WORKSPACE_USER}:${WORKSPACE_USER}" /home/workspace/.dsh-sandbox/plugin-index-url.txt
   log "plugin index URL configured: ${DSH_PLUGIN_INDEX_URL}"
 fi
 
 if [ -n "${DSH_AUTO_INSTALL_PLUGINS:-}" ] && [ "${SANDBOX_TEMPLATE}" != "minimal" ]; then
-  marker_file="/home/dev/.dsh/.auto_installed_plugins"
+  marker_file="/home/workspace/.dsh/.auto_installed_plugins"
   touch "${marker_file}"
-  chown "${DEV_USER}:${DEV_USER}" "${marker_file}"
+  chown "${WORKSPACE_USER}:${WORKSPACE_USER}" "${marker_file}"
   IFS=',' read -r -a plugin_specs <<<"${DSH_AUTO_INSTALL_PLUGINS}"
   for spec in "${plugin_specs[@]}"; do
     spec=$(printf '%s' "${spec}" | awk '{gsub(/^[ \t]+|[ \t]+$/, ""); print}')
     [ -n "${spec}" ] || continue
     if ! grep -Fxq "${spec}" "${marker_file}" 2>/dev/null; then
       log "auto-installing DSH plugin into web profile: ${spec}"
-      if runuser -u "${DEV_USER}" -- env HOME=/home/dev DSH_HOME=/home/dev/.dsh \
+      if runuser -u "${WORKSPACE_USER}" -- env HOME=/home/workspace DSH_HOME=/home/workspace/.dsh \
         dsh plugin --profile web add "${spec}"; then
         printf '%s\n' "${spec}" >>"${marker_file}"
       else
@@ -303,8 +303,8 @@ rm -f /etc/supervisor/conf.d/10-oauth2-proxy.conf /etc/supervisor/conf.d/11-oaut
 chmod 0644 /etc/caddy/Caddyfile
 
 # Restore persistent user crontab if present
-if [ -s /home/dev/.dsh-sandbox/crontab ]; then
-  runuser -u "${DEV_USER}" -- /usr/local/bin/sandbox-cron sync || log "WARN: failed to restore user crontab"
+if [ -s /home/workspace/.dsh-sandbox/crontab ]; then
+  runuser -u "${WORKSPACE_USER}" -- /usr/local/bin/sandbox-cron sync || log "WARN: failed to restore user crontab"
 fi
 
 cat >/etc/supervisor/conf.d/00-runtime.conf <<'EOF'
@@ -321,9 +321,9 @@ redirect_stderr=true
 
 [program:user-services]
 command=/usr/local/bin/user-services
-user=dev
-directory=/home/dev
-environment=HOME="/home/dev",PATH="/home/dev/.npm-global/bin:/home/dev/.local/bin:/opt/toolchain/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+user=workspace
+directory=/home/workspace
+environment=HOME="/home/workspace",PATH="/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/opt/toolchain/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 priority=22
 autostart=true
 autorestart=true
@@ -350,9 +350,9 @@ redirect_stderr=true
 
 [program:dsh-token]
 command=/usr/local/bin/dsh-token
-user=dev
-directory=/home/dev
-environment=HOME="/home/dev",DSH_HOME="/home/dev/.dsh"
+user=workspace
+directory=/home/workspace
+environment=HOME="/home/workspace",DSH_HOME="/home/workspace/.dsh"
 priority=18
 autostart=true
 autorestart=true
@@ -365,9 +365,9 @@ redirect_stderr=true
 
 [program:dsh]
 command=/usr/local/bin/dsh-web
-user=dev
-directory=/home/dev
-environment=HOME="/home/dev",DSH_HOME="/home/dev/.dsh",PATH="/home/dev/.npm-global/bin:/home/dev/.local/bin:/opt/toolchain/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+user=workspace
+directory=/home/workspace
+environment=HOME="/home/workspace",DSH_HOME="/home/workspace/.dsh",PATH="/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/opt/toolchain/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 priority=20
 autostart=true
 autorestart=true

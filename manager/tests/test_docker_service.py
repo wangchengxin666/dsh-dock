@@ -114,9 +114,9 @@ def test_create_container_uses_no_host_ports_and_traefik_forwardauth(tmp_path):
     assert kwargs["cpu_period"] == 100_000
     assert kwargs["cpu_quota"] == 200_000
 
-    # Persistent volume mounts at /home/dev + optional CA read-only mount
+    # Persistent volume mounts at /home/workspace + optional CA read-only mount
     volumes = kwargs["volumes"]
-    assert volumes["dsh-alice-home"] == {"bind": "/home/dev", "mode": "rw"}
+    assert volumes["dsh-alice-home"] == {"bind": "/home/workspace", "mode": "rw"}
     assert volumes[str(ca_file.resolve())] == {"bind": "/etc/dsh/ca/custom-ca.crt", "mode": "ro"}
 
     labels = kwargs["labels"]
@@ -198,7 +198,7 @@ def test_wait_healthy_stats_logs_backup_and_sync(monkeypatch):
     assert stats["memory_limit_mb"] == 1024.0
 
     stream = svc.export_workspace_tar(sbx)
-    container.get_archive.assert_called_with("/home/dev")
+    container.get_archive.assert_called_with("/home/workspace")
     assert b"".join(stream) == b"tarbytes"
 
     sync = svc.sync_plugin_market(sbx, reinstall_plugins=["http://dsh-manager:9000/plugins/packages/file-manager.tgz"])

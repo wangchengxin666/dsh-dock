@@ -155,8 +155,7 @@ def ensure_default_templates(db: Session, settings: Settings) -> None:
         if extra is not None:
             db.delete(extra)
 
-    default_init_script = "#!/usr/bin/env bash\nmkdir -p /home/dev/projects\n"
-    legacy_init_script = "#!/usr/bin/env bash\nmkdir -p /home/dev/workspace/projects\n"
+    default_init_script = "#!/usr/bin/env bash\nmkdir -p /home/workspace/projects\n"
     default_tpl = db.scalar(
         select(SandboxTemplate).where(SandboxTemplate.key == "agent-os")
     )
@@ -177,8 +176,6 @@ def ensure_default_templates(db: Session, settings: Settings) -> None:
                 is_builtin=True,
             )
         )
-    elif default_tpl.init_script == legacy_init_script:
-        default_tpl.init_script = default_init_script
     db.commit()
 
 

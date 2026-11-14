@@ -9,7 +9,7 @@ const http = require('node:http')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const home = process.env.DSH_HOME || '/home/dev/.dsh'
+const home = process.env.DSH_HOME || '/home/workspace/.dsh'
 const basePath = (process.env.SANDBOX_BASE_PATH || '').replace(/\/+$/, '')
 const mount = (process.env.DSH_MOUNT || `${basePath}/dsh`).replace(/\/+$/, '')
 const tokenRoute = `${basePath}/_dsh-token`

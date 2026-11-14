@@ -4,8 +4,8 @@ services:
       context: .
       args:
         # Match the host user so bind mounts on Linux are writable.
-        DEV_UID: ${DEV_UID:-1000}
-        DEV_GID: ${DEV_GID:-1000}
+        WORKSPACE_UID: ${WORKSPACE_UID:-1000}
+        WORKSPACE_GID: ${WORKSPACE_GID:-1000}
         NODE_VERSION: ${NODE_VERSION:-24.22.3}
         DSH_VERSION: ${DSH_VERSION:-0.2.2-rc.3}
         INSTALL_TOOLCHAIN: ${INSTALL_TOOLCHAIN:-false}
@@ -24,8 +24,8 @@ services:
       # this Caddy listener, by design.
       - "${HOST_PORT:-8080}:8080"
     volumes:
-      # /home/dev is the default workdir and persistent home (projects, DSH sessions, services, Caddy routes).
-      - dsh-home:/home/dev
+      # /home/workspace is the default workdir and persistent home (projects, DSH sessions, services, Caddy routes).
+      - dsh-home:/home/workspace
     stop_grace_period: 20s
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:$${CADDY_PORT:-8080}/healthz || exit 1"]

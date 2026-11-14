@@ -49,18 +49,12 @@ def test_slug_and_admin_lifecycle(db_session):
 
 def test_default_templates_migration_and_crud(db_session):
     settings = Settings(_env_file=None, sandbox_auto_install_plugins="file-manager")
-    # Seed legacy templates & legacy agent-os init_script to test migration
+    # Seed obsolete built-in templates and ensure agent-os is created cleanly
     db_session.query(SandboxTemplate).delete()
     db_session.add_all(
         [
             SandboxTemplate(key="fullstack-web", name="Old Web", is_builtin=True),
             SandboxTemplate(key="python-data", name="Old Py", is_builtin=True),
-            SandboxTemplate(
-                key="agent-os",
-                name="Agent OS",
-                is_builtin=True,
-                init_script="#!/usr/bin/env bash\nmkdir -p /home/dev/workspace/projects\n",
-            ),
         ]
     )
     db_session.commit()
@@ -72,8 +66,7 @@ def test_default_templates_migration_and_crud(db_session):
     assert "fullstack-web" not in keys
     assert "python-data" not in keys
     agent_os = next(t for t in templates if t.key == "agent-os")
-    assert "/home/dev/projects" in (agent_os.init_script or "")
-    assert "/home/dev/workspace" not in (agent_os.init_script or "")
+    assert "/home/workspace/projects" in (agent_os.init_script or "")
 
     custom = create_template(
         db_session,

@@ -11,9 +11,9 @@
 # so both Traefik subpath access and direct port access work seamlessly.
 set -euo pipefail
 
-apps_dir=${SANDBOX_APPS_DIR:-/home/dev/.dsh-sandbox/caddy/apps.d}
+apps_dir=${SANDBOX_APPS_DIR:-/home/workspace/.dsh-sandbox/caddy/apps.d}
 config=${SANDBOX_CADDY_CONFIG:-/etc/caddy/Caddyfile}
-state_dir="/home/dev/.dsh-sandbox"
+state_dir="/home/workspace/.dsh-sandbox"
 
 base_path_file="${state_dir}/base-path.txt"
 if [ -z "${SANDBOX_BASE_PATH:-}" ] && [ -f "${base_path_file}" ]; then

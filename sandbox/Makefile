@@ -14,7 +14,7 @@ help:
 	  make down      stop and remove the container
 	  make logs      follow container logs
 	  make token     print the current launch-token URL
-	  make shell     open bash as the dev user
+	  make shell     open bash as the workspace user
 	  make expose NAME=web PORT=5173
 	                 expose a loopback service at /apps/<name>/
 	EOF
@@ -53,9 +53,9 @@ token:
 	@$(COMPOSE) logs --no-color 2>&1 | grep -oE 'https?://[^[:space:]]+token=[A-Za-z0-9_-]+' | tail -1
 
 shell:
-	$(COMPOSE) exec -u dev -e HOME=/home/dev sandbox bash -l
+	$(COMPOSE) exec -u workspace -e HOME=/home/workspace sandbox bash -l
 
 # make expose NAME=web PORT=5173
 expose:
 	@test -n "$(NAME)" -a -n "$(PORT)" || (echo "usage: make expose NAME=web PORT=5173" >&2; exit 1)
-	$(COMPOSE) exec -u dev sandbox sandbox-expose "$(NAME)" "$(PORT)"
+	$(COMPOSE) exec -u workspace sandbox sandbox-expose "$(NAME)" "$(PORT)"

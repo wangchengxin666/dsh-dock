@@ -22,11 +22,11 @@ tar -xzf "${tmp_tgz}" -C "${install_dir}" --no-same-owner
 rm -f "${tmp_tgz}"
 
 toolchain_append_env "export DOTNET_ROOT=\"${install_dir}\""
-toolchain_append_env 'export DOTNET_CLI_HOME="/home/dev"'
+toolchain_append_env 'export DOTNET_CLI_HOME="/home/workspace"'
 toolchain_append_env 'export DOTNET_CLI_TELEMETRY_OPTOUT="1"'
 toolchain_append_env 'export DOTNET_NOLOGO="1"'
 toolchain_add_path "${install_dir}"
-toolchain_add_path "/home/dev/.dotnet/tools"
+toolchain_add_path "/home/workspace/.dotnet/tools"
 toolchain_link_bin "${install_dir}/dotnet"
 
 DOTNET_ROOT="${install_dir}" "${TOOLCHAIN_BIN_DIR}/dotnet" --version

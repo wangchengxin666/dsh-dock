@@ -351,7 +351,7 @@ const zhCN = {
   'dialog.template.cpuLabel': '默认 CPU 配额 (vCPU)',
   'dialog.template.memLabel': '默认内存配额 (如 2g, 4g, 8g)',
   'dialog.template.pluginsLabel': '自动预装的 DSH 插件 (逗号分隔，如 file-manager)',
-  'dialog.template.initScriptLabel': '工作区首次启动初始化脚本 (`init_script`，以 dev 用户在 `/home/dev` 执行)',
+  'dialog.template.initScriptLabel': '工作区首次启动初始化脚本 (`init_script`，以 workspace 用户在 `/home/workspace` 执行)',
   'dialog.template.envJsonLabel': '默认容器环境变量 JSON (`default_env_json`)',
   'dialog.template.submit': '保存模板',
 
@@ -662,7 +662,7 @@ const en: Record<MessageKey, string> = {
   'dialog.template.cpuLabel': 'Default CPU Quota (vCPU)',
   'dialog.template.memLabel': 'Default Memory Quota (e.g. 2g, 4g, 8g)',
   'dialog.template.pluginsLabel': 'Pre-installed DSH Plugins (comma-separated, e.g. file-manager)',
-  'dialog.template.initScriptLabel': 'First-boot Init Script (`init_script`, runs as `dev` in `/home/dev`)',
+  'dialog.template.initScriptLabel': 'First-boot Init Script (`init_script`, runs as `workspace` in `/home/workspace`)',
   'dialog.template.envJsonLabel': 'Default Container Env JSON (`default_env_json`)',
   'dialog.template.submit': 'Save Template',
 

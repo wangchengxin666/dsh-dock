@@ -2,7 +2,7 @@
 # Manage long-running dev services with the user-level supervisord.
 set -euo pipefail
 
-: "${HOME:=/home/dev}"
+: "${HOME:=/home/workspace}"
 services_dir="${HOME}/.dsh-sandbox/services"
 conf_dir="${services_dir}/conf.d"
 config="${services_dir}/supervisord.conf"

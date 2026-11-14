@@ -136,11 +136,11 @@ ${SANDBOX_PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/p/5173/
 本地插件安装到 web profile：
 
 ```bash
-dsh plugin --profile web add /home/dev/my-dsh-plugin
+dsh plugin --profile web add /home/workspace/my-dsh-plugin
 ```
 
 在 **Settings → Plugins** 启用。client 插件通常 HMR；Host 插件需要重启 DSH 进程。
-插件 profile 位于 `/home/dev/.dsh`，容器重建后仍然存在。
+插件 profile 位于 `/home/workspace/.dsh`，容器重建后仍然存在。
 
 如果插件自带 HTTP 后端：
 

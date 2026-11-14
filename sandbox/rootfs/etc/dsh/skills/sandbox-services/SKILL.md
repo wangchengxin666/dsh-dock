@@ -60,13 +60,13 @@ backend; the plugin itself still rides on `${SANDBOX_BASE_PATH}/dsh/`.
 For scheduled / periodic jobs that survive container restarts, use `sandbox-cron`:
 
 ```bash
-sandbox-cron add "0 9 * * * /home/dev/daily-report.sh >> /home/dev/logs/cron.log 2>&1"
+sandbox-cron add "0 9 * * * /home/workspace/daily-report.sh >> /home/workspace/logs/cron.log 2>&1"
 sandbox-cron list
 sandbox-cron clear
 ```
 
 `sandbox-service` writes a program into the user-level supervisord. The
-container-level supervisord starts that user instance as `dev`, so services
+container-level supervisord starts that user instance as `workspace`, so services
 survive **DSH restarts and container restarts**; configuration and logs live in
 the home volume. User services automatically inherit `SANDBOX_PUBLIC_ORIGIN`,
 `SANDBOX_BASE_PATH`, `SANDBOX_PUBLIC_URL`, `DSH_PUBLIC_URL`, and `PATH`.
@@ -164,11 +164,11 @@ them, and `/p/<port>/` returns 404 for them.
 Install a local plugin bundle into the web profile:
 
 ```bash
-dsh plugin --profile web add /home/dev/my-dsh-plugin
+dsh plugin --profile web add /home/workspace/my-dsh-plugin
 ```
 
 Then enable it in **Settings -> Plugins** (or the plugin manager). The profile
-lives in `/home/dev/.dsh`, so it survives container recreation.
+lives in `/home/workspace/.dsh`, so it survives container recreation.
 
 If the plugin needs an HTTP backend only for itself, bind `127.0.0.1:<port>` and
 configure the plugin with `http://127.0.0.1:<port>` (no `sandbox-expose` needed).

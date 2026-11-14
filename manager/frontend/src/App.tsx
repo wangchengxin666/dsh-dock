@@ -910,7 +910,7 @@ function AdminConsoleView({
       default_cpu_limit: '2.0',
       default_memory_limit: '4g',
       auto_install_plugins: 'file-manager',
-      init_script: '#!/usr/bin/env bash\nmkdir -p /home/dev/projects\n',
+      init_script: '#!/usr/bin/env bash\nmkdir -p /home/workspace/projects\n',
       default_env_json: '{}',
     })
     setTplModalOpen(true)

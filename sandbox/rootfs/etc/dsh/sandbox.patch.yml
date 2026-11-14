@@ -4,4 +4,4 @@
 # xdg-user-dir, which a slim container does not ship.
 - id: workspace-controller
   config:
-    documentsDirectory: /home/dev
+    documentsDirectory: /home/workspace

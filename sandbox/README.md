@@ -35,8 +35,8 @@ Traefik / (:8080) ─▶│ Caddy                                      │
                     │ supervisor                                 │
                     │ ├── caddy                                  │
                     │ ├── dsh-token                              │
-                    │ ├── dsh            (user: dev)             │
-                    │ └── user-services  (user: dev)             │
+                    │ ├── dsh            (user: workspace)       │
+                    │ └── user-services  (user: workspace)       │
                     └────────────────────────────────────────────┘
 ```
 
@@ -66,7 +66,7 @@ http://<host>:8080/
 ```bash
 docker run -d --name dsh-sandbox -p 18086:8080 \
   --env-file .env \
-  -v dsh-sandbox-home:/home/dev \
+  -v dsh-sandbox-home:/home/workspace \
   dsh-sandbox:latest
 ```
 
@@ -98,7 +98,7 @@ docker run -d --name dsh-sandbox -p 18086:8080 \
 
 ## 安全与 CA
 
-- 容器是安全边界：DSH 以 `dev` 运行，没有 sudo，服务只在容器内监听。
+- 容器是安全边界：DSH 以 `workspace` 运行，没有 sudo，服务只在容器内监听。
 - `ca-bundle.crt` 是公开 CA 证书集合（184 张），**不含私钥**；提交到内网仓库是安全的。
   如果安全策略不允许内部 CA 名称进入代码库，可在构建时从外部挂载或替换该文件。
 - 不要把 `.env` 提交到仓库；它已在 `.gitignore` 中。

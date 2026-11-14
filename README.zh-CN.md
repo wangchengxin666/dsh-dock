@@ -28,7 +28,7 @@ DSH Dock（代码库 `dsh-dock`）用于在 Docker 宿主机上按用户编排�
                    │ FastAPI + SQLite        │    │ （宿主机零端口暴露）         │
                    │ React 19 管理台 SPA     │    │ Caddy + DSH + dsh-token     │
                    │ 内置插件索引与 npm 仓库 │    │ 用户级 supervisord + cron    │
-                   └─────────────────────────┘    │ /home/dev 持久化数据卷       │
+                   └─────────────────────────┘    │ /home/workspace 持久化数据卷 │
                                                   └─────────────────────────────┘
 ```
 
@@ -39,8 +39,8 @@ DSH Dock（代码库 `dsh-dock`）用于在 Docker 宿主机上按用户编排�
   - `/s/<slug>/`、`/s/<slug>/dsh/*`、`/s/<slug>/_dsh-token` 统一由 `dsh-manager` 验证，仅允许**沙箱归属人本人或平台管理员**访问；
   - `/s/<slug>/apps/*` 与 `/s/<slug>/p/*` 默认开放，由用户服务自行实现鉴权；
   - 支持三种模式：`token`（管理员 Token + 本地用户 `scrypt` 密码登录与自助改密）、`oidc`（Keycloak / Auth0 / Authentik / Okta 企业单点登录）及 `none`。
-- **完整 `/home/dev` 持久化与一键备份**：
-  - 默认工作目录 `WORKDIR /home/dev`，所有项目文件、DSH profile/session、用户服务、crontab 与 Caddy 路由均持久化于用户独立 Docker Volume；
+- **完整 `/home/workspace` 持久化与一键备份**：
+  - 默认工作目录 `WORKDIR /home/workspace`，所有项目文件、DSH profile/session、用户服务、crontab 与 Caddy 路由均持久化于用户独立 Docker Volume；
   - 平台支持直接流式导出 `<slug>-home.tar` 完整用户目录备份。
 - **Agent 原生运维能力**：
   - 容器内预装 `sandbox-service`（用户级 supervisord）、`sandbox-expose`（动态发布 `/apps/<name>/` 路由）、`sandbox-cron`（持久化用户定时任务）及 `sandbox-services` agent skill。

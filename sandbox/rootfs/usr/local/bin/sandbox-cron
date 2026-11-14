@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Manage persistent user crontab stored in /home/dev/.dsh-sandbox/crontab.
+# Manage persistent user crontab stored in /home/workspace/.dsh-sandbox/crontab.
 # Survives container restarts and image upgrades.
 set -euo pipefail
 
-: "${HOME:=/home/dev}"
+: "${HOME:=/home/workspace}"
 cron_file="${HOME}/.dsh-sandbox/crontab"
 mkdir -p "$(dirname "${cron_file}")"
 touch "${cron_file}"
@@ -17,7 +17,7 @@ usage:
   sandbox-cron clear                    remove all entries
 
 Entries are persisted in ~/.dsh-sandbox/crontab and loaded into the system
-cron daemon for user 'dev' on container startup.
+cron daemon for user 'workspace' on container startup.
 EOF
 }
 

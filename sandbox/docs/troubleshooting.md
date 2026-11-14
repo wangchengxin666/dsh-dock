@@ -50,8 +50,8 @@ Git 不记录目录权限；服务器 checkout 的 `umask 027` 会让 `rootfs/us
 
 | 现象 | 排查 |
 | --- | --- |
-| 容器重建后工作文件丢失 | volume 没挂到 `/home/dev` |
-| bind mount 不可写 | `sudo chown -R 1000:1000 ./home`，或用 `DEV_UID/DEV_GID` 重建 |
+| 容器重建后工作文件丢失 | volume 没挂到 `/home/workspace` |
+| bind mount 不可写 | `sudo chown -R 1000:1000 ./home`，或用 `WORKSPACE_UID/WORKSPACE_GID` 重建 |
 | 容器重建后服务没恢复 | 检查 `~/.dsh-sandbox/services/conf.d` 是否在 volume 中；`sandbox-service list` |
 | 修改 skill 不生效 | 确认在 `~/.dsh/skills`，并开新会话；DSH 监视目录变化 |
 
@@ -61,8 +61,8 @@ Git 不记录目录权限；服务器 checkout 的 `umask 027` 会让 `rootfs/us
 docker compose logs -f
 docker compose exec sandbox curl -fsS http://127.0.0.1:8080/healthz
 docker compose exec sandbox supervisorctl -c /etc/supervisor/supervisord.conf status
-docker compose exec -u dev sandbox supervisorctl -c /home/dev/.dsh-sandbox/services/supervisord.conf status
-docker compose exec -u dev sandbox sandbox-expose --list
+docker compose exec -u workspace sandbox supervisorctl -c /home/workspace/.dsh-sandbox/services/supervisord.conf status
+docker compose exec -u workspace sandbox sandbox-expose --list
 ```
 
 外层代理/隧道还需要确认：

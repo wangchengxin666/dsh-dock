@@ -24,7 +24,7 @@ Delete or rename a file away from `.sh` (e.g. `10-dotnet.sh.disabled`) to skip i
 
 Available environment variables and helper functions inside each `toolchain.d/*.sh` script:
 
-- `TOOLCHAIN_DIR`: `/opt/toolchain` — install SDKs under `/opt/toolchain/<name>` (keeps `/home/dev` clean and out of workspace `.tar` backups).
+- `TOOLCHAIN_DIR`: `/opt/toolchain` — install SDKs under `/opt/toolchain/<name>` (keeps `/home/workspace` clean and out of workspace `.tar` backups).
 - `TOOLCHAIN_BIN_DIR`: `/opt/toolchain/bin` — use `toolchain_link_bin <binary>...` so binaries are directly on `PATH` even for non-shell `docker exec`.
 - `TOOLCHAIN_ENV_FILE`: `/opt/toolchain/env.sh` — sourced automatically by login shells (`/etc/profile.d/toolchain.sh`), interactive bash (`/etc/bash.bashrc`), `dsh-web`, and `user-services`.
 - `toolchain_resolve_arch` — prints `amd64` or `arm64`.
@@ -48,10 +48,10 @@ tar -xzf "${tmp}" -C "${TOOLCHAIN_DIR}" --no-same-owner
 rm -f "${tmp}"
 
 toolchain_append_env "export GOROOT=\"${TOOLCHAIN_DIR}/go\""
-toolchain_append_env 'export GOPATH="/home/dev/go"'
+toolchain_append_env 'export GOPATH="/home/workspace/go"'
 toolchain_append_env 'export GOPROXY="https://goproxy.cn,direct"'
 toolchain_add_path "${TOOLCHAIN_DIR}/go/bin"
-toolchain_add_path "/home/dev/go/bin"
+toolchain_add_path "/home/workspace/go/bin"
 toolchain_link_bin "${TOOLCHAIN_DIR}/go/bin/go" "${TOOLCHAIN_DIR}/go/bin/gofmt"
 ```
 

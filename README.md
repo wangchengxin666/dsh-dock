@@ -11,7 +11,7 @@
 
 ---
 
-DSH Dock (`dsh-dock`) provisions isolated, persistent per-user **DeepSeek Harness (DSH)** Agent OS development containers behind a single-port **Traefik v3.7** gateway and a **FastAPI + React** management plane — complete with unified authentication (`OIDC` / local passwords & tokens), built-in plugin hosting, one-click `/home/dev` backups, and agent-managed dev services.
+DSH Dock (`dsh-dock`) provisions isolated, persistent per-user **DeepSeek Harness (DSH)** Agent OS development containers behind a single-port **Traefik v3.7** gateway and a **FastAPI + React** management plane — complete with unified authentication (`OIDC` / local passwords & tokens), built-in plugin hosting, one-click `/home/workspace` backups, and agent-managed dev services.
 
 ## Architecture
 
@@ -28,7 +28,7 @@ DSH Dock (`dsh-dock`) provisions isolated, persistent per-user **DeepSeek Harnes
                    │ FastAPI + SQLite        │    │ (no host ports exposed)     │
                    │ React 19 Console SPA    │    │ Caddy + DSH + dsh-token     │
                    │ Built-in Plugin Registry│    │ User supervisord + cron     │
-                   └─────────────────────────┘    │ /home/dev (persistent vol)  │
+                   └─────────────────────────┘    │ /home/workspace (persistent)│
                                                   └─────────────────────────────┘
 ```
 
@@ -43,14 +43,14 @@ DSH Dock (`dsh-dock`) provisions isolated, persistent per-user **DeepSeek Harnes
 - **Control Plane (`/admin`) & Self-Service Portal (`/my`)**:
   - Provision and manage user sandboxes with CPU, memory, PIDs (`512`), `no-new-privileges`, custom init scripts, Git repo bootstrapping, and reusable `SandboxTemplate` presets (ships with the built-in `agent-os` template).
   - Manage platform admins, local user accounts (`scrypt` password hashes) or SSO users, and encrypted LLM profiles (Fernet encryption backed by `SECRET_KEY`).
-  - Live container stats, stripped ANSI logs, hot-recreation/image upgrades, and full `/home/dev` tar archive downloads (`<slug>-home.tar`).
+  - Live container stats, stripped ANSI logs, hot-recreation/image upgrades, and full `/home/workspace` tar archive downloads (`<slug>-home.tar`).
 - **Flexible Authentication (`MANAGER_AUTH_MODE`)**:
   - `token`: Zero external IdP required. Admins authenticate via `MANAGER_ADMIN_TOKEN`; users sign in at `/login` with admin-provisioned passwords and can rotate their own passwords at `/my`.
   - `oidc`: Enterprise SSO via any standard OpenID Connect provider (Keycloak, Auth0, Authentik, Okta) with optional split internal discovery (`OIDC_DISCOVERY_URL`).
   - `none`: Trusted loopback/development mode.
 - **Agent-Ready Runtime Image (`dsh-sandbox`)**:
   - Debian 13 (`trixie-slim`), Node.js 24, Python 3.13, `uv`, `pnpm`, `git`, `tmux`, `build-essential`, Caddy 2, `@deepseek-ai/dsh`, CJK locale (`zh_CN.UTF-8`), WQY fonts, and corporate CA support (`ca-bundle.crt`).
-  - `WORKDIR /home/dev` is the default workspace and persisted home volume.
+  - `WORKDIR /home/workspace` is the default workspace and persisted home volume.
   - Built-in CLI helpers + `sandbox-services` skill:
     - `sandbox-service`: manage persistent user services under user-level `supervisord`.
     - `sandbox-expose`: publish loopback ports at `/s/<slug>/apps/<name>/` via Caddy.
