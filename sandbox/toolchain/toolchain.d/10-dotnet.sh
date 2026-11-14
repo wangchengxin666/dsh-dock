@@ -11,7 +11,7 @@ case "${ARCH}" in
 esac
 
 install_dir="${TOOLCHAIN_DIR}/dotnet"
-url="https://dotnetcli.azureedge.net/dotnet/Sdk/${DOTNET_VER}/dotnet-sdk-${DOTNET_VER}-linux-${dotnet_arch}.tar.gz"
+url="https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_VER}/dotnet-sdk-${DOTNET_VER}-linux-${dotnet_arch}.tar.gz"
 tmp_tgz="/tmp/dotnet-sdk-${DOTNET_VER}.tar.gz"
 
 echo "toolchain: installing .NET SDK ${DOTNET_VER} (${dotnet_arch}) -> ${install_dir}"
