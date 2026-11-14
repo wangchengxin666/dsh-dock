@@ -2,15 +2,14 @@
 
 ## 环境分层
 
-构建参数在 Dockerfile 的 ARG 默认值里；运行时配置只有一个文件：
+构建参数在 Dockerfile 的 ARG 默认值里；需要通过 Compose 覆盖构建参数或做单容器调试时使用 `.env`：
 
-| 文件 | 用途 | 是否进入容器 |
+| 文件 | 用途 | 是否全部注入容器 |
 | --- | --- | --- |
-| `.env` | 容器运行时环境 | 是，`env_file` |
-| `.env.example` | 运行时模板 | — |
+| `.env` | Compose 构建参数与单容器调试变量 | 否（仅 `DSH_PUBLIC_URL`、`TZ` 按需传入） |
+| `.env.example` | 模板 | — |
 
-Compose 只把 `.env` 注入容器；`.dockerignore` 排除了 `.env*`，所以运行时
-secret 不会进入构建上下文。
+Compose 会读取 `.env` 参与构建参数与端口/容器名插值，但不再通过 `env_file` 把宿主机/构建期变量整份透传进容器；`.dockerignore` 排除了 `.env*`，因此本地配置也不会进入构建上下文。
 
 首次准备：
 
@@ -54,7 +53,7 @@ docker build \
   -t dsh-sandbox:latest .
 ```
 
-`.env` 只用于运行时 `--env-file`，不要传给 `docker build`（`docker compose build` 会读取 `.env` 中的同名变量作为构建参数）。
+`.env` 主要供 `docker compose build` 和单容器调试的 Compose 插值使用（仅 `DSH_PUBLIC_URL`、`TZ` 会传入调试容器）；直接用 `docker build` 时无需 `.env`。
 
 常用构建参数：
 
@@ -63,6 +62,7 @@ docker build \
 | `DSH_VERSION` | `0.2.2-rc.3` | `@deepseek-ai/dsh` 版本 |
 | `NODE_VERSION` | `24.22.3` | Node 运行时 |
 | `INSTALL_TOOLCHAIN` | `false` | 是否在构建期按顺序执行 `sandbox/toolchain/toolchain.d/*.sh` 将自定义工具链安装至 `/opt/toolchain`（默认提供 `10-dotnet.sh`） |
+| `INSTALL_BROWSER` | `false` | 是否安装无头 Chromium + Xvfb |
 | `WORKSPACE_UID` / `WORKSPACE_GID` | `1000` | workspace 用户 UID/GID |
 | `DOCKER_REGISTRY` | `docker.io/library` | 基础镜像完整前缀 |
 | `APT_MIRROR` | `deb.debian.org` | Debian 镜像源主机名或完整 URL（如 `https://mirrors.aliyun.com`） |
@@ -103,7 +103,7 @@ make expose NAME=web PORT=5173
 
 ```bash
 docker run -d --name dsh-sandbox -p 18086:8080 \
-  --env-file .env \
+  -e DSH_PUBLIC_URL=http://localhost:18086/dsh/ \
   -v dsh-sandbox-home:/home/workspace \
   dsh-sandbox:latest
 ```

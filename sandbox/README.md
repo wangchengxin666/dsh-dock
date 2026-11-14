@@ -65,7 +65,7 @@ http://<host>:8080/
 
 ```bash
 docker run -d --name dsh-sandbox -p 18086:8080 \
-  --env-file .env \
+  -e DSH_PUBLIC_URL=http://localhost:18086/dsh/ \
   -v dsh-sandbox-home:/home/workspace \
   dsh-sandbox:latest
 ```
@@ -111,7 +111,7 @@ docker run -d --name dsh-sandbox -p 18086:8080 \
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
-├── .env.example              # 运行时配置模板
+├── .env.example              # 构建参数与单容器调试环境变量模板
 ├── docs/                     # 架构、构建、服务、OIDC、安全与排查文档
 ├── toolchain/                # 模块化工具链安装框架 (install.sh + toolchain.d/*.sh)
 ├── tests/                    # dsh-token (Node) 与容器脚本测试 (Bash + Caddy)

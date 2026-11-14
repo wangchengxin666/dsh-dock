@@ -74,7 +74,7 @@ DSH Dock (`dsh-dock`) provisions isolated, persistent per-user **DeepSeek Harnes
 ├── sandbox/                        # Sandbox runtime image, supervisor, Caddy, & helpers
 │   ├── Dockerfile                  # Parameterized sandbox image build
 │   ├── docker-compose.yml          # Standalone sandbox compose (publishes :8080)
-│   ├── .env.example                # Standalone runtime environment template
+│   ├── .env.example                # Build args & standalone compose template
 │   ├── Makefile                    # Convenience targets (env, build, up, logs, token, expose)
 │   ├── toolchain/                  # Drop-in /opt/toolchain installers (toolchain.d/*.sh)
 │   ├── docs/                       # Architecture, operations, OIDC, security, & troubleshooting

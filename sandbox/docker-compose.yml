@@ -9,6 +9,7 @@ services:
         NODE_VERSION: ${NODE_VERSION:-24.22.3}
         DSH_VERSION: ${DSH_VERSION:-0.2.2-rc.3}
         INSTALL_TOOLCHAIN: ${INSTALL_TOOLCHAIN:-false}
+        INSTALL_BROWSER: ${INSTALL_BROWSER:-false}
         # Override in .env when using private mirrors or internal registries.
         DOCKER_REGISTRY: ${DOCKER_REGISTRY:-docker.io/library}
         APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
@@ -17,8 +18,9 @@ services:
     container_name: ${CONTAINER_NAME:-dsh-sandbox}
     init: true
     restart: unless-stopped
-    env_file:
-      - .env
+    environment:
+      DSH_PUBLIC_URL: ${DSH_PUBLIC_URL:-http://localhost:8080/dsh/}
+      TZ: ${TZ:-UTC}
     ports:
       # The only published port. Everything else is reachable only through
       # this Caddy listener, by design.
