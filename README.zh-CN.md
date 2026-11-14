@@ -49,7 +49,7 @@ DSH Dock（代码库 `dsh-dock`）用于在 Docker 宿主机上按用户编排�
   - 按需启用 `INSTALL_TOOLCHAIN=true` 时，按文件名顺序执行 `sandbox/toolchain/toolchain.d/*.sh`（内置 `10-dotnet.sh` 参考脚本），将 SDK 安装至 `/opt/toolchain` 并自动注入交互式 Shell、`DSH` 与 `user-services` 环境。
 - **自托管插件索引与只读 npm 仓库**：
   - `dsh-manager` 热挂载 `plugins/` 目录，自动提供 `/plugins/index.json`、内联 SVG 图标、`.tgz` 打包下载及只读 `/plugins/npm/*` packument，内置 `file-manager` 并支持首启自动安装。
-- **企业内网与国内镜像友好**：支持 `DOCKER_REGISTRY`、`APT_MIRROR`（含 `https://mirrors.aliyun.com` 等 HTTPS 源）、`NPM_REGISTRY`、`PIP_INDEX_URL` 与自定义企业 CA 证书。
+- **企业内网与国内镜像友好**：支持 `DOCKER_REGISTRY`、`APT_MIRROR`（含 `https://mirrors.aliyun.com` 等 HTTPS 源）、`NODE_MIRROR`（如 `https://mirrors.aliyun.com/nodejs-release`）、`NPM_REGISTRY`、`PIP_INDEX_URL` 与自定义企业 CA 证书。
 
 ## 快速开始
 
@@ -66,7 +66,9 @@ docker compose build
 ```bash
 docker build \
   --build-arg APT_MIRROR=https://mirrors.aliyun.com \
+  --build-arg NODE_MIRROR=https://mirrors.aliyun.com/nodejs-release \
   --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
+  --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
   --build-arg INSTALL_TOOLCHAIN=true \
   -t dsh-sandbox:latest ./sandbox
 ```

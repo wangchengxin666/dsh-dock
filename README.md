@@ -62,7 +62,7 @@ DSH Dock (`dsh-dock`) provisions isolated, persistent per-user **DeepSeek Harnes
   - Mounts `plugins/` directly into `dsh-manager` and dynamically serves `/plugins/index.json`, inline SVG icons, `.tgz` bundles (`/plugins/packages/*.tgz`), and read-only npm packuments (`/plugins/npm/*`).
   - Ships with `@local/dsh-plugin-file-manager` and supports automatic first-boot installation via `SANDBOX_AUTO_INSTALL_PLUGINS`.
 - **Mirror & Internal Network Ready**:
-  - Supports `DOCKER_REGISTRY`, `APT_MIRROR` (including HTTPS mirrors like `https://mirrors.aliyun.com`), `NPM_REGISTRY`, `PIP_INDEX_URL`, and `CUSTOM_CA_BUNDLE_PATH`.
+  - Supports `DOCKER_REGISTRY`, `APT_MIRROR` (including HTTPS mirrors like `https://mirrors.aliyun.com`), `NODE_MIRROR` (e.g. `https://mirrors.aliyun.com/nodejs-release`), `NPM_REGISTRY`, `PIP_INDEX_URL`, and `CUSTOM_CA_BUNDLE_PATH`.
 
 ## Repository Layout
 
@@ -108,7 +108,9 @@ docker compose build
 > ```bash
 > docker build \
 >   --build-arg APT_MIRROR=https://mirrors.aliyun.com \
+>   --build-arg NODE_MIRROR=https://mirrors.aliyun.com/nodejs-release \
 >   --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
+>   --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
 >   --build-arg INSTALL_TOOLCHAIN=true \
 >   -t dsh-sandbox:latest ./sandbox
 > ```

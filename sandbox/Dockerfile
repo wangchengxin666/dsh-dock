@@ -19,9 +19,13 @@ ARG DSH_VERSION=0.2.2-rc.3
 ARG INSTALL_BROWSER=false
 ARG WORKSPACE_UID=1000
 ARG WORKSPACE_GID=1000
-# Optional Debian mirror host or URL (e.g. https://mirrors.aliyun.com) and npm registry.
+# Optional Debian mirror host or URL (e.g. https://mirrors.aliyun.com),
+# Node.js dist mirror (e.g. https://mirrors.aliyun.com/nodejs-release),
+# npm registry, and PyPI index URL (e.g. https://mirrors.aliyun.com/pypi/simple/).
 ARG APT_MIRROR=deb.debian.org
+ARG NODE_MIRROR=https://nodejs.org/dist
 ARG NPM_REGISTRY=
+ARG PIP_INDEX_URL=https://pypi.org/simple/
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
@@ -80,7 +84,12 @@ RUN set -eux; \
       arm64) node_arch=arm64 ;; \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
-    curl -fsSL --retry 3 "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" -o /tmp/node.tar.xz; \
+    node_mirror="${NODE_MIRROR:-https://nodejs.org/dist}"; \
+    case "${node_mirror}" in \
+      http://*|https://*) node_mirror="${node_mirror%/}" ;; \
+      *) node_mirror="https://${node_mirror%/}" ;; \
+    esac; \
+    curl -fsSL --retry 3 "${node_mirror}/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" -o /tmp/node.tar.xz; \
     tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 --no-same-owner; \
     rm -f /tmp/node.tar.xz; \
     node --version; npm --version
@@ -96,12 +105,6 @@ RUN set -eux; \
     npm install -g --no-fund --no-audit --dangerously-allow-all-scripts ${registry_flag} \
       "pnpm@10" "@deepseek-ai/dsh@${dsh_ver}" \
  && npm cache clean --force
-
-# ---------------------------------------------------------------------------
-# uv (Python package & runtime manager)
-# ---------------------------------------------------------------------------
-RUN curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh \
- && uv --version
 
 # ---------------------------------------------------------------------------
 # Reverse proxy binary
@@ -127,6 +130,20 @@ ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
     CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
     GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
+
+# ---------------------------------------------------------------------------
+# uv (Python package & runtime manager, installed via pip using PIP_INDEX_URL)
+# ---------------------------------------------------------------------------
+RUN set -eux; \
+    pip_index="${PIP_INDEX_URL:-https://pypi.org/simple/}"; \
+    trusted_flag=""; \
+    case "${pip_index}" in \
+      http://*) trusted_host="${pip_index#http://}"; trusted_host="${trusted_host%%/*}"; trusted_host="${trusted_host%%:*}"; trusted_flag="--trusted-host ${trusted_host}" ;; \
+    esac; \
+    pip3 install --no-cache-dir --break-system-packages --root-user-action=ignore \
+      --index-url "${pip_index}" ${trusted_flag} uv; \
+    uv --version; \
+    uvx --version
 
 # ---------------------------------------------------------------------------
 # Optional custom toolchains (installed into /opt/toolchain when INSTALL_TOOLCHAIN=true).

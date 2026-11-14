@@ -66,7 +66,9 @@ docker build \
 | `WORKSPACE_UID` / `WORKSPACE_GID` | `1000` | workspace 用户 UID/GID |
 | `DOCKER_REGISTRY` | `docker.io/library` | 基础镜像完整前缀 |
 | `APT_MIRROR` | `deb.debian.org` | Debian 镜像源主机名或完整 URL（如 `https://mirrors.aliyun.com`） |
+| `NODE_MIRROR` | `https://nodejs.org/dist` | Node.js 二进制下载镜像 URL（如 `https://mirrors.aliyun.com/nodejs-release`） |
 | `NPM_REGISTRY` | 空 → 官方 npm | npm 镜像源 URL |
+| `PIP_INDEX_URL` | `https://pypi.org/simple/` | PyPI 镜像源 URL，用于安装 `uv`（如 `https://mirrors.aliyun.com/pypi/simple/`） |
 
 在内网或国内网络构建时，可在 `.env` 或 `--build-arg` 中覆盖镜像源：
 
@@ -74,6 +76,9 @@ docker build \
 docker build \
   --build-arg DOCKER_REGISTRY=your-registry.example.com/docker \
   --build-arg APT_MIRROR=https://mirrors.aliyun.com \
+  --build-arg NODE_MIRROR=https://mirrors.aliyun.com/nodejs-release \
+  --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
+  --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
   -t dsh-sandbox:latest .
 ```
 

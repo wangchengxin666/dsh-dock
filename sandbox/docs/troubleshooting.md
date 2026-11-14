@@ -43,6 +43,8 @@ Git 不记录目录权限；服务器 checkout 的 `umask 027` 会让 `rootfs/us
 | `MANAGER_AUTH_MODE=oidc` 启动报错 | 确认 `manager/.env` 已配置 `OIDC_ISSUER_URL`（或 `OIDC_DISCOVERY_URL`）、`OIDC_CLIENT_ID`、`OIDC_CLIENT_SECRET` |
 | 构建失败在 Docker Hub | 用 `DOCKER_REGISTRY=your-registry.example.com/docker` 等代理前缀 |
 | apt 很慢 | 设置 `APT_MIRROR=https://mirrors.aliyun.com` |
+| Node.js 下载慢或失败 | 设置 `NODE_MIRROR=https://mirrors.aliyun.com/nodejs-release` |
+| `uv` 安装慢或 PyPI 失败 | 设置 `PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/` |
 | Healthcheck 不出现 | Podman 使用 `--format docker` 构建；OCI 会丢弃 HEALTHCHECK |
 | 容器启动后立刻退出 | `docker compose logs` / `podman logs`；常见是 env 缺失或目录权限 |
 

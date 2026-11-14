@@ -13,7 +13,9 @@ services:
         # Override in .env when using private mirrors or internal registries.
         DOCKER_REGISTRY: ${DOCKER_REGISTRY:-docker.io/library}
         APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
+        NODE_MIRROR: ${NODE_MIRROR:-https://nodejs.org/dist}
         NPM_REGISTRY: ${NPM_REGISTRY:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple/}
     image: ${DSH_IMAGE_REPO:-dsh-sandbox}:${DSH_IMAGE_TAG:-latest}
     container_name: ${CONTAINER_NAME:-dsh-sandbox}
     init: true
