@@ -36,7 +36,7 @@ Every sandbox created by the manager will automatically install `file-manager` f
 dsh plugin --profile web add http://<manager>:9000/plugins/packages/file-manager.tgz
 
 # Or from a local directory checkout:
-dsh plugin --profile web add /workspace/dsh-sandbox/plugins/file-manager
+dsh plugin --profile web add /path/to/repo/plugins/file-manager
 ```
 
 ## Developing a plugin
@@ -46,6 +46,12 @@ Each plugin builds and tests standalone; `file-manager` for example:
 ```sh
 cd plugins/file-manager
 node scripts/build.mjs       # rebuild client.js, then run every check
+```
+
+To run the full `file-manager` test suite (which resolves `@deepseek-ai/cordis` and `@deepseek-ai/dsh-typert-protocol` peers from DSH) inside the built sandbox image:
+
+```sh
+docker run --rm --entrypoint bash -v "$PWD/plugins:/work/plugins" -w /work/plugins/file-manager dsh-sandbox:latest -c "node .test/run.mjs"
 ```
 
 Because `dsh-manager` dynamically packages `plugins/<slug>/` into a `.tgz` and refreshes its SHA-1 / SHA-512 integrity whenever files in `plugins/<slug>/` change, updating a plugin on disk immediately updates the package served by `dsh-manager`.

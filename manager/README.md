@@ -6,7 +6,8 @@ Single-host control plane and Traefik v3.7 gateway for per-user persistent DSH A
 - React 19 + TypeScript + Vite 7 + Tailwind CSS v4 + shadcn/ui SPA (built automatically in Docker multi-stage build)
 - Traefik v3.7 single-domain subpath gateway (`/s/<slug>/...`) with `ForwardAuth` strict owner/admin workspace isolation
 - Flexible auth: `MANAGER_AUTH_MODE=token|oidc|none` (shared uniformly across `/admin`, `/my`, and `/s/<slug>/dsh/*`)
-- Admin-only workspace provisioning (`/admin`) + Template management + Read/Control/Logs/Backup user portal (`/my`)
+- Admin-only workspace provisioning (`/admin`) + Built-in `agent-os` & custom Templates + Read/Control/Logs/Backup (`/home/dev` -> `<slug>-home.tar`) user portal (`/my`)
+- Zero host port bindings on managed sandboxes (containers join `dsh-manager` Docker network; Caddy listens internally on `:8080`)
 - Dynamic hot-mounted DSH Plugin Discover Index (`/plugins/index.json`), inline icons, `.tgz` packager, and read-only npm registry (`/plugins/npm/*`)
 - Optional LLM Profile pre-configuration injected into sandboxes at creation
 - Per-sandbox CPU/memory limits, container log rotation, and `no-new-privileges` hardening
@@ -46,6 +47,28 @@ cp .env.example .env
 
 export DATABASE_URL="sqlite:///$PWD/data/dsh-manager.db"
 uvicorn app.main:app --host 127.0.0.1 --port 9000
+```
+
+## Tests
+
+### Backend (`pytest`)
+
+```bash
+cd manager
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest -v
+```
+
+### Frontend (`Node >= 24` + `Yarn 4`)
+
+```bash
+cd manager/frontend
+corepack yarn install --immutable
+corepack yarn typecheck
+corepack yarn test
+corepack yarn build
 ```
 
 ## Self-Hosted Plugin Index & Registry

@@ -1,8 +1,9 @@
 /** Runs the package's checks in order and reports the exit code. */
 import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 let failed = 0
 for (const file of ['behaviour.mjs', 'client-flow3.mjs', 'bundle-load.mjs', 'client-live.mjs', 'host-live.mjs', 'icon-check.mjs', 'locale-check.mjs', 'sidebar-row.mjs', 'endpoint-names.mjs']) {
-  const path = new URL(file, import.meta.url).pathname
+  const path = fileURLToPath(new URL(file, import.meta.url))
   const result = spawnSync(process.execPath, [path], { encoding: 'utf8' })
   process.stdout.write(result.stdout)
   process.stderr.write(result.stderr)

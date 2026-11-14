@@ -125,7 +125,7 @@ supervisorctl -c ~/.dsh-sandbox/services/supervisord.conf update
 `/p/<port>/...` 始终可用，反代到 `127.0.0.1:<port>`：
 
 ```text
-http://<host>:8080/p/5173/
+${SANDBOX_PUBLIC_ORIGIN}${SANDBOX_BASE_PATH}/p/5173/
 ```
 
 它是公开的，适合临时调试；长期服务请用 `sandbox-service` + `sandbox-expose`。

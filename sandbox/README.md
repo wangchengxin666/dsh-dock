@@ -90,7 +90,8 @@ docker run -d --name dsh-sandbox -p 18086:8080 \
 | --- | --- |
 | [架构](docs/architecture.md) | 进程模型、路径规划、DSH token 流程 |
 | [构建与运维](docs/operations.md) | 构建参数、env 分层、Compose、持久化 |
-| [服务与暴露](docs/services.md) | DSH 插件、`sandbox-service`、`sandbox-expose`、base path |
+| [自定义工具链](toolchain/README.md) | `INSTALL_TOOLCHAIN=true` 与 `toolchain.d/*.sh` 扩展指南 |
+| [服务与暴露](docs/services.md) | DSH 插件、`sandbox-service`、`sandbox-expose`、`sandbox-cron`、base path |
 | [OIDC](docs/OIDC.md) | Manager 统一 OIDC + Traefik ForwardAuth 配置与 Keycloak 示例 |
 | [安全模型](docs/security.md) | 认证边界、容器边界、CA、密钥 |
 | [故障排查](docs/troubleshooting.md) | 登录、路由、服务、资源问题 |
@@ -110,8 +111,10 @@ docker run -d --name dsh-sandbox -p 18086:8080 \
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
-├── .env.example      # 运行时
-├── docs/
+├── .env.example              # 运行时配置模板
+├── docs/                     # 架构、构建、服务、OIDC、安全与排查文档
+├── toolchain/                # 模块化工具链安装框架 (install.sh + toolchain.d/*.sh)
+├── tests/                    # dsh-token (Node) 与容器脚本测试 (Bash + Caddy)
 ├── ca-bundle.crt
 └── rootfs/                   # entrypoint、Caddy、supervisor、skill、helper
 ```

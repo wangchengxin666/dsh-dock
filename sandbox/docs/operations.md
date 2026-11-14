@@ -49,7 +49,7 @@ docker build -t dsh-sandbox:latest .
 
 ```bash
 docker build \
-  --build-arg DSH_VERSION=0.2.2-rc.2 \
+  --build-arg DSH_VERSION=0.2.2-rc.3 \
   --build-arg TARGETARCH=amd64 \
   -t dsh-sandbox:latest .
 ```
@@ -60,12 +60,12 @@ docker build \
 
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
-| `DSH_VERSION` | `0.2.2-rc.2` | `@deepseek-ai/dsh` 版本 |
+| `DSH_VERSION` | `0.2.2-rc.3` | `@deepseek-ai/dsh` 版本 |
 | `NODE_VERSION` | `24.22.3` | Node 运行时 |
 | `INSTALL_TOOLCHAIN` | `false` | 是否在构建期按顺序执行 `sandbox/toolchain/toolchain.d/*.sh` 将自定义工具链安装至 `/opt/toolchain`（默认提供 `10-dotnet.sh`） |
 | `DEV_UID` / `DEV_GID` | `1000` | dev 用户 UID/GID |
 | `DOCKER_REGISTRY` | `docker.io/library` | 基础镜像完整前缀 |
-| `APT_MIRROR` | `deb.debian.org` | Debian 镜像源主机名 |
+| `APT_MIRROR` | `deb.debian.org` | Debian 镜像源主机名或完整 URL（如 `https://mirrors.aliyun.com`） |
 | `NPM_REGISTRY` | 空 → 官方 npm | npm 镜像源 URL |
 
 在内网或国内网络构建时，可在 `.env` 或 `--build-arg` 中覆盖镜像源：
@@ -141,25 +141,18 @@ fonts-wqy-microhei + fontconfig
 
 ## 镜像体积
 
-当前完整镜像约 2.6 GB（压缩后），主要构成：
+默认基础镜像（`INSTALL_TOOLCHAIN=false`）包含 Node、Python、`uv`、`pnpm`、`Caddy`、git、build-essential、中文字体和 `@deepseek-ai/dsh`，体积约 1.9 GB。开启 `INSTALL_TOOLCHAIN=true` 时，额外层大小取决于 `sandbox/toolchain/toolchain.d/*.sh` 所装工具链（例如内置参考脚本 `10-dotnet.sh` 安装 .NET 10 SDK 约增加 ~680 MB 至 `/opt/toolchain/dotnet`）：
 
 | 层 | 约 |
 | --- | --- |
-| apt 工具链 + 开发头文件 | 619 MB |
-| DSH/npm 全局依赖 | 833 MB |
-| .NET 10 SDK | 681 MB |
-| Node.js | 203 MB |
+| apt 工具链 + 开发头文件 | ~620 MB |
+| DSH / npm 全局依赖 | ~830 MB |
+| Node.js | ~200 MB |
 | `Caddy` | ~45 MB |
-| uv | 32 MB |
+| `uv` | ~32 MB |
+| 可选 `/opt/toolchain`（启用 `INSTALL_TOOLCHAIN=true` 时） | 视自定义脚本而定（如 .NET 10 SDK ~680 MB） |
 
-可精简的空间：
-
-- **安全**：去掉 `.NET templates`、文档/man 页，约几十 MB；中文改用 WQY 字体而不是 Noto CJK。
-- **中等**：去掉 `build-essential` 和 `-dev` 头文件，约 200–300 MB，但会破坏 node-gyp/pip 原生扩展的现场编译。
-- **较大**：维护一个不带 .NET SDK 的 slim 变体，可省约 680 MB；或只装 .NET runtime。
-- **不建议**：裁剪 DSH npm 依赖（`@deepseek-ai` 约 622 MB），容易破坏 UI/插件/语音等运行时能力。
-
-完整开发沙箱建议保留当前 full 镜像；只需要 Node/Python 的场景可以另出 slim 变体。
+保持默认 `INSTALL_TOOLCHAIN=false` 即为精简开发镜像；需要 Go、JDK、Rust、.NET 等环境时，按 [toolchain/README.md](../toolchain/README.md) 规范写入 `toolchain/toolchain.d/*.sh` 并传入 `--build-arg INSTALL_TOOLCHAIN=true`。
 
 ## 持久化与 UID
 
@@ -168,8 +161,9 @@ volumes:
   - dsh-home:/home/dev
 ```
 
-包含 workspace、DSH profile/session、模型配置、skill、apps.d 路由和日志。删除容器不会
-删除 volume；`docker compose down -v` 才会。
+`/home/dev` 是沙箱默认工作目录与持久卷挂载点（`WORKDIR /home/dev`），包含用户项目代码、DSH profile/session、模型配置、skill、用户服务、`sandbox-cron`、`apps.d` 路由和日志（平台 `/api/sandboxes/{id}/backup` 亦完整打包 `/home/dev` 为 `<slug>-home.tar`）。删除容器不会删除 volume；`docker compose down -v` 才会。
+
+自定义 SDK 放在 `/opt/toolchain` 下，既不污染 `/home/dev` 备份归档，又能随容器重建立即恢复。
 
 bind mount 时保证 UID/GID 1000 可写：
 
@@ -193,7 +187,6 @@ DSH cookie 的签名密钥在 `/home/dev/.dsh` 中，升级后旧浏览器 cooki
 `ca-bundle.crt` 会在构建时安装到系统信任库，并在每次启动时刷新。它包含公开 CA 证书，
 不含私钥。替换为企业自己的 bundle 后重新构建即可。
 
-## 镜像大小
+## 镜像大小与缓存
 
-完整工具链约 2.5–3 GB。基础镜像层和 npm/pip 缓存会复用；多用户场景建议使用内部
-registry，并在宿主机预拉取。
+基础镜像约 1.9 GB（按需启用 `INSTALL_TOOLCHAIN=true` 后随自定义 SDK 增加）。基础镜像层和 npm/pip 缓存会复用；多用户场景建议使用内部 registry，并在宿主机预构建或预拉取。

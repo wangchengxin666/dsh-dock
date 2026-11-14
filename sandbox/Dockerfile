@@ -88,12 +88,13 @@ RUN set -eux; \
 # npm >= 11.6 blocks dependency install scripts unless approved. DSH needs
 # node-pty's prebuild and koffi's native build, so allow the pinned packages'
 # scripts explicitly for this build-time install.
-ARG DSH_PACKAGE_VERSION=0.2.2-rc.3
+ARG DSH_PACKAGE_VERSION=
 RUN set -eux; \
     registry_flag=""; \
     if [ -n "${NPM_REGISTRY}" ]; then registry_flag="--registry=${NPM_REGISTRY}"; fi; \
+    dsh_ver="${DSH_PACKAGE_VERSION:-${DSH_VERSION}}"; \
     npm install -g --no-fund --no-audit --dangerously-allow-all-scripts ${registry_flag} \
-      "pnpm@10" "@deepseek-ai/dsh@${DSH_PACKAGE_VERSION}" \
+      "pnpm@10" "@deepseek-ai/dsh@${dsh_ver}" \
  && npm cache clean --force
 
 # ---------------------------------------------------------------------------

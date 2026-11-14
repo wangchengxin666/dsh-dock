@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+import pytest
+
+from app.config import Settings
+from app.docker_service import SandboxRuntimeError
+from app.models import AuditLog, SandboxTemplate
+from app.schemas import TemplateCreate, TemplateUpdate
+from app.services import (
+    Conflict,
+    NotFoundError,
+    add_platform_admin,
+    create_llm_profile,
+    create_sandbox,
+    create_template,
+    deactivate_platform_admin,
+    delete_sandbox,
+    delete_template,
+    ensure_bootstrap_admin,
+    ensure_default_templates,
+    get_or_create_user,
+    list_templates,
+    restart_sandbox,
+    start_sandbox,
+    stop_sandbox,
+    unique_slug,
+    update_sandbox_limits,
+    update_template,
+    upgrade_sandbox,
+)
+
+
+def test_slug_and_admin_lifecycle(db_session):
+    ensure_bootstrap_admin(db_session, "admin@example.com")
+    second = add_platform_admin(db_session, "ops@example.com", "Ops")
+    assert second.active is True
+    deactivated = deactivate_platform_admin(db_session, "ops@example.com")
+    assert deactivated.active is False
+
+    with pytest.raises(NotFoundError):
+        deactivate_platform_admin(db_session, "missing@example.com")
+
+    # Slug deduplication
+    assert unique_slug(db_session, "alice@example.com", None) == "alice"
+    u = get_or_create_user(db_session, "alice@example.com", "Alice")
+    assert u.email == "alice@example.com"
+    assert u.display_name == "Alice"
+
+
+def test_default_templates_migration_and_crud(db_session):
+    settings = Settings(_env_file=None, sandbox_auto_install_plugins="file-manager")
+    # Seed legacy templates & legacy agent-os init_script to test migration
+    db_session.query(SandboxTemplate).delete()
+    db_session.add_all(
+        [
+            SandboxTemplate(key="fullstack-web", name="Old Web", is_builtin=True),
+            SandboxTemplate(key="python-data", name="Old Py", is_builtin=True),
+            SandboxTemplate(
+                key="agent-os",
+                name="Agent OS",
+                is_builtin=True,
+                init_script="#!/usr/bin/env bash\nmkdir -p /home/dev/workspace/projects\n",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    ensure_default_templates(db_session, settings)
+    templates = list_templates(db_session)
+    keys = [t.key for t in templates]
+    assert "agent-os" in keys
+    assert "fullstack-web" not in keys
+    assert "python-data" not in keys
+    agent_os = next(t for t in templates if t.key == "agent-os")
+    assert "/home/dev/projects" in (agent_os.init_script or "")
+    assert "/home/dev/workspace" not in (agent_os.init_script or "")
+
+    custom = create_template(
+        db_session,
+        TemplateCreate(
+            key="rust-dev",
+            name="Rust Dev",
+            default_cpu_limit=4.0,
+            default_memory_limit="8g",
+        ),
+    )
+    updated = update_template(db_session, custom.id, TemplateUpdate(name="Rust Workstation", default_cpu_limit=6.0))
+    assert updated.name == "Rust Workstation"
+    assert updated.default_cpu_limit == 6.0
+
+    with pytest.raises(Conflict):
+        create_template(db_session, TemplateCreate(key="rust-dev", name="Dup"))
+
+    delete_template(db_session, custom.id)
+    assert all(t.id != custom.id for t in list_templates(db_session))
+
+
+def test_sandbox_lifecycle_rollback_and_upgrade(db_session, fake_docker):
+    settings = Settings(_env_file=None, sandbox_auto_install_plugins="file-manager")
+    llm = create_llm_profile(db_session, "GPT", "https://api.openai.com/v1", "gpt-4o", "enc-key")
+
+    sbx = create_sandbox(
+        db_session,
+        settings,
+        fake_docker,  # type: ignore[arg-type]
+        email="alice@example.com",
+        slug=None,
+        display_name="Alice",
+        image_tag="latest",
+        cpu_limit=3.0,
+        memory_limit="6g",
+        llm_profile_id=llm.id,
+        template="agent-os",
+    )
+    assert sbx.slug == "alice"
+    assert sbx.status == "running"
+    assert sbx.container_id == "cid-alice"
+    assert ("create", "alice") in fake_docker.calls
+    assert ("wait_healthy", "alice") in fake_docker.calls
+
+    # Duplicate slug rejected
+    with pytest.raises(Conflict):
+        create_sandbox(
+            db_session,
+            settings,
+            fake_docker,  # type: ignore[arg-type]
+            email="alice@example.com",
+            slug="alice",
+            display_name=None,
+            image_tag=None,
+        )
+
+    assert stop_sandbox(db_session, fake_docker, sbx.id).status == "stopped"  # type: ignore[arg-type]
+    assert start_sandbox(db_session, fake_docker, sbx.id).status == "running"  # type: ignore[arg-type]
+    assert restart_sandbox(db_session, fake_docker, sbx.id).status == "running"  # type: ignore[arg-type]
+
+    patched = update_sandbox_limits(
+        db_session,
+        fake_docker,  # type: ignore[arg-type]
+        sbx.id,
+        4.0,
+        "8g",
+    )
+    assert patched.cpu_limit == 4.0
+    assert patched.memory_limit == "8g"
+
+    upgraded = upgrade_sandbox(
+        db_session,
+        fake_docker,  # type: ignore[arg-type]
+        sbx.id,
+        image_tag="v2",
+    )
+    assert upgraded.image_tag == "v2"
+
+    deleted = delete_sandbox(
+        db_session,
+        fake_docker,  # type: ignore[arg-type]
+        sbx.id,
+        purge_volume=True,
+    )
+    assert deleted.status == "deleted"
+    assert deleted.deleted_at is not None
+    assert ("remove", ("alice", True)) in fake_docker.calls
+
+    # Creating sandbox cleans up container & DB record if wait_healthy fails
+    fake_docker.fail_on_health = SandboxRuntimeError("timeout")
+    with pytest.raises(SandboxRuntimeError):
+        create_sandbox(
+            db_session,
+            settings,
+            fake_docker,  # type: ignore[arg-type]
+            email="bob@example.com",
+            slug=None,
+            display_name=None,
+            image_tag=None,
+        )
+    assert "bob" not in fake_docker.containers
+    assert db_session.query(AuditLog).count() >= 5
+
+    with pytest.raises(NotFoundError):
+        start_sandbox(db_session, fake_docker, "missing-id")  # type: ignore[arg-type]
