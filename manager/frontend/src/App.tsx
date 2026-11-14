@@ -1,4 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   Terminal,
   Plus,
@@ -27,6 +35,7 @@ import {
   AlertCircle,
   Lock,
   Edit3,
+  Globe,
 } from 'lucide-react'
 import {
   Button,
@@ -44,6 +53,72 @@ import {
   Dialog,
   cn,
 } from './components/ui'
+import { apiFetch, resolveInitialView } from './lib/client.ts'
+import {
+  DEFAULT_LOCALE,
+  Locale,
+  MessageKey,
+  detectInitialLocale,
+  localizeAction,
+  localizeStatus,
+  persistLocale,
+  pickLocalizedText,
+  translate,
+} from './lib/i18n.ts'
+
+interface I18nContextValue {
+  locale: Locale
+  setLocale: (next: Locale) => void
+  t: (key: MessageKey, vars?: Record<string, string | number | null | undefined>) => string
+}
+
+const LocaleContext = createContext<I18nContextValue>({
+  locale: DEFAULT_LOCALE,
+  setLocale: () => {},
+  t: (key, vars) => translate(DEFAULT_LOCALE, key, vars),
+})
+
+function useI18n() {
+  return useContext(LocaleContext)
+}
+
+function LocaleToggle() {
+  const { locale, setLocale, t } = useI18n()
+  return (
+    <div
+      className="flex items-center rounded-lg border border-zinc-800 bg-zinc-900/80 p-0.5"
+      role="group"
+      aria-label={t('app.localeToggleLabel')}
+      title={t('app.localeToggleLabel')}
+    >
+      <Globe className="mx-1.5 h-3.5 w-3.5 text-zinc-400" />
+      <button
+        type="button"
+        onClick={() => setLocale('zh-CN')}
+        className={cn(
+          'rounded-md px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer',
+          locale === 'zh-CN'
+            ? 'bg-zinc-100 text-zinc-950 shadow-xs'
+            : 'text-zinc-400 hover:text-zinc-100',
+        )}
+      >
+        中文
+      </button>
+      <button
+        type="button"
+        onClick={() => setLocale('en')}
+        className={cn(
+          'rounded-md px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer',
+          locale === 'en'
+            ? 'bg-zinc-100 text-zinc-950 shadow-xs'
+            : 'text-zinc-400 hover:text-zinc-100',
+        )}
+      >
+        EN
+      </button>
+    </div>
+  )
+}
 
 interface AuthMe {
   authenticated: boolean
@@ -175,34 +250,35 @@ interface AdminItem {
   created_at: string
 }
 
-async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    credentials: 'same-origin',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-    ...init,
-  })
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`
-    try {
-      const data = await res.json()
-      if (typeof data.detail === 'string') msg = data.detail
-      else if (Array.isArray(data.detail)) msg = data.detail.map((e: any) => e.msg).join('; ')
-    } catch {
-      // ignore
-    }
-    throw new Error(msg)
-  }
-  return res.json()
-}
-
 export default function App() {
+  const [locale, setLocale] = useState<Locale>(() => detectInitialLocale())
   const [auth, setAuth] = useState<AuthMe | null>(null)
   const [loadingAuth, setLoadingAuth] = useState(true)
   const [view, setView] = useState<'admin' | 'my' | 'login'>('admin')
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const t = useCallback(
+    (key: MessageKey, vars?: Record<string, string | number | null | undefined>) =>
+      translate(locale, key, vars),
+    [locale],
+  )
+
+  const i18nValue = useMemo<I18nContextValue>(
+    () => ({
+      locale,
+      setLocale,
+      t,
+    }),
+    [locale, t],
+  )
+
+  useEffect(() => {
+    persistLocale(locale)
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = locale
+      document.title = translate(locale, 'app.documentTitle')
+    }
+  }, [locale])
 
   const notify = useCallback((text: string, type: 'success' | 'error' = 'success') => {
     setToast({ text, type })
@@ -213,14 +289,7 @@ export default function App() {
     try {
       const me = await apiFetch<AuthMe>('/api/auth/me')
       setAuth(me)
-      const path = window.location.pathname
-      if (!me.authenticated) {
-        setView('login')
-      } else if (path.startsWith('/my') || !me.admin) {
-        setView('my')
-      } else {
-        setView('admin')
-      }
+      setView(resolveInitialView(me, window.location.pathname))
     } catch {
       setView('login')
     } finally {
@@ -246,106 +315,111 @@ export default function App() {
   if (loadingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-400 text-sm">
-        <RefreshCw className="h-4 w-4 animate-spin mr-2" /> 正在加载 DSH Sandbox Cloud...
+        <RefreshCw className="h-4 w-4 animate-spin mr-2" /> {t('app.checkingSession')}
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
-      {toast && (
-        <div
-          className={cn(
-            'fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-xl border px-4 py-3 text-xs font-medium shadow-2xl animate-in slide-in-from-bottom-3',
-            toast.type === 'error'
-              ? 'border-rose-500/40 bg-rose-950/95 text-rose-200'
-              : 'border-emerald-500/40 bg-emerald-950/95 text-emerald-200',
-          )}
-        >
-          {toast.type === 'error' ? (
-            <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
-          ) : (
-            <Check className="h-4 w-4 text-emerald-400 shrink-0" />
-          )}
-          <span>{toast.text}</span>
-        </div>
-      )}
+    <LocaleContext.Provider value={i18nValue}>
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
+        {toast && (
+          <div
+            className={cn(
+              'fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-xl border px-4 py-3 text-xs font-medium shadow-2xl animate-in slide-in-from-bottom-3',
+              toast.type === 'error'
+                ? 'border-rose-500/40 bg-rose-950/95 text-rose-200'
+                : 'border-emerald-500/40 bg-emerald-950/95 text-emerald-200',
+            )}
+          >
+            {toast.type === 'error' ? (
+              <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+            ) : (
+              <Check className="h-4 w-4 text-emerald-400 shrink-0" />
+            )}
+            <span>{toast.text}</span>
+          </div>
+        )}
 
-      {/* Top Header */}
-      <header className="sticky top-0 z-30 border-b border-zinc-800/80 bg-zinc-950/85 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm">
-              <Terminal className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-sm tracking-tight">DSH Sandbox Cloud</span>
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                  Traefik v3.7 · Subpath Gateway
-                </Badge>
+        {/* Top Header */}
+        <header className="sticky top-0 z-30 border-b border-zinc-800/80 bg-zinc-950/85 backdrop-blur-md">
+          <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm">
+                <Terminal className="h-4 w-4" />
               </div>
-              <p className="text-[11px] text-zinc-400 hidden sm:block">
-                DeepSeek Harness 远程 Agent 操作系统托管平台
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm tracking-tight">DSH Sandbox Cloud</span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    Traefik v3.7 · Subpath Gateway
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-zinc-400 hidden sm:block">
+                  {t('app.subtitle')}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {auth?.authenticated && (
+                <>
+                  {auth.admin && (
+                    <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-900/80 p-0.5">
+                      <button
+                        onClick={() => switchView('admin')}
+                        className={cn(
+                          'px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer',
+                          view === 'admin'
+                            ? 'bg-zinc-800 text-zinc-100 font-medium'
+                            : 'text-zinc-400 hover:text-zinc-200',
+                        )}
+                      >
+                        {t('app.nav.admin')}
+                      </button>
+                      <button
+                        onClick={() => switchView('my')}
+                        className={cn(
+                          'px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer',
+                          view === 'my'
+                            ? 'bg-zinc-800 text-zinc-100 font-medium'
+                            : 'text-zinc-400 hover:text-zinc-200',
+                        )}
+                      >
+                        {t('app.nav.my')}
+                      </button>
+                    </div>
+                  )}
+                  <Badge variant="secondary" className="hidden md:inline-flex">
+                    {auth.email}
+                  </Badge>
+                  <Button variant="ghost" size="sm" onClick={handleLogout}>
+                    <LogOut className="h-3.5 w-3.5" />
+                    {t('app.logout')}
+                  </Button>
+                </>
+              )}
+              <LocaleToggle />
             </div>
           </div>
+        </header>
 
-          {auth?.authenticated && (
-            <div className="flex items-center gap-2">
-              {auth.admin && (
-                <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-900/80 p-0.5">
-                  <button
-                    onClick={() => switchView('admin')}
-                    className={cn(
-                      'px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer',
-                      view === 'admin'
-                        ? 'bg-zinc-800 text-zinc-100 font-medium'
-                        : 'text-zinc-400 hover:text-zinc-200',
-                    )}
-                  >
-                    管理控制台
-                  </button>
-                  <button
-                    onClick={() => switchView('my')}
-                    className={cn(
-                      'px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer',
-                      view === 'my'
-                        ? 'bg-zinc-800 text-zinc-100 font-medium'
-                        : 'text-zinc-400 hover:text-zinc-200',
-                    )}
-                  >
-                    我的工作区
-                  </button>
-                </div>
-              )}
-              <Badge variant="secondary" className="hidden md:inline-flex">
-                {auth.email}
-              </Badge>
-              <Button variant="ghost" size="sm" onClick={handleLogout}>
-                <LogOut className="h-3.5 w-3.5" />
-                退出
-              </Button>
-            </div>
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+          {view === 'login' && (
+            <LoginView
+              auth={auth}
+              onSuccess={async (isAdmin) => {
+                window.history.pushState({}, '', isAdmin ? '/admin' : '/my')
+                await loadAuth()
+              }}
+              notify={notify}
+            />
           )}
-        </div>
-      </header>
-
-      <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
-        {view === 'login' && (
-          <LoginView
-            auth={auth}
-            onSuccess={async (isAdmin) => {
-              window.history.pushState({}, '', isAdmin ? '/admin' : '/my')
-              await loadAuth()
-            }}
-            notify={notify}
-          />
-        )}
-        {view === 'admin' && auth?.admin && <AdminConsoleView notify={notify} />}
-        {view === 'my' && <UserPortalView auth={auth} notify={notify} />}
-      </main>
-    </div>
+          {view === 'admin' && auth?.admin && <AdminConsoleView notify={notify} />}
+          {view === 'my' && <UserPortalView auth={auth} notify={notify} />}
+        </main>
+      </div>
+    </LocaleContext.Provider>
   )
 }
 
@@ -362,6 +436,7 @@ function LoginView({
   onSuccess: (isAdmin: boolean) => void
   notify: (msg: string, type?: 'success' | 'error') => void
 }) {
+  const { t } = useI18n()
   const [mode, setMode] = useState<'admin' | 'user'>('admin')
   const [email, setEmail] = useState(auth?.default_admin_email || 'admin@example.com')
   const [token, setToken] = useState('')
@@ -382,10 +457,10 @@ function LoginView({
           mode,
         }),
       })
-      notify('登录成功')
+      notify(t('login.success'))
       onSuccess(res.admin)
     } catch (err: any) {
-      notify(err.message || '登录失败', 'error')
+      notify(err.message || t('login.failed'), 'error')
     } finally {
       setSubmitting(false)
     }
@@ -396,20 +471,18 @@ function LoginView({
       <Card className="w-full max-w-md border-zinc-800/90 bg-zinc-900/80 shadow-2xl">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">登录 DSH Sandbox Cloud</CardTitle>
+            <CardTitle className="text-lg">{t('login.title')}</CardTitle>
             <Badge variant="outline">
-              {auth?.auth_mode === 'oidc' ? 'SSO / OIDC' : '本地认证'}
+              {auth?.auth_mode === 'oidc' ? t('login.badgeOidc') : t('login.badgeLocal')}
             </Badge>
           </div>
-          <CardDescription>
-            每个工作区均由平台管理员统一创建与分配，提供可 7×24 小时持续运行的远程 DeepSeek Harness 操作系统环境。
-          </CardDescription>
+          <CardDescription>{t('login.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent>
           {urlError === 'disabled' && (
             <div className="mb-4 rounded-lg border border-rose-500/40 bg-rose-950/60 p-3 text-xs text-rose-200 flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
-              <span>该账号已被平台管理员禁用，请联系管理员启用后再登录。</span>
+              <span>{t('login.disabledBanner')}</span>
             </div>
           )}
           {auth?.auth_mode === 'oidc' ? (
@@ -421,7 +494,7 @@ function LoginView({
                 }}
               >
                 <ShieldCheck className="h-4 w-4" />
-                使用企业单点登录 (OIDC SSO)
+                {t('login.oidcButton')}
               </Button>
             </div>
           ) : (
@@ -440,7 +513,7 @@ function LoginView({
                       : 'text-zinc-400 hover:text-zinc-200',
                   )}
                 >
-                  管理员控制台
+                  {t('login.modeAdmin')}
                 </button>
                 <button
                   type="button"
@@ -457,13 +530,15 @@ function LoginView({
                       : 'text-zinc-400 hover:text-zinc-200',
                   )}
                 >
-                  员工工作区入口
+                  {t('login.modeUser')}
                 </button>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label>{mode === 'admin' ? '管理员邮箱' : '员工邮箱'}</Label>
+                  <Label>
+                    {mode === 'admin' ? t('login.adminEmailLabel') : t('login.userEmailLabel')}
+                  </Label>
                   <Input
                     type="email"
                     required
@@ -475,34 +550,34 @@ function LoginView({
 
                 {mode === 'admin' ? (
                   <div className="space-y-1.5">
-                    <Label>管理员口令 (MANAGER_ADMIN_TOKEN)</Label>
+                    <Label>{t('login.tokenLabel')}</Label>
                     <Input
                       type="password"
                       required
                       value={token}
                       onChange={(e) => setToken(e.target.value)}
-                      placeholder="输入管理员口令..."
+                      placeholder={t('login.tokenPlaceholder')}
                     />
                   </div>
                 ) : (
                   <div className="space-y-1.5">
-                    <Label>登录密码</Label>
+                    <Label>{t('login.passwordLabel')}</Label>
                     <Input
                       type="password"
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="输入管理员为您设置的登录密码..."
+                      placeholder={t('login.passwordPlaceholder')}
                     />
                   </div>
                 )}
 
                 <Button type="submit" className="w-full" disabled={submitting}>
                   {submitting
-                    ? '正在验证...'
+                    ? t('login.submitting')
                     : mode === 'admin'
-                      ? '进入管理员控制台'
-                      : '登录我的远程工作区'}
+                      ? t('login.submitAdmin')
+                      : t('login.submitUser')}
                 </Button>
               </form>
             </div>
@@ -522,6 +597,13 @@ function AdminConsoleView({
 }: {
   notify: (msg: string, type?: 'success' | 'error') => void
 }) {
+  const { locale, t } = useI18n()
+  const tRef = useRef(t)
+  tRef.current = t
+  const formatStatus = (status: string) => localizeStatus(locale, status)
+  const formatAction = (action: 'start' | 'stop' | 'restart' | 'recreate') =>
+    localizeAction(locale, action)
+
   const [activeTab, setActiveTab] = useState<
     'sandboxes' | 'templates' | 'plugins' | 'llm' | 'users'
   >('sandboxes')
@@ -630,7 +712,7 @@ function AdminConsoleView({
   const copyText = (key: string, text: string) => {
     navigator.clipboard.writeText(text)
     setCopiedKey(key)
-    notify('已复制到剪贴板')
+    notify(t('common.copied'))
     setTimeout(() => setCopiedKey(null), 2000)
   }
 
@@ -671,7 +753,7 @@ function AdminConsoleView({
       }
       setStatsMap(nextStats)
     } catch (err: any) {
-      notify(err.message || '加载平台数据失败', 'error')
+      notify(err.message || tRef.current('admin.loadFailed'), 'error')
     } finally {
       setLoading(false)
     }
@@ -727,7 +809,7 @@ function AdminConsoleView({
           init_script: sbxForm.init_script,
         }),
       })
-      notify(`沙箱已成功分配给 ${sbxForm.email}`)
+      notify(t('admin.sandboxProvisioned', { email: sbxForm.email }))
       setCreateSbxOpen(false)
       setSbxForm((prev) => ({
         ...prev,
@@ -738,7 +820,7 @@ function AdminConsoleView({
       }))
       await refreshAll()
     } catch (err: any) {
-      notify(err.message || '创建沙箱失败', 'error')
+      notify(err.message || t('admin.sandboxCreateFailed'), 'error')
     } finally {
       setCreatingSbx(false)
     }
@@ -748,10 +830,11 @@ function AdminConsoleView({
     sbx: SandboxItem,
     action: 'start' | 'stop' | 'restart' | 'recreate',
   ) => {
+    const actionLabel = formatAction(action)
     try {
-      notify(`正在对 ${sbx.slug} 执行 ${action}...`)
+      notify(t('admin.sandboxActionRunning', { slug: sbx.slug, action: actionLabel }))
       await apiFetch(`/api/sandboxes/${sbx.id}/${action}`, { method: 'POST' })
-      notify(`沙箱 ${sbx.slug} ${action} 成功`)
+      notify(t('admin.sandboxActionSuccess', { slug: sbx.slug, action: actionLabel }))
       await refreshAll()
     } catch (err: any) {
       notify(err.message, 'error')
@@ -773,7 +856,7 @@ function AdminConsoleView({
           llm_profile_id: editSbxForm.llm_profile_id,
         }),
       })
-      notify(`沙箱 ${editSbx.slug} 配置已更新`)
+      notify(t('admin.sandboxUpdated', { slug: editSbx.slug }))
       setEditSbx(null)
       await refreshAll()
     } catch (err: any) {
@@ -790,7 +873,7 @@ function AdminConsoleView({
         `/api/sandboxes/${deleteSbxTarget.id}?purge_volume=${purgeVolume ? 'true' : 'false'}`,
         { method: 'DELETE' },
       )
-      notify(`沙箱 ${deleteSbxTarget.slug} 已销毁`)
+      notify(t('admin.sandboxDestroyed', { slug: deleteSbxTarget.slug }))
       setDeleteSbxTarget(null)
       setPurgeVolume(false)
       await refreshAll()
@@ -808,9 +891,9 @@ function AdminConsoleView({
         // eslint-disable-next-line no-control-regex
         .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
         .replace(/\u2009/g, ' ')
-      setLogsText(cleaned || '(暂无日志输出)')
+      setLogsText(cleaned || t('admin.noLogs'))
     } catch (err: any) {
-      setLogsText(`读取日志失败: ${err.message}`)
+      setLogsText(t('admin.logsLoadFailed', { message: err.message }))
     } finally {
       setLoadingLogs(false)
     }
@@ -869,7 +952,7 @@ function AdminConsoleView({
             default_env_json: tplForm.default_env_json.trim() || '{}',
           }),
         })
-        notify(`模板 "${tplForm.name}" 已更新`)
+        notify(t('admin.templateUpdated', { name: tplForm.name }))
       } else {
         await apiFetch('/api/templates', {
           method: 'POST',
@@ -886,7 +969,7 @@ function AdminConsoleView({
             default_env_json: tplForm.default_env_json.trim() || '{}',
           }),
         })
-        notify(`新模板 "${tplForm.name}" 已创建`)
+        notify(t('admin.templateCreated', { name: tplForm.name }))
       }
       setTplModalOpen(false)
       await refreshAll()
@@ -898,10 +981,10 @@ function AdminConsoleView({
   }
 
   const handleDeleteTemplate = async (tpl: TemplateItem) => {
-    if (!window.confirm(`确定要删除模板 "${tpl.name} (${tpl.key})" 吗？`)) return
+    if (!window.confirm(t('admin.templateDeleteConfirm', { name: tpl.name, key: tpl.key }))) return
     try {
       await apiFetch(`/api/templates/${tpl.id}`, { method: 'DELETE' })
-      notify(`模板 ${tpl.key} 已删除`)
+      notify(t('admin.templateDeleted', { key: tpl.key }))
       await refreshAll()
     } catch (err: any) {
       notify(err.message, 'error')
@@ -915,14 +998,17 @@ function AdminConsoleView({
         <Card>
           <CardContent className="p-5 flex items-center justify-between">
             <div>
-              <p className="text-xs text-zinc-400">运行中沙箱 / 总数</p>
+              <p className="text-xs text-zinc-400">{t('admin.kpi.sandboxesTitle')}</p>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-2xl font-bold text-emerald-400">
                   {overview?.running_sandboxes ?? 0}
                 </span>
                 <span className="text-sm text-zinc-500">/ {overview?.total_sandboxes ?? 0}</span>
               </div>
-              <p className="mt-1 text-[11px] text-zinc-500">单域名二级目录 `/s/&lt;slug&gt;/`</p>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                {t('admin.kpi.sandboxesSubPrefix')}
+                `/s/&lt;slug&gt;/`
+              </p>
             </div>
             <div className="rounded-xl bg-emerald-500/10 p-3 text-emerald-400 border border-emerald-500/20">
               <Box className="h-5 w-5" />
@@ -933,15 +1019,18 @@ function AdminConsoleView({
         <Card>
           <CardContent className="p-5 flex items-center justify-between">
             <div>
-              <p className="text-xs text-zinc-400">已分配计算配额</p>
+              <p className="text-xs text-zinc-400">{t('admin.kpi.quotaTitle')}</p>
               <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="text-2xl font-bold text-zinc-100">
                   {overview?.allocated_cpus ?? 0}
                 </span>
-                <span className="text-xs text-zinc-400">vCPU Cores</span>
+                <span className="text-xs text-zinc-400">{t('admin.kpi.quotaUnit')}</span>
               </div>
               <p className="mt-1 text-[11px] text-zinc-500">
-                默认规格：{overview?.default_cpus ?? 2} C / {overview?.default_memory ?? '4g'}
+                {t('admin.kpi.quotaSub', {
+                  cpus: overview?.default_cpus ?? 2,
+                  memory: overview?.default_memory ?? '4g',
+                })}
               </p>
             </div>
             <div className="rounded-xl bg-indigo-500/10 p-3 text-indigo-400 border border-indigo-500/20">
@@ -956,15 +1045,15 @@ function AdminConsoleView({
         >
           <CardContent className="p-5 flex items-center justify-between">
             <div>
-              <p className="text-xs text-zinc-400">镜像与环境模板</p>
+              <p className="text-xs text-zinc-400">{t('admin.kpi.templatesTitle')}</p>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-2xl font-bold text-zinc-100">
                   {templates.length}
                 </span>
-                <span className="text-xs text-zinc-400">个可用模板</span>
+                <span className="text-xs text-zinc-400">{t('admin.kpi.templatesUnit')}</span>
               </div>
               <p className="mt-1 text-[11px] text-zinc-500">
-                本机镜像：{overview?.local_images.length ?? 0} 个 Tag
+                {t('admin.kpi.templatesSub', { count: overview?.local_images.length ?? 0 })}
               </p>
             </div>
             <div className="rounded-xl bg-amber-500/10 p-3 text-amber-400 border border-amber-500/20">
@@ -979,14 +1068,18 @@ function AdminConsoleView({
         >
           <CardContent className="p-5 flex items-center justify-between">
             <div>
-              <p className="text-xs text-zinc-400">自托管插件源</p>
+              <p className="text-xs text-zinc-400">{t('admin.kpi.pluginsTitle')}</p>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-2xl font-bold text-zinc-100">
                   {pluginsData?.items.length ?? 0}
                 </span>
-                <span className="text-xs text-zinc-400">个内置插件</span>
+                <span className="text-xs text-zinc-400">{t('admin.kpi.pluginsUnit')}</span>
               </div>
-              <p className="mt-1 text-[11px] text-zinc-500">内置 `.tgz` 与 npm Packument</p>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                {t('admin.kpi.pluginsSubBefore')}
+                `.tgz`
+                {t('admin.kpi.pluginsSubAfter')}
+              </p>
             </div>
             <div className="rounded-xl bg-violet-500/10 p-3 text-violet-400 border border-violet-500/20">
               <Package className="h-5 w-5" />
@@ -999,16 +1092,26 @@ function AdminConsoleView({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-3">
         <div className="flex flex-wrap items-center gap-1 rounded-xl bg-zinc-900/90 p-1 border border-zinc-800/90">
           {[
-            { id: 'sandboxes', label: '沙箱工作区', icon: Terminal, count: sandboxes.length },
-            { id: 'templates', label: '镜像与环境模板', icon: Layers, count: templates.length },
+            {
+              id: 'sandboxes',
+              label: t('admin.tabs.sandboxes'),
+              icon: Terminal,
+              count: sandboxes.length,
+            },
+            {
+              id: 'templates',
+              label: t('admin.tabs.templates'),
+              icon: Layers,
+              count: templates.length,
+            },
             {
               id: 'plugins',
-              label: '自托管插件源',
+              label: t('admin.tabs.plugins'),
               icon: Package,
               count: pluginsData?.items.length ?? 0,
             },
-            { id: 'llm', label: 'LLM 模型凭证', icon: KeyRound, count: llmProfiles.length },
-            { id: 'users', label: '用户与权限审计', icon: Users, count: users.length },
+            { id: 'llm', label: t('admin.tabs.llm'), icon: KeyRound, count: llmProfiles.length },
+            { id: 'users', label: t('admin.tabs.users'), icon: Users, count: users.length },
           ].map((tab) => {
             const Icon = tab.icon
             const active = activeTab === tab.id
@@ -1041,17 +1144,17 @@ function AdminConsoleView({
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={refreshAll}>
             <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-            刷新状态
+            {t('common.refresh')}
           </Button>
           {activeTab === 'templates' ? (
             <Button size="sm" onClick={openCreateTemplateModal}>
               <Plus className="h-3.5 w-3.5" />
-              新建环境模板
+              {t('admin.newTemplateBtn')}
             </Button>
           ) : (
             <Button size="sm" onClick={() => openProvisionModalWithTemplate('agent-os')}>
               <Plus className="h-3.5 w-3.5" />
-              分配新沙箱工作区
+              {t('admin.provisionSandboxBtn')}
             </Button>
           )}
         </div>
@@ -1064,10 +1167,15 @@ function AdminConsoleView({
             <div className="flex items-center gap-2">
               <Lock className="h-3.5 w-3.5 text-amber-400" />
               <span>
-                <strong>管理员强管控模式：</strong>个人用户不允许自行创建工作区，所有沙箱环境均由管理员基于模板统一分配。
+                <strong>{t('admin.sandboxes.bannerStrong')}</strong>{' '}
+                {t('admin.sandboxes.bannerText')}
               </span>
             </div>
-            <span>网关路由模式：Traefik 二级目录 (`/s/&lt;slug&gt;/dsh/`)</span>
+            <span>
+              {t('admin.sandboxes.gatewayPrefix')}
+              `/s/&lt;slug&gt;/dsh/`
+              {t('admin.sandboxes.gatewaySuffix')}
+            </span>
           </div>
 
           <Card className="overflow-hidden">
@@ -1075,18 +1183,22 @@ function AdminConsoleView({
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-zinc-800/80 bg-zinc-950/60 text-zinc-400">
-                    <th className="py-3.5 px-4 font-medium">工作区 / 归属用户</th>
-                    <th className="py-3.5 px-4 font-medium">模板 & 镜像</th>
-                    <th className="py-3.5 px-4 font-medium">状态 & 二级目录路由</th>
-                    <th className="py-3.5 px-4 font-medium w-52">实时资源监控 (CPU / 内存)</th>
-                    <th className="py-3.5 px-4 font-medium text-right">操作管理</th>
+                    <th className="py-3.5 px-4 font-medium">{t('admin.sandboxes.colWorkspace')}</th>
+                    <th className="py-3.5 px-4 font-medium">{t('admin.sandboxes.colTemplate')}</th>
+                    <th className="py-3.5 px-4 font-medium">{t('admin.sandboxes.colStatus')}</th>
+                    <th className="py-3.5 px-4 font-medium w-52">
+                      {t('admin.sandboxes.colResources')}
+                    </th>
+                    <th className="py-3.5 px-4 font-medium text-right">
+                      {t('admin.sandboxes.colActions')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/60">
                   {sandboxes.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="py-12 text-center text-zinc-500">
-                        暂无已分配的沙箱工作区，点击右上角「分配新沙箱工作区」创建。
+                        {t('admin.sandboxes.empty')}
                       </td>
                     </tr>
                   ) : (
@@ -1122,7 +1234,10 @@ function AdminConsoleView({
                               </span>
                             </div>
                             <div className="mt-1 text-[11px] text-zinc-500">
-                              配额：{sbx.cpu_limit} vCPU · {sbx.memory_limit} RAM · 卷{' '}
+                              {t('admin.sandboxes.quotaPrefix', {
+                                cpu: sbx.cpu_limit,
+                                memory: sbx.memory_limit,
+                              })}
                               <code>{sbx.volume_name}</code>
                             </div>
                           </td>
@@ -1144,7 +1259,7 @@ function AdminConsoleView({
                                     sbx.status === 'running' ? 'bg-emerald-400' : 'bg-rose-400',
                                   )}
                                 />
-                                {sbx.status}
+                                {formatStatus(sbx.status)}
                               </Badge>
                             </div>
                             <div className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-indigo-400">
@@ -1177,7 +1292,9 @@ function AdminConsoleView({
                                 <Progress value={memPct} />
                               </div>
                             ) : (
-                              <span className="text-zinc-500 text-[11px]">容器未运行</span>
+                              <span className="text-zinc-500 text-[11px]">
+                                {t('admin.sandboxes.notRunning')}
+                              </span>
                             )}
                           </td>
 
@@ -1189,14 +1306,14 @@ function AdminConsoleView({
                                 onClick={() => window.open(`/sandboxes/${sbx.id}/open`, '_blank')}
                               >
                                 <ExternalLink className="h-3.5 w-3.5" />
-                                打开工作区
+                                {t('admin.sandboxes.openWorkspace')}
                               </Button>
 
                               {sbx.status === 'running' ? (
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  title="停止沙箱"
+                                  title={t('admin.sandboxes.stopTooltip')}
                                   onClick={() => handleSandboxAction(sbx, 'stop')}
                                 >
                                   <Square className="h-3.5 w-3.5 text-amber-400" />
@@ -1205,7 +1322,7 @@ function AdminConsoleView({
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  title="启动沙箱"
+                                  title={t('admin.sandboxes.startTooltip')}
                                   onClick={() => handleSandboxAction(sbx, 'start')}
                                 >
                                   <Play className="h-3.5 w-3.5 text-emerald-400" />
@@ -1215,7 +1332,7 @@ function AdminConsoleView({
                               <Button
                                 variant="outline"
                                 size="icon"
-                                title="重启沙箱"
+                                title={t('admin.sandboxes.restartTooltip')}
                                 onClick={() => handleSandboxAction(sbx, 'restart')}
                               >
                                 <RotateCw className="h-3.5 w-3.5" />
@@ -1224,7 +1341,7 @@ function AdminConsoleView({
                               <Button
                                 variant="outline"
                                 size="icon"
-                                title="查看实时日志"
+                                title={t('admin.sandboxes.logsTooltip')}
                                 onClick={() => openLogsModal(sbx)}
                               >
                                 <FileText className="h-3.5 w-3.5" />
@@ -1233,7 +1350,7 @@ function AdminConsoleView({
                               <Button
                                 variant="outline"
                                 size="icon"
-                                title="调整规格 / 镜像 / 模型"
+                                title={t('admin.sandboxes.editTooltip')}
                                 onClick={() => {
                                   setEditSbx(sbx)
                                   setEditSbxForm({
@@ -1251,7 +1368,7 @@ function AdminConsoleView({
                               <Button
                                 variant="outline"
                                 size="icon"
-                                title="导出用户根目录备份 (.tar)"
+                                title={t('admin.sandboxes.backupTooltip')}
                                 onClick={() => window.open(`/api/sandboxes/${sbx.id}/backup`, '_blank')}
                               >
                                 <Download className="h-3.5 w-3.5" />
@@ -1260,7 +1377,7 @@ function AdminConsoleView({
                               <Button
                                 variant="outline"
                                 size="icon"
-                                title="销毁沙箱"
+                                title={t('admin.sandboxes.destroyTooltip')}
                                 className="hover:border-rose-500/50 hover:text-rose-400"
                                 onClick={() => {
                                   setDeleteSbxTarget(sbx)
@@ -1287,11 +1404,12 @@ function AdminConsoleView({
         <div className="space-y-4">
           <div className="flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-xs text-zinc-400">
             <div>
-              <strong>镜像与工作区模板管理：</strong>每个模板可绑定专属 Docker 镜像 (`image_repo:image_tag`)、默认 CPU/内存配额、预装插件列表、环境变量及首次启动执行的初始化 Shell 脚本 (`SANDBOX_INIT_SCRIPT`)。
+              <strong>{t('admin.templates.bannerStrong')}</strong>{' '}
+              {t('admin.templates.bannerText')}
             </div>
             <Button size="sm" onClick={openCreateTemplateModal}>
               <Plus className="h-3.5 w-3.5" />
-              新建模板
+              {t('admin.templates.newShortBtn')}
             </Button>
           </div>
 
@@ -1306,10 +1424,12 @@ function AdminConsoleView({
                         <Badge variant="secondary" className="font-mono">
                           {tpl.key}
                         </Badge>
-                        {tpl.is_builtin && <Badge variant="outline">系统预置</Badge>}
+                        {tpl.is_builtin && (
+                          <Badge variant="outline">{t('admin.templates.builtinBadge')}</Badge>
+                        )}
                       </div>
                       <CardDescription className="mt-1.5">
-                        {tpl.description || '无描述'}
+                        {tpl.description || t('admin.templates.noDescription')}
                       </CardDescription>
                     </div>
                   </div>
@@ -1318,21 +1438,23 @@ function AdminConsoleView({
                 <CardContent className="space-y-3 text-xs">
                   <div className="grid grid-cols-2 gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3">
                     <div>
-                      <span className="text-zinc-500 block">绑定镜像 (Docker Image)</span>
+                      <span className="text-zinc-500 block">{t('admin.templates.imageLabel')}</span>
                       <span className="font-mono text-zinc-200 mt-0.5 block">
                         {tpl.image_repo}:{tpl.image_tag}
                       </span>
                     </div>
                     <div>
-                      <span className="text-zinc-500 block">默认资源配额</span>
+                      <span className="text-zinc-500 block">{t('admin.templates.quotaLabel')}</span>
                       <span className="font-mono text-zinc-200 mt-0.5 block">
                         {tpl.default_cpu_limit} vCPU · {tpl.default_memory_limit} RAM
                       </span>
                     </div>
                     <div className="col-span-2 pt-1 border-t border-zinc-800/60">
-                      <span className="text-zinc-500 block">预装 DSH 插件</span>
+                      <span className="text-zinc-500 block">
+                        {t('admin.templates.pluginsLabel')}
+                      </span>
                       <span className="font-mono text-zinc-300 mt-0.5 block">
-                        {tpl.auto_install_plugins || '(不预装额外插件)'}
+                        {tpl.auto_install_plugins || t('admin.templates.pluginsNone')}
                       </span>
                     </div>
                   </div>
@@ -1340,7 +1462,7 @@ function AdminConsoleView({
                   {tpl.init_script && (
                     <div>
                       <span className="text-[11px] text-zinc-500 block mb-1">
-                        首次启动初始化脚本 (`init_script`):
+                        {t('admin.templates.initScriptLabel')}
                       </span>
                       <pre className="rounded-lg border border-zinc-800/80 bg-zinc-950 p-2.5 font-mono text-[11px] text-zinc-300 overflow-x-auto max-h-24">
                         {tpl.init_script}
@@ -1355,7 +1477,7 @@ function AdminConsoleView({
                       onClick={() => openProvisionModalWithTemplate(tpl.key)}
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      基于此模板分配沙箱
+                      {t('admin.templates.provisionBtn')}
                     </Button>
                     <div className="flex items-center gap-1.5">
                       <Button
@@ -1364,7 +1486,7 @@ function AdminConsoleView({
                         onClick={() => openEditTemplateModal(tpl)}
                       >
                         <Edit3 className="h-3.5 w-3.5" />
-                        编辑模板
+                        {t('admin.templates.editBtn')}
                       </Button>
                       {!tpl.is_builtin && (
                         <Button
@@ -1387,10 +1509,8 @@ function AdminConsoleView({
           {overview && overview.local_images.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm">宿主机可用 Docker 镜像列表</CardTitle>
-                <CardDescription>
-                  模板或沙箱可直接绑定以下任意本地镜像，也可通过 `docker build` 构建定制化沙箱镜像（如开启 `INSTALL_BROWSER=true` 或 `INSTALL_TOOLCHAIN=true`）。
-                </CardDescription>
+                <CardTitle className="text-sm">{t('admin.templates.localImagesTitle')}</CardTitle>
+                <CardDescription>{t('admin.templates.localImagesDesc')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -1419,10 +1539,8 @@ function AdminConsoleView({
           <Card>
             <CardHeader className="pb-3 flex flex-row items-start justify-between gap-4">
               <div>
-                <CardTitle>自托管 DSH 插件索引与内置 npm 源</CardTitle>
-                <CardDescription className="mt-1">
-                  宿主机 `plugins/` 目录以只读热挂载方式接入，`dsh-manager` 按文件修改时间 (`mtime_ns`) 自动增量重打包并合成 `index.json`（含内联 Base64 图标与实时版本号），修改插件无需重建或重启 Manager。
-                </CardDescription>
+                <CardTitle>{t('admin.plugins.title')}</CardTitle>
+                <CardDescription className="mt-1">{t('admin.plugins.desc')}</CardDescription>
               </div>
               <Button
                 variant="emerald"
@@ -1430,25 +1548,25 @@ function AdminConsoleView({
                 className="shrink-0"
                 onClick={async () => {
                   try {
-                    notify('正在向所有运行中沙箱注入并同步插件市场索引...')
+                    notify(t('admin.pluginsSyncing'))
                     const res = await apiFetch<{ synced: number }>('/api/plugins/sync-sandboxes', {
                       method: 'POST',
                     })
-                    notify(`已成功同步 ${res.synced} 个运行中沙箱的插件市场索引`)
+                    notify(t('admin.pluginsSynced', { count: res.synced }))
                     await refreshAll()
                   } catch (err: any) {
-                    notify(err.message || '同步失败', 'error')
+                    notify(err.message || t('admin.pluginsSyncFailed'), 'error')
                   }
                 }}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
-                同步索引到运行中沙箱
+                {t('admin.plugins.syncBtn')}
               </Button>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2 text-xs">
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-center justify-between gap-2">
                 <div>
-                  <span className="text-zinc-500 block">Discover 插件索引地址 (`DSH_PLUGIN_INDEX_URL`)</span>
+                  <span className="text-zinc-500 block">{t('admin.plugins.indexUrlLabel')}</span>
                   <code className="text-indigo-400 font-mono mt-0.5 block">
                     {pluginsData.index_url}
                   </code>
@@ -1464,7 +1582,7 @@ function AdminConsoleView({
 
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-center justify-between gap-2">
                 <div>
-                  <span className="text-zinc-500 block">内置只读 npm Registry 地址</span>
+                  <span className="text-zinc-500 block">{t('admin.plugins.npmUrlLabel')}</span>
                   <code className="text-emerald-400 font-mono mt-0.5 block">
                     {pluginsData.npm_registry_url}
                   </code>
@@ -1499,7 +1617,14 @@ function AdminConsoleView({
                       )}
                       <div>
                         <div className="flex items-center gap-2">
-                          <CardTitle>{plg.display_name_zh || plg.display_name_en}</CardTitle>
+                          <CardTitle>
+                            {pickLocalizedText(
+                              locale,
+                              plg.display_name_zh,
+                              plg.display_name_en,
+                              plg.slug,
+                            )}
+                          </CardTitle>
                           <Badge variant="success">v{plg.version}</Badge>
                         </div>
                         <p className="font-mono text-xs text-zinc-400 mt-0.5">
@@ -1511,7 +1636,7 @@ function AdminConsoleView({
                 </CardHeader>
                 <CardContent className="space-y-3 text-xs">
                   <p className="text-zinc-300 leading-relaxed">
-                    {plg.description_zh || plg.description_en}
+                    {pickLocalizedText(locale, plg.description_zh, plg.description_en)}
                   </p>
                   <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 flex items-center justify-between gap-2">
                     <code className="font-mono text-[11px] text-zinc-300 truncate">
@@ -1536,7 +1661,7 @@ function AdminConsoleView({
                       onClick={() => window.open(plg.tarball_url, '_blank')}
                     >
                       <Download className="h-3.5 w-3.5" />
-                      下载 .tgz 包
+                      {t('admin.plugins.downloadTgz')}
                     </Button>
                     <Button
                       variant="ghost"
@@ -1544,7 +1669,7 @@ function AdminConsoleView({
                       onClick={() => window.open(plg.npm_packument_url, '_blank')}
                     >
                       <FileCode2 className="h-3.5 w-3.5" />
-                      查看 npm Packument
+                      {t('admin.plugins.viewPackument')}
                     </Button>
                   </div>
                 </CardContent>
@@ -1559,10 +1684,8 @@ function AdminConsoleView({
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-1">
             <CardHeader>
-              <CardTitle>新增 LLM 模型配置</CardTitle>
-              <CardDescription>
-                API Key 使用服务端 `SECRET_KEY` 加密存储，可在分配沙箱时自动注入给 DeepSeek Harness。
-              </CardDescription>
+              <CardTitle>{t('admin.llm.addTitle')}</CardTitle>
+              <CardDescription>{t('admin.llm.addDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <form
@@ -1573,7 +1696,7 @@ function AdminConsoleView({
                       method: 'POST',
                       body: JSON.stringify(llmForm),
                     })
-                    notify('LLM 模型凭证已保存')
+                    notify(t('admin.llmSaved'))
                     setLlmForm({
                       name: '',
                       base_url: 'https://api.deepseek.com/v1',
@@ -1588,16 +1711,16 @@ function AdminConsoleView({
                 className="space-y-3"
               >
                 <div className="space-y-1">
-                  <Label>配置名称</Label>
+                  <Label>{t('admin.llm.nameLabel')}</Label>
                   <Input
                     required
-                    placeholder="例如：DeepSeek 官方 API"
+                    placeholder={t('admin.llm.namePlaceholder')}
                     value={llmForm.name}
                     onChange={(e) => setLlmForm({ ...llmForm, name: e.target.value })}
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>OpenAI 兼容 Base URL</Label>
+                  <Label>{t('admin.llm.baseUrlLabel')}</Label>
                   <Input
                     required
                     value={llmForm.base_url}
@@ -1605,7 +1728,7 @@ function AdminConsoleView({
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>模型名称 (Model ID)</Label>
+                  <Label>{t('admin.llm.modelLabel')}</Label>
                   <Input
                     required
                     value={llmForm.model}
@@ -1613,7 +1736,7 @@ function AdminConsoleView({
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>API Key</Label>
+                  <Label>{t('admin.llm.apiKeyLabel')}</Label>
                   <Input
                     type="password"
                     required
@@ -1624,7 +1747,7 @@ function AdminConsoleView({
                 </div>
                 <Button type="submit" className="w-full">
                   <Plus className="h-3.5 w-3.5" />
-                  保存模型凭证
+                  {t('admin.llm.saveBtn')}
                 </Button>
               </form>
             </CardContent>
@@ -1632,12 +1755,12 @@ function AdminConsoleView({
 
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>已保存的 LLM 模型凭证</CardTitle>
-              <CardDescription>分配或编辑沙箱时可直接关联下列模型配置。</CardDescription>
+              <CardTitle>{t('admin.llm.listTitle')}</CardTitle>
+              <CardDescription>{t('admin.llm.listDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               {llmProfiles.length === 0 ? (
-                <p className="text-xs text-zinc-500 py-8 text-center">暂无已保存的 LLM 配置</p>
+                <p className="text-xs text-zinc-500 py-8 text-center">{t('admin.llm.empty')}</p>
               ) : (
                 <div className="divide-y divide-zinc-800/70">
                   {llmProfiles.map((p) => (
@@ -1654,7 +1777,7 @@ function AdminConsoleView({
                         className="text-rose-400 hover:text-rose-300"
                         onClick={async () => {
                           await apiFetch(`/api/llm-profiles/${p.id}`, { method: 'DELETE' })
-                          notify('已删除 LLM 配置')
+                          notify(t('admin.llmDeleted'))
                           await refreshAll()
                         }}
                       >
@@ -1676,15 +1799,17 @@ function AdminConsoleView({
             <CardHeader>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <CardTitle>普通用户管理 (Workspace Users)</CardTitle>
+                  <CardTitle>{t('admin.users.title')}</CardTitle>
                   <CardDescription>
                     {overview?.manager_auth_mode === 'oidc'
-                      ? '当前使用 OIDC 单点登录，账号通过 IdP 的 Email Claim 校验；管理员仍可在下方预先建档或禁用特定用户。'
-                      : '当前使用本地认证模式，普通用户须通过「邮箱 + 密码」登录，禁用后将立即无法访问个人工作区与 DSH。'}
+                      ? t('admin.users.oidcDesc')
+                      : t('admin.users.localDesc')}
                   </CardDescription>
                 </div>
                 <Badge variant="outline">
-                  {overview?.manager_auth_mode === 'oidc' ? 'OIDC 兼容模式' : '本地密码认证'}
+                  {overview?.manager_auth_mode === 'oidc'
+                    ? t('admin.users.oidcBadge')
+                    : t('admin.users.localBadge')}
                 </Badge>
               </div>
             </CardHeader>
@@ -1702,7 +1827,7 @@ function AdminConsoleView({
                         password: newUserForm.password.trim() || null,
                       }),
                     })
-                    notify(`已添加用户 ${newUserForm.email.trim()}`)
+                    notify(t('admin.userAdded', { email: newUserForm.email.trim() }))
                     setNewUserForm({ email: '', display_name: '', password: '' })
                     await refreshAll()
                   } catch (err: any) {
@@ -1717,7 +1842,7 @@ function AdminConsoleView({
                   <Input
                     type="email"
                     required
-                    placeholder="用户邮箱 *"
+                    placeholder={t('admin.users.emailPlaceholder')}
                     value={newUserForm.email}
                     onChange={(e) =>
                       setNewUserForm({ ...newUserForm, email: e.target.value })
@@ -1726,7 +1851,7 @@ function AdminConsoleView({
                 </div>
                 <div className="sm:col-span-3">
                   <Input
-                    placeholder="姓名 / 备注 (可选)"
+                    placeholder={t('admin.users.namePlaceholder')}
                     value={newUserForm.display_name}
                     onChange={(e) =>
                       setNewUserForm({ ...newUserForm, display_name: e.target.value })
@@ -1740,8 +1865,8 @@ function AdminConsoleView({
                     minLength={6}
                     placeholder={
                       overview?.manager_auth_mode === 'oidc'
-                        ? '本地密码 (可选)'
-                        : '初始密码 (至少6位) *'
+                        ? t('admin.users.pwPlaceholderOidc')
+                        : t('admin.users.pwPlaceholderLocal')
                     }
                     value={newUserForm.password}
                     onChange={(e) =>
@@ -1758,22 +1883,22 @@ function AdminConsoleView({
                         password: generatePassword(),
                       })
                     }
-                    title="生成随机密码"
+                    title={t('admin.users.pwGenTitle')}
                   >
-                    随机
+                    {t('admin.users.pwGenShort')}
                   </Button>
                 </div>
                 <div className="sm:col-span-2 flex justify-end">
                   <Button type="submit" size="sm" className="w-full" disabled={creatingUser}>
                     <Plus className="h-3.5 w-3.5" />
-                    添加用户
+                    {t('admin.users.addBtn')}
                   </Button>
                 </div>
               </form>
 
               {users.length === 0 ? (
                 <div className="py-8 text-center text-xs text-zinc-500">
-                  暂无普通用户，可在上方创建或通过分配新沙箱自动建档。
+                  {t('admin.users.empty')}
                 </div>
               ) : (
                 <div className="divide-y divide-zinc-800/70 text-xs">
@@ -1788,18 +1913,22 @@ function AdminConsoleView({
                           <span className="text-zinc-400">({u.display_name})</span>
                         )}
                         <Badge variant={u.status === 'active' ? 'success' : 'warning'}>
-                          {u.status === 'active' ? '生效中' : '已禁用'}
+                          {u.status === 'active' ? t('common.active') : t('common.disabled')}
                         </Badge>
                         {overview?.manager_auth_mode === 'oidc' ? (
                           <Badge variant="secondary">
-                            {u.has_password ? 'OIDC + 已设本地密码' : 'OIDC 认证'}
+                            {u.has_password
+                              ? t('admin.users.oidcPlusPw')
+                              : t('admin.users.oidcOnly')}
                           </Badge>
                         ) : (
                           <Badge variant={u.has_password ? 'outline' : 'warning'}>
-                            {u.has_password ? '已设密码' : '未设密码'}
+                            {u.has_password ? t('admin.users.pwSet') : t('admin.users.pwUnset')}
                           </Badge>
                         )}
-                        <Badge variant="outline">{u.sandbox_count} 个沙箱</Badge>
+                        <Badge variant="outline">
+                          {t('admin.users.sandboxCount', { count: u.sandbox_count })}
+                        </Badge>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Button
@@ -1811,7 +1940,7 @@ function AdminConsoleView({
                           }}
                         >
                           <KeyRound className="h-3 w-3" />
-                          {u.has_password ? '重置密码' : '设置密码'}
+                          {u.has_password ? t('admin.users.resetPw') : t('admin.users.setPw')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1825,8 +1954,8 @@ function AdminConsoleView({
                               })
                               notify(
                                 nextStatus === 'active'
-                                  ? `已启用用户 ${u.email}`
-                                  : `已禁用用户 ${u.email}`,
+                                  ? t('admin.userEnabled', { email: u.email })
+                                  : t('admin.userDisabled', { email: u.email }),
                               )
                               await refreshAll()
                             } catch (err: any) {
@@ -1834,7 +1963,9 @@ function AdminConsoleView({
                             }
                           }}
                         >
-                          {u.status === 'active' ? '禁用' : '启用'}
+                          {u.status === 'active'
+                            ? t('admin.users.disableBtn')
+                            : t('admin.users.enableBtn')}
                         </Button>
                         <Button
                           variant="ghost"
@@ -1842,13 +1973,13 @@ function AdminConsoleView({
                           disabled={u.sandbox_count > 0}
                           title={
                             u.sandbox_count > 0
-                              ? '请先删除该用户名下的沙箱'
-                              : '删除用户'
+                              ? t('admin.users.deleteDisabledTip')
+                              : t('admin.users.deleteTip')
                           }
                           onClick={async () => {
                             try {
                               await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' })
-                              notify(`已删除用户 ${u.email}`)
+                              notify(t('admin.userDeleted', { email: u.email }))
                               await refreshAll()
                             } catch (err: any) {
                               notify(err.message, 'error')
@@ -1867,8 +1998,8 @@ function AdminConsoleView({
 
           <Card>
             <CardHeader>
-              <CardTitle>平台管理员 (Platform Admins)</CardTitle>
-              <CardDescription>拥有管理控制台权限与沙箱分配权限的管理员列表。</CardDescription>
+              <CardTitle>{t('admin.admins.title')}</CardTitle>
+              <CardDescription>{t('admin.admins.desc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <form
@@ -1882,7 +2013,7 @@ function AdminConsoleView({
                         display_name: newAdminName.trim() || null,
                       }),
                     })
-                    notify('已添加平台管理员')
+                    notify(t('admin.adminAdded'))
                     setNewAdminEmail('')
                     setNewAdminName('')
                     await refreshAll()
@@ -1895,17 +2026,17 @@ function AdminConsoleView({
                 <Input
                   type="email"
                   required
-                  placeholder="管理员邮箱..."
+                  placeholder={t('admin.admins.emailPlaceholder')}
                   value={newAdminEmail}
                   onChange={(e) => setNewAdminEmail(e.target.value)}
                 />
                 <Input
-                  placeholder="显示名称 (可选)"
+                  placeholder={t('admin.admins.namePlaceholder')}
                   value={newAdminName}
                   onChange={(e) => setNewAdminName(e.target.value)}
                 />
                 <Button type="submit" size="sm">
-                  添加
+                  {t('admin.admins.addBtn')}
                 </Button>
               </form>
 
@@ -1919,7 +2050,7 @@ function AdminConsoleView({
                       )}
                     </div>
                     <Badge variant={a.active ? 'success' : 'secondary'}>
-                      {a.active ? '生效中' : '已停用'}
+                      {a.active ? t('common.active') : t('common.inactive')}
                     </Badge>
                   </div>
                 ))}
@@ -1929,8 +2060,8 @@ function AdminConsoleView({
 
           <Card>
             <CardHeader>
-              <CardTitle>平台操作审计日志 (Audit Log)</CardTitle>
-              <CardDescription>最近 25 条沙箱生命周期与模板变更记录。</CardDescription>
+              <CardTitle>{t('admin.audit.title')}</CardTitle>
+              <CardDescription>{t('admin.audit.desc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="max-h-80 overflow-y-auto divide-y divide-zinc-800/60 text-xs">
@@ -1960,14 +2091,14 @@ function AdminConsoleView({
       <Dialog
         open={createSbxOpen}
         onOpenChange={setCreateSbxOpen}
-        title="分配新沙箱工作区 (管理员创建)"
-        description="选择环境模板后将自动带出该模板绑定的 Docker 镜像、资源配额、预装插件与初始化脚本。"
+        title={t('dialog.provision.title')}
+        description={t('dialog.provision.desc')}
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleCreateSandbox} className="space-y-4 text-xs">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>归属员工邮箱 *</Label>
+              <Label>{t('dialog.provision.emailLabel')}</Label>
               <Input
                 type="email"
                 required
@@ -1985,9 +2116,9 @@ function AdminConsoleView({
               </datalist>
             </div>
             <div className="space-y-1.5">
-              <Label>员工姓名 / 备注</Label>
+              <Label>{t('dialog.provision.nameLabel')}</Label>
               <Input
-                placeholder="例如：张三 (AI 研发)"
+                placeholder={t('dialog.provision.namePlaceholder')}
                 value={sbxForm.display_name}
                 onChange={(e) => setSbxForm({ ...sbxForm, display_name: e.target.value })}
               />
@@ -1995,12 +2126,12 @@ function AdminConsoleView({
 
             {overview?.manager_auth_mode !== 'oidc' && (
               <div className="space-y-1.5 sm:col-span-2">
-                <Label>用户初始登录密码 (仅首次建档或尚未设密码时写入，可选)</Label>
+                <Label>{t('dialog.provision.pwLabel')}</Label>
                 <div className="flex gap-2">
                   <Input
                     type="text"
                     minLength={6}
-                    placeholder="至少 6 位，若用户已有密码可留空"
+                    placeholder={t('dialog.provision.pwPlaceholder')}
                     value={sbxForm.initial_password}
                     onChange={(e) =>
                       setSbxForm({ ...sbxForm, initial_password: e.target.value })
@@ -2014,37 +2145,37 @@ function AdminConsoleView({
                       setSbxForm({ ...sbxForm, initial_password: generatePassword() })
                     }
                   >
-                    随机生成
+                    {t('dialog.provision.pwGenBtn')}
                   </Button>
                 </div>
               </div>
             )}
 
             <div className="space-y-1.5">
-              <Label>选择镜像与环境模板 *</Label>
+              <Label>{t('dialog.provision.templateLabel')}</Label>
               <Select
                 value={sbxForm.template}
                 onChange={(e) => applyTemplateToSandboxForm(e.target.value)}
               >
-                {templates.map((t) => (
-                  <option key={t.key} value={t.key}>
-                    {t.name} ({t.key}) — {t.image_repo}:{t.image_tag}
+                {templates.map((tpl) => (
+                  <option key={tpl.key} value={tpl.key}>
+                    {tpl.name} ({tpl.key}) — {tpl.image_repo}:{tpl.image_tag}
                   </option>
                 ))}
               </Select>
             </div>
 
             <div className="space-y-1.5">
-              <Label>自定义二级目录标识 (Slug，留空自动按邮箱生成)</Label>
+              <Label>{t('dialog.provision.slugLabel')}</Label>
               <Input
-                placeholder="例如：alice -> /s/alice/dsh/"
+                placeholder={t('dialog.provision.slugPlaceholder')}
                 value={sbxForm.slug}
                 onChange={(e) => setSbxForm({ ...sbxForm, slug: e.target.value })}
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label>Docker 镜像仓库 (Image Repo)</Label>
+              <Label>{t('dialog.provision.repoLabel')}</Label>
               <Input
                 value={sbxForm.image_repo}
                 onChange={(e) => setSbxForm({ ...sbxForm, image_repo: e.target.value })}
@@ -2052,7 +2183,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5">
-              <Label>镜像 Tag</Label>
+              <Label>{t('dialog.provision.tagLabel')}</Label>
               <Input
                 value={sbxForm.image_tag}
                 onChange={(e) => setSbxForm({ ...sbxForm, image_tag: e.target.value })}
@@ -2060,7 +2191,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5">
-              <Label>CPU 核数限制 (vCPU)</Label>
+              <Label>{t('dialog.provision.cpuLabel')}</Label>
               <Input
                 type="number"
                 step="0.5"
@@ -2072,7 +2203,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5">
-              <Label>内存限制 (如 2g, 4g, 8g)</Label>
+              <Label>{t('dialog.provision.memLabel')}</Label>
               <Input
                 value={sbxForm.memory_limit}
                 onChange={(e) => setSbxForm({ ...sbxForm, memory_limit: e.target.value })}
@@ -2080,12 +2211,12 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5">
-              <Label>注入默认 LLM 模型凭证 (可选)</Label>
+              <Label>{t('dialog.provision.llmLabel')}</Label>
               <Select
                 value={sbxForm.llm_profile_id}
                 onChange={(e) => setSbxForm({ ...sbxForm, llm_profile_id: e.target.value })}
               >
-                <option value="">(不注入，由用户在沙箱内配置)</option>
+                <option value="">{t('dialog.provision.llmNone')}</option>
                 {llmProfiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.model})
@@ -2095,7 +2226,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5">
-              <Label>预装自托管插件 (逗号分隔)</Label>
+              <Label>{t('dialog.provision.pluginsLabel')}</Label>
               <Input
                 placeholder="file-manager"
                 value={sbxForm.auto_install_plugins}
@@ -2106,7 +2237,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>首次启动自动 Git Clone 仓库地址 (可选)</Label>
+              <Label>{t('dialog.provision.repoUrlLabel')}</Label>
               <Input
                 placeholder="https://github.com/org/repo.git"
                 value={sbxForm.init_repo_url}
@@ -2115,7 +2246,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>首次启动初始化脚本 (`SANDBOX_INIT_SCRIPT`)</Label>
+              <Label>{t('dialog.provision.initScriptLabel')}</Label>
               <Textarea
                 rows={3}
                 value={sbxForm.init_script}
@@ -2126,10 +2257,10 @@ function AdminConsoleView({
 
           <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
             <Button type="button" variant="ghost" onClick={() => setCreateSbxOpen(false)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button type="submit" disabled={creatingSbx}>
-              {creatingSbx ? '正在创建容器并等待健康检查...' : '立即创建并分配沙箱'}
+              {creatingSbx ? t('dialog.provision.submitting') : t('dialog.provision.submit')}
             </Button>
           </div>
         </form>
@@ -2139,36 +2270,40 @@ function AdminConsoleView({
       <Dialog
         open={tplModalOpen}
         onOpenChange={setTplModalOpen}
-        title={editingTpl ? `编辑模板：${editingTpl.name}` : '新建镜像与环境模板'}
-        description="定义标准的 Agent OS 镜像、资源规格、预装插件与初始化脚本，供管理员分配沙箱时一键选用。"
+        title={
+          editingTpl
+            ? t('dialog.template.editTitle', { name: editingTpl.name })
+            : t('dialog.template.createTitle')
+        }
+        description={t('dialog.template.desc')}
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleSaveTemplate} className="space-y-4 text-xs">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>模板唯一标识 (Key，小写字母与连字符) *</Label>
+              <Label>{t('dialog.template.keyLabel')}</Label>
               <Input
                 required
                 disabled={!!editingTpl}
-                placeholder="例如：ai-researcher"
+                placeholder={t('dialog.template.keyPlaceholder')}
                 value={tplForm.key}
                 onChange={(e) => setTplForm({ ...tplForm, key: e.target.value })}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>模板显示名称 *</Label>
+              <Label>{t('dialog.template.nameLabel')}</Label>
               <Input
                 required
-                placeholder="例如：AI 算法研发环境"
+                placeholder={t('dialog.template.namePlaceholder')}
                 value={tplForm.name}
                 onChange={(e) => setTplForm({ ...tplForm, name: e.target.value })}
               />
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>模板功能描述</Label>
+              <Label>{t('dialog.template.descLabel')}</Label>
               <Input
-                placeholder="描述该模板包含的工具链、适用团队或预置服务..."
+                placeholder={t('dialog.template.descPlaceholder')}
                 value={tplForm.description}
                 onChange={(e) => setTplForm({ ...tplForm, description: e.target.value })}
               />
@@ -2176,14 +2311,14 @@ function AdminConsoleView({
 
             {overview && overview.local_images.length > 0 && (
               <div className="space-y-1.5 sm:col-span-2">
-                <Label>从本机已有 Docker 镜像快速选择</Label>
+                <Label>{t('dialog.template.localPickLabel')}</Label>
                 <Select
                   value={`${tplForm.image_repo}:${tplForm.image_tag}`}
                   onChange={(e) => {
                     const val = e.target.value
                     if (val.includes(':')) {
-                      const [r, t] = val.split(':')
-                      setTplForm({ ...tplForm, image_repo: r, image_tag: t })
+                      const [r, tag] = val.split(':')
+                      setTplForm({ ...tplForm, image_repo: r, image_tag: tag })
                     }
                   }}
                 >
@@ -2197,7 +2332,7 @@ function AdminConsoleView({
             )}
 
             <div className="space-y-1.5">
-              <Label>Docker 镜像仓库 (`image_repo`) *</Label>
+              <Label>{t('dialog.template.repoLabel')}</Label>
               <Input
                 required
                 value={tplForm.image_repo}
@@ -2205,7 +2340,7 @@ function AdminConsoleView({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Docker 镜像 Tag (`image_tag`) *</Label>
+              <Label>{t('dialog.template.tagLabel')}</Label>
               <Input
                 required
                 value={tplForm.image_tag}
@@ -2214,7 +2349,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5">
-              <Label>默认 CPU 配额 (vCPU)</Label>
+              <Label>{t('dialog.template.cpuLabel')}</Label>
               <Input
                 type="number"
                 step="0.5"
@@ -2225,7 +2360,7 @@ function AdminConsoleView({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>默认内存配额 (如 2g, 4g, 8g)</Label>
+              <Label>{t('dialog.template.memLabel')}</Label>
               <Input
                 value={tplForm.default_memory_limit}
                 onChange={(e) =>
@@ -2235,7 +2370,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>自动预装的 DSH 插件 (逗号分隔，如 file-manager)</Label>
+              <Label>{t('dialog.template.pluginsLabel')}</Label>
               <Input
                 value={tplForm.auto_install_plugins}
                 onChange={(e) =>
@@ -2245,7 +2380,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>工作区首次启动初始化脚本 (`init_script`，以 dev 用户在 `/home/dev` 执行)</Label>
+              <Label>{t('dialog.template.initScriptLabel')}</Label>
               <Textarea
                 rows={4}
                 value={tplForm.init_script}
@@ -2254,7 +2389,7 @@ function AdminConsoleView({
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>默认容器环境变量 JSON (`default_env_json`)</Label>
+              <Label>{t('dialog.template.envJsonLabel')}</Label>
               <Textarea
                 rows={2}
                 value={tplForm.default_env_json}
@@ -2265,10 +2400,10 @@ function AdminConsoleView({
 
           <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
             <Button type="button" variant="ghost" onClick={() => setTplModalOpen(false)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button type="submit" disabled={savingTpl}>
-              {savingTpl ? '正在保存...' : '保存模板'}
+              {savingTpl ? t('common.saving') : t('dialog.template.submit')}
             </Button>
           </div>
         </form>
@@ -2278,13 +2413,13 @@ function AdminConsoleView({
       <Dialog
         open={!!editSbx}
         onOpenChange={(o) => !o && setEditSbx(null)}
-        title={`调整沙箱配置：${editSbx?.slug}`}
-        description="动态更新容器 CPU/内存限制，或切换绑定的镜像版本与 LLM 模型配置（保留用户数据卷）。"
+        title={t('dialog.editSandbox.title', { slug: editSbx?.slug ?? '' })}
+        description={t('dialog.editSandbox.desc')}
       >
         <form onSubmit={handleSaveSandboxSpec} className="space-y-4 text-xs">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>CPU 限制 (vCPU)</Label>
+              <Label>{t('dialog.editSandbox.cpuLabel')}</Label>
               <Input
                 type="number"
                 step="0.5"
@@ -2295,7 +2430,7 @@ function AdminConsoleView({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>内存限制</Label>
+              <Label>{t('dialog.editSandbox.memLabel')}</Label>
               <Input
                 value={editSbxForm.memory_limit}
                 onChange={(e) =>
@@ -2304,7 +2439,7 @@ function AdminConsoleView({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>镜像仓库 (`image_repo`)</Label>
+              <Label>{t('dialog.editSandbox.repoLabel')}</Label>
               <Input
                 value={editSbxForm.image_repo}
                 onChange={(e) =>
@@ -2313,7 +2448,7 @@ function AdminConsoleView({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>镜像 Tag (`image_tag`)</Label>
+              <Label>{t('dialog.editSandbox.tagLabel')}</Label>
               <Input
                 value={editSbxForm.image_tag}
                 onChange={(e) =>
@@ -2322,14 +2457,14 @@ function AdminConsoleView({
               />
             </div>
             <div className="space-y-1.5 col-span-2">
-              <Label>绑定 LLM 模型凭证</Label>
+              <Label>{t('dialog.editSandbox.llmLabel')}</Label>
               <Select
                 value={editSbxForm.llm_profile_id}
                 onChange={(e) =>
                   setEditSbxForm({ ...editSbxForm, llm_profile_id: e.target.value })
                 }
               >
-                <option value="">(不绑定)</option>
+                <option value="">{t('dialog.editSandbox.llmNone')}</option>
                 {llmProfiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.model})
@@ -2340,10 +2475,10 @@ function AdminConsoleView({
           </div>
           <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
             <Button type="button" variant="ghost" onClick={() => setEditSbx(null)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button type="submit" disabled={savingSbx}>
-              {savingSbx ? '正在应用更改...' : '保存并生效'}
+              {savingSbx ? t('dialog.editSandbox.submitting') : t('dialog.editSandbox.submit')}
             </Button>
           </div>
         </form>
@@ -2353,8 +2488,8 @@ function AdminConsoleView({
       <Dialog
         open={!!logsTarget}
         onOpenChange={(o) => !o && setLogsTarget(null)}
-        title={`容器实时日志：dsh-sbx-${logsTarget?.slug}`}
-        description="显示 supervisord、Caddy、dsh-token 与 DeepSeek Harness 标准输出日志。"
+        title={t('dialog.logs.title', { slug: logsTarget?.slug ?? '' })}
+        description={t('dialog.logs.desc')}
         maxWidth="max-w-4xl"
       >
         <div className="space-y-3">
@@ -2369,7 +2504,7 @@ function AdminConsoleView({
                 onClick={() => logsTarget && openLogsModal(logsTarget)}
               >
                 <RefreshCw className={cn('h-3.5 w-3.5', loadingLogs && 'animate-spin')} />
-                刷新
+                {t('dialog.logs.refresh')}
               </Button>
               <Button
                 variant="outline"
@@ -2377,12 +2512,12 @@ function AdminConsoleView({
                 onClick={() => copyText('logs', logsText)}
               >
                 <Copy className="h-3.5 w-3.5" />
-                复制日志
+                {t('dialog.logs.copy')}
               </Button>
             </div>
           </div>
           <pre className="h-96 overflow-auto rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-[11px] text-zinc-300 leading-relaxed">
-            {loadingLogs ? '正在读取容器日志...' : logsText}
+            {loadingLogs ? t('dialog.logs.loading') : logsText}
           </pre>
         </div>
       </Dialog>
@@ -2391,8 +2526,8 @@ function AdminConsoleView({
       <Dialog
         open={!!deleteSbxTarget}
         onOpenChange={(o) => !o && setDeleteSbxTarget(null)}
-        title={`确认销毁沙箱：${deleteSbxTarget?.slug}`}
-        description={`归属用户：${deleteSbxTarget?.email}`}
+        title={t('dialog.destroy.title', { slug: deleteSbxTarget?.slug ?? '' })}
+        description={t('dialog.destroy.owner', { email: deleteSbxTarget?.email ?? '' })}
       >
         <div className="space-y-4 text-xs">
           <label className="flex items-center gap-2.5 rounded-lg border border-rose-500/30 bg-rose-950/20 p-3 text-rose-200 cursor-pointer">
@@ -2403,15 +2538,17 @@ function AdminConsoleView({
               className="h-4 w-4 rounded border-zinc-700"
             />
             <span>
-              同时永久删除持久化数据卷 (<code>{deleteSbxTarget?.volume_name}</code>，不可恢复)
+              {t('dialog.destroy.purgeBefore')}
+              <code>{deleteSbxTarget?.volume_name}</code>
+              {t('dialog.destroy.purgeAfter')}
             </span>
           </label>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setDeleteSbxTarget(null)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button variant="destructive" onClick={handleConfirmDeleteSandbox}>
-              确认销毁
+              {t('dialog.destroy.confirm')}
             </Button>
           </div>
         </div>
@@ -2421,8 +2558,8 @@ function AdminConsoleView({
       <Dialog
         open={!!resetPwTarget}
         onOpenChange={(o) => !o && setResetPwTarget(null)}
-        title={`设置 / 重置用户密码：${resetPwTarget?.email}`}
-        description="设置后，用户在非 OIDC 模式下须使用该密码登录个人工作区。"
+        title={t('dialog.resetPw.title', { email: resetPwTarget?.email ?? '' })}
+        description={t('dialog.resetPw.desc')}
       >
         <form
           onSubmit={async (e) => {
@@ -2434,7 +2571,7 @@ function AdminConsoleView({
                 method: 'PATCH',
                 body: JSON.stringify({ password: resetPwValue.trim() }),
               })
-              notify(`已更新 ${resetPwTarget.email} 的登录密码`)
+              notify(t('admin.passwordUpdated', { email: resetPwTarget.email }))
               setResetPwTarget(null)
               setResetPwValue('')
               await refreshAll()
@@ -2447,13 +2584,13 @@ function AdminConsoleView({
           className="space-y-4 text-xs"
         >
           <div className="space-y-1.5">
-            <Label>新密码 (至少 6 位) *</Label>
+            <Label>{t('dialog.resetPw.label')}</Label>
             <div className="flex gap-2">
               <Input
                 type="text"
                 required
                 minLength={6}
-                placeholder="输入新密码..."
+                placeholder={t('dialog.resetPw.placeholder')}
                 value={resetPwValue}
                 onChange={(e) => setResetPwValue(e.target.value)}
               />
@@ -2463,16 +2600,16 @@ function AdminConsoleView({
                 size="sm"
                 onClick={() => setResetPwValue(generatePassword())}
               >
-                随机生成
+                {t('dialog.provision.pwGenBtn')}
               </Button>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" onClick={() => setResetPwTarget(null)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button type="submit" disabled={savingPw}>
-              {savingPw ? '保存中...' : '确认设置'}
+              {savingPw ? t('common.saving') : t('dialog.resetPw.submit')}
             </Button>
           </div>
         </form>
@@ -2492,6 +2629,10 @@ function UserPortalView({
   auth: AuthMe | null
   notify: (msg: string, type?: 'success' | 'error') => void
 }) {
+  const { locale, t } = useI18n()
+  const tRef = useRef(t)
+  tRef.current = t
+
   const [sandboxes, setSandboxes] = useState<SandboxItem[]>([])
   const [loading, setLoading] = useState(true)
   const [logsTarget, setLogsTarget] = useState<SandboxItem | null>(null)
@@ -2510,13 +2651,13 @@ function UserPortalView({
     setLoadingLogs(true)
     try {
       const res = await apiFetch<{ logs: string }>(`/api/sandboxes/${sbx.id}/logs?tail=400`)
-      const cleaned = (res.logs || '(暂无日志输出)').replace(
+      const cleaned = (res.logs || t('admin.noLogs')).replace(
         /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]/g,
         '',
       )
       setLogsText(cleaned)
     } catch (err: any) {
-      setLogsText(`读取日志失败: ${err.message}`)
+      setLogsText(t('admin.logsLoadFailed', { message: err.message }))
     } finally {
       setLoadingLogs(false)
     }
@@ -2532,7 +2673,7 @@ function UserPortalView({
       )
       setSandboxes(res.items)
     } catch (err: any) {
-      notify(err.message || '加载个人工作区失败', 'error')
+      notify(err.message || tRef.current('portal.loadFailed'), 'error')
     } finally {
       setLoading(false)
     }
@@ -2544,9 +2685,9 @@ function UserPortalView({
 
   const handleAction = async (sbx: SandboxItem, action: 'start' | 'stop' | 'restart') => {
     try {
-      notify(`正在执行 ${action}...`)
+      notify(t('portal.actionRunning', { action: localizeAction(locale, action) }))
       await apiFetch(`/api/my/sandboxes/${sbx.id}/${action}`, { method: 'POST' })
-      notify('操作成功')
+      notify(t('portal.actionSuccess'))
       await loadMySandboxes()
     } catch (err: any) {
       notify(err.message, 'error')
@@ -2557,38 +2698,40 @@ function UserPortalView({
     <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-5">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">我的远程 Agent OS 工作区</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t('portal.bannerTitle')}</h1>
           <p className="text-xs text-zinc-400 mt-1">
-            当前账号：<span className="text-zinc-200 font-mono">{auth?.email}</span> · 工作区由平台管理员统一创建与分配
+            {t('portal.accountPrefix')}
+            <span className="text-zinc-200 font-mono">{auth?.email}</span>
+            {t('portal.accountSuffix')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {auth?.auth_mode !== 'oidc' && !auth?.admin && (
             <Button variant="outline" size="sm" onClick={() => setPwModalOpen(true)}>
               <KeyRound className="h-3.5 w-3.5" />
-              修改密码
+              {t('portal.changePwBtn')}
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={loadMySandboxes}>
             <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-            刷新状态
+            {t('portal.refreshBtn')}
           </Button>
         </div>
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-xs text-zinc-500">正在查询您名下的沙箱工作区...</div>
+        <div className="py-16 text-center text-xs text-zinc-500">{t('portal.loadingList')}</div>
       ) : sandboxes.length === 0 ? (
         <Card className="border-dashed border-zinc-800 bg-zinc-900/40">
           <CardContent className="py-14 text-center space-y-3">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800/80 text-zinc-400">
               <Lock className="h-5 w-5" />
             </div>
-            <h3 className="text-sm font-medium text-zinc-200">暂未分配远程 Agent OS 工作区</h3>
+            <h3 className="text-sm font-medium text-zinc-200">{t('portal.emptyTitle')}</h3>
             <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-              当前平台采用管理员集中分配策略，个人不支持自助新建工作区。请联系平台管理员（
+              {t('portal.emptyBefore')}
               <code className="text-zinc-300">{auth?.default_admin_email || 'admin@example.com'}</code>
-              ）为您开通专属沙箱环境。
+              {t('portal.emptyAfter')}
             </p>
           </CardContent>
         </Card>
@@ -2603,17 +2746,23 @@ function UserPortalView({
                       {sbx.slug}
                     </span>
                     <Badge variant={sbx.status === 'running' ? 'success' : 'warning'}>
-                      {sbx.status}
+                      {localizeStatus(locale, sbx.status)}
                     </Badge>
                     <Badge variant="secondary">{sbx.template}</Badge>
                   </div>
                   <div className="text-xs text-zinc-400 space-x-3 font-mono">
-                    <span>入口: /s/{sbx.slug}/dsh/</span>
-                    <span>·</span>
-                    <span>应用: /s/{sbx.slug}/apps/&lt;name&gt;/</span>
+                    <span>{t('portal.entryLabel', { slug: sbx.slug })}</span>
                     <span>·</span>
                     <span>
-                      规格: {sbx.cpu_limit} vCPU / {sbx.memory_limit}
+                      {t('portal.appsPrefix', { slug: sbx.slug })}
+                      &lt;name&gt;/
+                    </span>
+                    <span>·</span>
+                    <span>
+                      {t('portal.specLabel', {
+                        cpu: sbx.cpu_limit,
+                        memory: sbx.memory_limit,
+                      })}
                     </span>
                   </div>
                 </div>
@@ -2624,22 +2773,22 @@ function UserPortalView({
                     onClick={() => window.open(`/sandboxes/${sbx.id}/open`, '_blank')}
                   >
                     <ExternalLink className="h-4 w-4" />
-                    进入 Agent OS 工作区
+                    {t('portal.openBtn')}
                   </Button>
                   {sbx.status === 'running' ? (
                     <Button variant="outline" size="sm" onClick={() => handleAction(sbx, 'stop')}>
                       <Square className="h-3.5 w-3.5 text-amber-400" />
-                      停止
+                      {t('portal.stopBtn')}
                     </Button>
                   ) : (
                     <Button variant="outline" size="sm" onClick={() => handleAction(sbx, 'start')}>
                       <Play className="h-3.5 w-3.5 text-emerald-400" />
-                      启动
+                      {t('portal.startBtn')}
                     </Button>
                   )}
                   <Button variant="outline" size="sm" onClick={() => handleAction(sbx, 'restart')}>
                     <RotateCw className="h-3.5 w-3.5" />
-                    重启
+                    {t('portal.restartBtn')}
                   </Button>
                   <Button
                     variant="outline"
@@ -2647,7 +2796,7 @@ function UserPortalView({
                     onClick={() => openLogsModal(sbx)}
                   >
                     <FileText className="h-3.5 w-3.5" />
-                    查看日志
+                    {t('portal.logsBtn')}
                   </Button>
                   <Button
                     variant="outline"
@@ -2655,7 +2804,7 @@ function UserPortalView({
                     onClick={() => window.open(`/api/sandboxes/${sbx.id}/backup`, '_blank')}
                   >
                     <Download className="h-3.5 w-3.5" />
-                    下载备份 (.tar)
+                    {t('portal.backupBtn')}
                   </Button>
                 </div>
               </CardContent>
@@ -2668,8 +2817,8 @@ function UserPortalView({
       <Dialog
         open={!!logsTarget}
         onOpenChange={(o) => !o && setLogsTarget(null)}
-        title={`工作区运行日志：dsh-sbx-${logsTarget?.slug}`}
-        description="显示您的远程工作区容器实时运行日志。"
+        title={t('portal.logsTitle', { slug: logsTarget?.slug ?? '' })}
+        description={t('portal.logsDesc')}
         maxWidth="max-w-4xl"
       >
         <div className="space-y-3">
@@ -2684,23 +2833,23 @@ function UserPortalView({
                 onClick={() => logsTarget && openLogsModal(logsTarget)}
               >
                 <RefreshCw className={cn('h-3.5 w-3.5', loadingLogs && 'animate-spin')} />
-                刷新
+                {t('dialog.logs.refresh')}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
                   navigator.clipboard.writeText(logsText)
-                  notify('日志已复制到剪贴板')
+                  notify(t('portal.logsCopied'))
                 }}
               >
                 <Copy className="h-3.5 w-3.5" />
-                复制日志
+                {t('dialog.logs.copy')}
               </Button>
             </div>
           </div>
           <pre className="h-96 overflow-auto rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-[11px] text-zinc-300 leading-relaxed whitespace-pre-wrap break-all">
-            {loadingLogs ? '正在读取容器日志...' : logsText}
+            {loadingLogs ? t('dialog.logs.loading') : logsText}
           </pre>
         </div>
       </Dialog>
@@ -2709,14 +2858,14 @@ function UserPortalView({
       <Dialog
         open={pwModalOpen}
         onOpenChange={(o) => !o && setPwModalOpen(false)}
-        title="修改个人登录密码"
-        description={`账号：${auth?.email}`}
+        title={t('portal.pwDialogTitle')}
+        description={t('portal.pwDialogDesc', { email: auth?.email ?? '' })}
       >
         <form
           onSubmit={async (e) => {
             e.preventDefault()
             if (pwForm.new_password !== pwForm.confirm_password) {
-              notify('两次输入的新密码不一致', 'error')
+              notify(t('portal.pwMismatch'), 'error')
               return
             }
             setSavingPw(true)
@@ -2728,7 +2877,7 @@ function UserPortalView({
                   new_password: pwForm.new_password,
                 }),
               })
-              notify('登录密码修改成功')
+              notify(t('portal.pwChanged'))
               setPwModalOpen(false)
               setPwForm({ current_password: '', new_password: '', confirm_password: '' })
             } catch (err: any) {
@@ -2741,7 +2890,7 @@ function UserPortalView({
         >
           {auth?.has_password && (
             <div className="space-y-1.5">
-              <Label>当前密码 *</Label>
+              <Label>{t('portal.currentPwLabel')}</Label>
               <Input
                 type="password"
                 required
@@ -2753,7 +2902,7 @@ function UserPortalView({
             </div>
           )}
           <div className="space-y-1.5">
-            <Label>新密码 (至少 6 位) *</Label>
+            <Label>{t('portal.newPwLabel')}</Label>
             <Input
               type="password"
               required
@@ -2765,7 +2914,7 @@ function UserPortalView({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>确认新密码 *</Label>
+            <Label>{t('portal.confirmPwLabel')}</Label>
             <Input
               type="password"
               required
@@ -2778,10 +2927,10 @@ function UserPortalView({
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" onClick={() => setPwModalOpen(false)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button type="submit" disabled={savingPw}>
-              {savingPw ? '提交中...' : '保存新密码'}
+              {savingPw ? t('portal.submitting') : t('portal.pwSubmit')}
             </Button>
           </div>
         </form>
