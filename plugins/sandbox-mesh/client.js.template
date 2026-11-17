@@ -1,0 +1,300 @@
+window.__ModuleLoader__.load({
+  id: '@dsh-dock/sandbox-mesh',
+  factory(require) {
+    const React = require('react')
+
+    // __CLIENT_MODULES__
+
+    function readActiveLocale(localeSvc) {
+      if (!localeSvc) return undefined
+      if (typeof localeSvc.getSnapshot === 'function') return localeSvc.getSnapshot()?.active
+      if (typeof localeSvc.getLocale === 'function') return localeSvc.getLocale()?.active
+      return undefined
+    }
+
+    function buildNativeSessionAtTriggerSource({ controller, getLocale }) {
+      return {
+        trigger: '@',
+        name: 'sandbox-mesh',
+        order: -10,
+        showGroupTitle: false,
+        warm() {
+          void controller.syncFromHost()
+        },
+        async candidates(_session, { query, quoted, signal }) {
+          if (quoted) return []
+          await controller.syncFromHost()
+          if (signal?.aborted) return []
+          const snap = controller.getSnapshot()
+          const selfSlug = snap.state?.self?.slug || 'sandbox'
+          const peers = snap.state?.peers || []
+          const rooms = snap.state?.rooms || []
+          const t = createTranslator(typeof getLocale === 'function' ? getLocale() : 'en')
+          const section = t('triggerSectionPeers')
+          const q = String(query || '').trim().toLowerCase()
+          const items = []
+
+          for (const peer of peers) {
+            if (!peer?.slug) continue
+            const match = !q
+              || peer.slug.toLowerCase().includes(q)
+              || String(peer.ownerName || '').toLowerCase().includes(q)
+              || String(peer.role || '').toLowerCase().includes(q)
+              || String(peer.description || '').toLowerCase().includes(q)
+            if (!match) continue
+            const pairRoom = rooms.find((r) => r.type === 'pair' && r.peerSlug === peer.slug)
+            const rId = pairRoom?.id || pairRoomId(selfSlug, peer.slug)
+            const roleSummary = [peer.role, peer.description].filter(Boolean).join(' — ')
+            items.push({
+              name: peer.slug,
+              label: peer.role ? `${peer.slug} (${peer.role})` : peer.slug,
+              description: roleSummary || `${peer.ownerName || peer.slug} · ${t('triggerPeerDesc')}`,
+              icon: 'session',
+              section,
+              value: JSON.stringify({
+                kind: 'peer',
+                slug: peer.slug,
+                ownerName: peer.ownerName || peer.slug,
+                roomId: rId,
+              }),
+            })
+          }
+
+          for (const room of rooms) {
+            if (room.type !== 'group') continue
+            const match = !q
+              || String(room.name || '').toLowerCase().includes(q)
+              || String(room.id || '').toLowerCase().includes(q)
+            if (!match) continue
+            items.push({
+              name: room.name || room.id,
+              label: room.name || room.id,
+              description: `${t('triggerGroupDesc')} (${(room.members || []).map((m) => m.slug).join(', ')})`,
+              icon: 'session',
+              section,
+              value: JSON.stringify({
+                kind: 'group',
+                roomId: room.id,
+                name: room.name || room.id,
+              }),
+            })
+          }
+
+          return items
+        },
+        onPick({ candidate }) {
+          if (!candidate?.value) return undefined
+          let parsed
+          try {
+            parsed = JSON.parse(candidate.value)
+          } catch {
+            return undefined
+          }
+          if (parsed?.kind === 'peer') {
+            const mention = `@[${parsed.slug}](dsh-mesh:${parsed.slug})`
+            return {
+              insert: {
+                source: 'sandbox-mesh',
+                ref: mention,
+                label: parsed.slug,
+                appearance: 'session',
+                clipboardText: `@${parsed.slug}`,
+              },
+            }
+          }
+          if (parsed?.kind === 'group') {
+            const mention = `@[${parsed.name}](dsh-mesh-group:${parsed.roomId})`
+            return {
+              insert: {
+                source: 'sandbox-mesh',
+                ref: mention,
+                label: parsed.name,
+                appearance: 'session',
+                clipboardText: `@${parsed.name}`,
+              },
+            }
+          }
+          return undefined
+        },
+        codec: {
+          clipboardText(ref) {
+            const match = /^@\[([^\]\n]+)\]\(dsh-mesh/.exec(String(ref || ''))
+            if (match) return `@${match[1]}`
+            return ref
+          },
+          async serialize(ref) {
+            return String(ref || '')
+          },
+        },
+      }
+    }
+
+    function apply(ctx) {
+      ctx.effect(() => installStyles(), 'sandbox-mesh: styles')
+
+      const subscribeLocale = (listener) => {
+        if (ctx.locale && typeof ctx.locale.subscribe === 'function') {
+          return ctx.locale.subscribe((snapshot) => listener(snapshot?.active))
+        }
+        if (typeof ctx.on === 'function') {
+          return ctx.on('locale/change', (snapshot) => listener(snapshot?.active))
+        }
+        return () => {}
+      }
+
+      if (ctx.locale && typeof ctx.locale.register === 'function') {
+        const disposeLocale = ctx.locale.register('sandboxMesh', { en, zh })
+        ctx.effect(() => disposeLocale, 'sandbox-mesh: locale')
+      }
+
+      const controller = createMeshController()
+      ctx.effect(() => () => { controller.dispose() }, 'sandbox-mesh: controller')
+
+      void controller.syncFromHost()
+
+      // Register `@` trigger source directly into DSH's native Session chat composer!
+      if (typeof ctx.inject === 'function') {
+        ctx.inject(['inputTriggers'], (trigCtx) => {
+          const inputTriggers = trigCtx.inputTriggers ?? trigCtx.get?.('inputTriggers')
+          if (!inputTriggers || typeof inputTriggers.registerSource !== 'function') return
+          const src = buildNativeSessionAtTriggerSource({
+            controller,
+            getLocale: () => readActiveLocale(ctx.locale),
+          })
+          const disposeTrigger = inputTriggers.registerSource(src)
+          trigCtx.effect(() => disposeTrigger, 'sandbox-mesh: native session @ trigger')
+        })
+
+        // Register userText rule & chip renderer so `@[slug](dsh-mesh:slug)` renders as a clean chip in DSH Session chat history!
+        ctx.inject(['uiConversation'], (convCtx) => {
+          const uiConv = convCtx.uiConversation ?? convCtx.get?.('uiConversation')
+          if (!uiConv?.userText?.register) return
+          const disposeRule = uiConv.userText.register({
+            id: 'sandbox-mesh',
+            order: 8,
+            match(text, from) {
+              const pattern = /@\[([^\]\n]+)\]\(dsh-mesh(?:-[a-z]+)?:([^)\s]+)\)/gu
+              pattern.lastIndex = from
+              const m = pattern.exec(text)
+              if (!m) return undefined
+              return {
+                id: 'sandbox-mesh',
+                start: m.index,
+                end: m.index + m[0].length,
+                data: { label: m[1], target: m[2] },
+              }
+            },
+          })
+          const disposeNode = convCtx.slots.inject('conversation.user.text.node', () =>
+            convCtx.slots.register(
+              {
+                name: 'conversation.user.text.node',
+                key: 'sandbox-mesh',
+                priority: 100,
+              },
+              function MeshUserTextChip({ node, raw }) {
+                const label = node?.data?.label || raw
+                return React.createElement(
+                  'span',
+                  {
+                    className: 'sm-inline-mention',
+                    title: raw,
+                  },
+                  React.createElement(AgentIcon, { React, size: 12 }),
+                  `@${label}`,
+                )
+              },
+            ),
+          )
+          convCtx.effect(() => () => {
+            disposeRule?.()
+            disposeNode?.()
+          }, 'sandbox-mesh: userText chip rule')
+        })
+      }
+
+      // Left Sidebar Main Slot: Pure IM Chat + Group Creation + Unified @ / # Composer
+      const MeshChatPage = createMeshChatPage({
+        React,
+        controller,
+        getLocale: () => readActiveLocale(ctx.locale),
+        subscribeLocale,
+      })
+
+      // Settings Section Slot: Node Endpoint Info + 1-on-1 Pairing + Paired Sandboxes Management
+      const MeshSettingsPage = createMeshSettingsPage({
+        React,
+        controller,
+        getLocale: () => readActiveLocale(ctx.locale),
+        subscribeLocale,
+      })
+
+      const PanelIcon = ({ size = 18 }) => MeshNavIcon({ React, size })
+
+      ctx.slots.inject('sidebar.panellist', () =>
+        ctx.slots.register(
+          {
+            name: 'sidebar.panellist',
+            id: 'sandbox-mesh',
+            order: 25,
+            label: () => createTranslator(readActiveLocale(ctx.locale))('panel'),
+            locale: 'sandboxMesh',
+          },
+          PanelIcon,
+        ),
+      )
+
+      ctx.slots.inject('main', () =>
+        ctx.slots.register(
+          {
+            name: 'main',
+            key: 'sandbox-mesh',
+            locale: 'sandboxMesh',
+          },
+          MeshChatPage,
+        ),
+      )
+
+      ctx.slots.inject('settings.section.icon', () =>
+        ctx.slots.register(
+          {
+            name: 'settings.section.icon',
+            id: 'sandbox-mesh',
+          },
+          function MeshSectionIcon({ size = 16 }) {
+            return MeshNavIcon({ React, size })
+          },
+        ),
+      )
+
+      ctx.slots.inject('settings.section', () => {
+        let unregister = null
+        const syncNav = () => {
+          unregister?.()
+          const t = createTranslator(readActiveLocale(ctx.locale))
+          unregister = ctx.slots.register(
+            {
+              name: 'settings.section',
+              id: 'sandbox-mesh',
+              order: 28,
+              label: t('nav'),
+            },
+            MeshSettingsPage,
+          )
+        }
+        syncNav()
+        const offLocale = subscribeLocale(() => syncNav())
+        return () => {
+          offLocale()
+          unregister?.()
+          unregister = null
+        }
+      })
+    }
+
+    return {
+      inject: ['slots', 'locale'],
+      apply,
+    }
+  },
+})

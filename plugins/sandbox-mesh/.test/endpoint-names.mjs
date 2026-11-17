@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict'
+import {
+  FILES_ENDPOINT,
+  GROUP_CREATE_ENDPOINT,
+  GROUP_INVITE_ENDPOINT,
+  GROUP_MODERATE_ENDPOINT,
+  MARK_READ_ENDPOINT,
+  NEW_TOPIC_ENDPOINT,
+  PAIR_CLAIM_ENDPOINT,
+  PAIR_CODE_ENDPOINT,
+  PEER_REMOVE_ENDPOINT,
+  PROFILE_ENDPOINT,
+  SEND_ENDPOINT,
+  SEND_FILE_ENDPOINT,
+  STATE_ENDPOINT,
+} from '../index.js'
+
+const ENDPOINT_RE = /^\/api\/[a-z0-9-]+(?:\.[a-z0-9-]+)+$/
+
+for (const ep of [
+  STATE_ENDPOINT,
+  PROFILE_ENDPOINT,
+  FILES_ENDPOINT,
+  PAIR_CODE_ENDPOINT,
+  PAIR_CLAIM_ENDPOINT,
+  GROUP_CREATE_ENDPOINT,
+  GROUP_INVITE_ENDPOINT,
+  GROUP_MODERATE_ENDPOINT,
+  NEW_TOPIC_ENDPOINT,
+  SEND_ENDPOINT,
+  SEND_FILE_ENDPOINT,
+  MARK_READ_ENDPOINT,
+  PEER_REMOVE_ENDPOINT,
+]) {
+  assert.match(ep, ENDPOINT_RE, `Endpoint ${ep} must follow /api/<plugin>.<action> convention`)
+}
+console.log('endpoint-names ok')

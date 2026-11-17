@@ -60,7 +60,7 @@ DSH Dock (`dsh-dock`) provisions isolated, persistent per-user **DeepSeek Harnes
   - Enable `INSTALL_TOOLCHAIN=true` to execute custom drop-in installers from `sandbox/toolchain/toolchain.d/*.sh` in sorted order into `/opt/toolchain` (includes `10-dotnet.sh` as a reference).
 - **Self-Hosted Plugin Index & NPM Registry**:
   - Mounts `plugins/` directly into `dsh-manager` and dynamically serves `/plugins/index.json`, inline SVG icons, `.tgz` bundles (`/plugins/packages/*.tgz`), and read-only npm packuments (`/plugins/npm/*`).
-  - Ships with `@local/dsh-plugin-file-manager`, `@dsh-dock/workspace-user`, and `@dsh-dock/custom-theme`, and supports automatic first-boot installation via `SANDBOX_AUTO_INSTALL_PLUGINS` (all three enabled by default).
+  - Ships with `@local/dsh-plugin-file-manager`, `@dsh-dock/workspace-user`, `@dsh-dock/custom-theme`, and `@dsh-dock/sandbox-mesh`, and supports automatic first-boot installation via `SANDBOX_AUTO_INSTALL_PLUGINS` (all four enabled by default).
 - **Mirror & Internal Network Ready**:
   - Supports `DOCKER_REGISTRY`, `APT_MIRROR` (including HTTPS mirrors like `https://mirrors.aliyun.com`), `NODE_MIRROR` (e.g. `https://mirrors.aliyun.com/nodejs-release`), `NPM_REGISTRY`, `PIP_INDEX_URL`, and `CUSTOM_CA_BUNDLE_PATH`.
 
@@ -92,7 +92,8 @@ DSH Dock (`dsh-dock`) provisions isolated, persistent per-user **DeepSeek Harnes
     ├── icons/                      # SVG plugin icons
     ├── file-manager/               # Built-in Server File Manager bundle + tests
     ├── workspace-user/             # Built-in Workspace User Identity & launcher menu
-    └── custom-theme/               # Built-in Custom Theme presets, token editor & branding
+    ├── custom-theme/               # Built-in Custom Theme presets, token editor & branding
+    └── sandbox-mesh/               # Cross-sandbox pairing, LLM-moderated groups & Agent mesh
 ```
 
 ## Quick Start
@@ -190,7 +191,7 @@ docker run --rm --entrypoint /bin/bash -v "$PWD:/repo:ro" dsh-sandbox:latest \
   /repo/sandbox/tests/test_sandbox_scripts.sh /repo
 ```
 
-### DSH Plugins (`file-manager`, `workspace-user`, `custom-theme`)
+### DSH Plugins (`file-manager`, `workspace-user`, `custom-theme`, `sandbox-mesh`)
 
 ```bash
 docker run --rm --entrypoint bash -v "$PWD/plugins:/work/plugins" \
@@ -201,6 +202,9 @@ docker run --rm --entrypoint bash -v "$PWD/plugins:/work/plugins" \
 
 docker run --rm --entrypoint bash -v "$PWD/plugins:/work/plugins" \
   -w /work/plugins/custom-theme dsh-sandbox:latest -c "node .test/run.mjs"
+
+docker run --rm --entrypoint bash -v "$PWD/plugins:/work/plugins" \
+  -w /work/plugins/sandbox-mesh dsh-sandbox:latest -c "node .test/run.mjs"
 ```
 
 ## Contributing

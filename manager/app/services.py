@@ -195,8 +195,18 @@ def ensure_default_templates(db: Session, settings: Settings) -> None:
     elif default_tpl.is_builtin:
         if default_tpl.init_script == legacy_default_init_script:
             default_tpl.init_script = None
-        if (default_tpl.auto_install_plugins or "").strip() == "file-manager":
+        if (default_tpl.auto_install_plugins or "").strip() in {
+            "file-manager",
+            "file-manager,workspace-user,custom-theme",
+        }:
             default_tpl.auto_install_plugins = default_plugins
+
+    for sbx in db.scalars(select(Sandbox).where(Sandbox.deleted_at.is_(None))).all():
+        if (sbx.auto_install_plugins or "").strip() in {
+            "file-manager",
+            "file-manager,workspace-user,custom-theme",
+        }:
+            sbx.auto_install_plugins = default_plugins
     db.commit()
 
 

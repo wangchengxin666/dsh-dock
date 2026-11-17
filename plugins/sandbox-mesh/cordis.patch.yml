@@ -1,0 +1,6 @@
+- insert:
+    - id: sandbox-mesh
+      name: '@dsh-dock/sandbox-mesh'
+      config:
+        port: 4090
+        maxAgentHops: 3

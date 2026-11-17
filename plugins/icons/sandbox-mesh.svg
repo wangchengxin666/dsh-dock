@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" fill="none">
+  <defs>
+    <linearGradient id="sm-mesh-bg" x1="2" y1="2" x2="34" y2="34" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="52%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+    <linearGradient id="sm-mesh-hex" x1="14" y1="14" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E0F2FE"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="32" height="32" rx="9" fill="url(#sm-mesh-bg)"/>
+  <rect x="2.6" y="2.6" width="30.8" height="30.8" rx="8.4" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="1.2"/>
+  <circle cx="18" cy="18.2" r="9.4" stroke="#FFFFFF" stroke-opacity="0.24" stroke-width="1.4"/>
+  <path d="M18 18.2V8.8M18 18.2L9.9 22.9M18 18.2L26.1 22.9" stroke="#FFFFFF" stroke-opacity="0.88" stroke-width="1.75" stroke-linecap="round"/>
+  <path d="M18 13.9L21.7 16.05V20.35L18 22.5L14.3 20.35V16.05L18 13.9Z" fill="url(#sm-mesh-hex)"/>
+  <path d="M18 15.8L20.1 18.2L18 20.6L15.9 18.2Z" fill="#4F46E5"/>
+  <circle cx="18" cy="8.8" r="3.2" fill="#FFFFFF"/>
+  <circle cx="18" cy="8.8" r="1.45" fill="#F59E0B"/>
+  <circle cx="9.9" cy="22.9" r="2.8" fill="#FFFFFF"/>
+  <circle cx="9.9" cy="22.9" r="1.25" fill="#0EA5E9"/>
+  <circle cx="26.1" cy="22.9" r="2.8" fill="#FFFFFF"/>
+  <circle cx="26.1" cy="22.9" r="1.25" fill="#4F46E5"/>
+</svg>

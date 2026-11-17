@@ -120,6 +120,44 @@
           }
         }
       ]
+    },
+    {
+      "name": "@dsh-dock/sandbox-mesh",
+      "title": {
+        "en": "Sandbox Mesh & Group Chat",
+        "zh": "沙箱互联与群聊协同"
+      },
+      "description": {
+        "en": "Pair sandboxes with one-time codes or cross-network Traefik URLs, create multi-sandbox groups, share files, and let humans and DSH Agents collaborate in unified rooms.",
+        "zh": "通过一次性配对码或跨网 Traefik 链接配对沙箱、组建多沙箱群聊、互传文件，并支持人类用户与 DSH Agent 在同一房间内安全协作。"
+      },
+      "icon": "icons/sandbox-mesh.svg",
+      "author": "DSH Dock",
+      "homepage": "https://github.com/wangchengxin666/dsh-dock/tree/main/plugins/sandbox-mesh",
+      "repository": {
+        "url": "https://github.com/wangchengxin666/dsh-dock"
+      },
+      "keywords": [
+        "mesh",
+        "pair",
+        "group",
+        "chat",
+        "agent",
+        "federation"
+      ],
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1794564442,
+          "source": {
+            "type": "npm",
+            "registry": "http://localhost:9000/plugins/npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.0 <0.3.0"
+          }
+        }
+      ]
     }
   ]
 }
