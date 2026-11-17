@@ -153,3 +153,30 @@ def test_build_npm_packument_and_index_modes(tmp_path: Path):
     # resolve_icon safely blocks path traversal
     assert git_svc.resolve_icon("alpha.svg") is not None
     assert git_svc.resolve_icon("../package.json") is None
+
+
+def test_real_repo_plugins_package_cleanly():
+    repo_plugins = Path(__file__).resolve().parents[2] / "plugins"
+    svc = PluginRegistryService(_settings_for(repo_plugins))
+    packages = svc.list_packages()
+    slugs = {pkg.slug for pkg in packages}
+    assert {"file-manager", "workspace-user", "custom-theme"}.issubset(slugs)
+
+    for slug in ("file-manager", "workspace-user", "custom-theme"):
+        pkg = svc.get_by_slug_or_filename(slug)
+        assert pkg is not None
+        assert svc.resolve_icon(f"{slug}.svg") is not None
+        with tarfile.open(fileobj=io.BytesIO(pkg.tarball_bytes), mode="r:gz") as tar:
+            members = set(tar.getnames())
+            assert "package/package.json" in members
+            assert "package/client.js" in members
+            assert "package/index.js" in members
+            assert not any(m.startswith("package/.test/") for m in members)
+
+    idx = svc.build_index("http://localhost:9000")
+    names = {item["name"] for item in idx["plugins"]}
+    assert {
+        "@local/dsh-plugin-file-manager",
+        "@dsh-dock/workspace-user",
+        "@dsh-dock/custom-theme",
+    }.issubset(names)

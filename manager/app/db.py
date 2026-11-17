@@ -88,6 +88,18 @@ def init_db() -> None:
                 connection.exec_driver_sql(
                     "ALTER TABLE sandboxes ADD COLUMN auto_install_plugins VARCHAR(512)"
                 )
+            if "auto_sleep_exempt" not in columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE sandboxes ADD COLUMN auto_sleep_exempt BOOLEAN NOT NULL DEFAULT 0"
+                )
+            if "disk_usage_mb" not in columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE sandboxes ADD COLUMN disk_usage_mb FLOAT"
+                )
+            if "disk_updated_at" not in columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE sandboxes ADD COLUMN disk_updated_at DATETIME"
+                )
             if "port" in columns:
                 connection.exec_driver_sql("DROP INDEX IF EXISTS ix_sandboxes_port")
                 connection.exec_driver_sql("ALTER TABLE sandboxes DROP COLUMN port")

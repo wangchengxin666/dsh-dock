@@ -4,6 +4,8 @@ from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_AUTO_INSTALL_PLUGINS = "file-manager,workspace-user,custom-theme"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -22,6 +24,9 @@ class Settings(BaseSettings):
     health_timeout_seconds: int = 75
     background_tasks: bool = True
     reconcile_interval_seconds: int = 60
+    idle_sleep_enabled: bool = False
+    idle_sleep_minutes: int = 240
+    restore_max_bytes: int = 512 * 1024 * 1024
 
     # Authentication modes:
     # - 'oidc': IdP SSO (Keycloak / Auth0 / Okta / Authentik)
@@ -56,8 +61,8 @@ class Settings(BaseSettings):
     plugin_index_title_en: str = ""
     plugin_index_title_zh: str = ""
     plugin_index_author: str = ""
-    # Comma-separated plugin slugs or URLs to auto-install into new sandboxes (e.g. "file-manager")
-    sandbox_auto_install_plugins: str = ""
+    # Comma-separated plugin slugs or URLs to auto-install into new sandboxes
+    sandbox_auto_install_plugins: str = DEFAULT_AUTO_INSTALL_PLUGINS
 
     @property
     def manager_base_url(self) -> str:

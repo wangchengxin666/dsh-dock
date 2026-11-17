@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import copy
+import io
 import json
+import posixpath
 import re
+import tarfile
+import tempfile
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from typing import Any
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]")
 
@@ -14,6 +20,7 @@ from docker.models.containers import Container
 
 from .config import Settings
 from .models import Sandbox
+from .plugin_registry import PluginRegistryService
 from .security import decrypt_secret
 
 
@@ -115,16 +122,21 @@ class DockerService:
         if not raw:
             return ""
         base = self.settings.sandbox_reachable_manager_url
+        registry = PluginRegistryService(self.settings)
         resolved: list[str] = []
         for item in raw.split(","):
             spec = item.strip()
             if not spec:
                 continue
-            if spec.startswith(("http://", "https://", "/")):
+            if spec.startswith(("http://", "https://", "/", "@")):
                 resolved.append(spec)
             else:
                 slug = spec.removesuffix(".tgz")
-                resolved.append(f"{base}/plugins/packages/{slug}.tgz")
+                pkg = registry.get_by_slug_or_filename(slug)
+                if pkg is not None:
+                    resolved.append(pkg.name)
+                else:
+                    resolved.append(f"{base}/plugins/packages/{slug}.tgz")
         return ",".join(resolved)
 
     def environment(self, sandbox: Sandbox) -> dict[str, str]:
@@ -160,6 +172,7 @@ class DockerService:
             "DSH_TOKEN_COOKIE_NAME": f"dsh_token_seen_{suffix}",
             "DSH_PERMISSION_MODE": self.settings.dsh_permission_mode,
             "DSH_PLUGIN_INDEX_URL": f"{manager_url}/plugins/index.json",
+            "DSH_PLUGIN_NPM_REGISTRY": f"{manager_url}/plugins/npm",
             "SANDBOX_TEMPLATE": sandbox.template or "agent-os",
             "TZ": self.settings.sandbox_timezone,
         }
@@ -251,7 +264,8 @@ class DockerService:
             f"traefik.http.middlewares.{auth_mw}.forwardauth.address": verify_url,
             f"traefik.http.middlewares.{auth_mw}.forwardauth.trustForwardHeader": "true",
             f"traefik.http.middlewares.{auth_mw}.forwardauth.authResponseHeaders": (
-                "X-Auth-Request-Email,X-Forwarded-User,X-Sandbox-Owner"
+                "X-Auth-Request-Email,X-Forwarded-User,X-Sandbox-Owner,"
+                "X-Auth-Request-Name,X-Auth-Request-Admin,X-Sandbox-Owner-Name"
             ),
             f"traefik.http.services.{router_name}.loadbalancer.server.port": "8080",
         }
@@ -299,6 +313,17 @@ class DockerService:
         sandbox.container_id = container.id
         self.wait_healthy(sandbox)
 
+    def _container_health_status(self, sandbox: Sandbox) -> str | None:
+        try:
+            container = self.get(sandbox)
+            container.reload()
+            state = container.attrs.get("State") if isinstance(container.attrs, dict) else None
+            health = state.get("Health") if isinstance(state, dict) else None
+            status = health.get("Status") if isinstance(health, dict) else None
+            return status if isinstance(status, str) else None
+        except Exception:
+            return None
+
     def wait_healthy(self, sandbox: Sandbox) -> None:
         deadline = time.monotonic() + self.settings.health_timeout_seconds
         url = self.health_url(sandbox)
@@ -308,7 +333,12 @@ class DockerService:
                 try:
                     response = http.get(url)
                     if response.status_code == 200:
-                        return
+                        # Traefik excludes Docker containers while State.Health.Status == "starting".
+                        if self._container_health_status(sandbox) != "starting":
+                            return
+                        last_error = "container healthcheck still starting"
+                        time.sleep(0.5)
+                        continue
                     last_error = f"HTTP {response.status_code}"
                 except httpx.HTTPError as exc:
                     last_error = str(exc)
@@ -374,8 +404,84 @@ class DockerService:
                     return parts[0]
         return None
 
-    def stats(self, sandbox: Sandbox) -> dict[str, float | int | str]:
-        """Return live CPU % and memory usage for a running sandbox container."""
+    def workspace_disk_usage(self, sandbox: Sandbox) -> dict[str, float | int | None]:
+        """Measure /home/workspace disk footprint and filesystem capacity inside a running sandbox."""
+        empty: dict[str, float | int | None] = {
+            "disk_usage_bytes": None,
+            "disk_usage_mb": None,
+            "disk_fs_total_mb": None,
+            "disk_fs_avail_mb": None,
+            "disk_fs_used_percent": None,
+        }
+        container = self.get(sandbox)
+        container.reload()
+        if container.status != "running":
+            return empty
+        try:
+            ec, out = container.exec_run(
+                [
+                    "sh",
+                    "-c",
+                    "df -Pk /home/workspace 2>/dev/null | tail -n 1; "
+                    "echo '---DU---'; "
+                    "timeout 4 du -sk -x /home/workspace 2>/dev/null || true",
+                ],
+                user="root",
+            )
+        except Exception:
+            return empty
+        if ec != 0 or not out:
+            return empty
+        text = out.decode("utf-8", errors="replace")
+        if "---DU---" not in text:
+            return empty
+        df_part, du_part = text.split("---DU---", 1)
+        result = dict(empty)
+
+        df_tokens = df_part.strip().split()
+        if len(df_tokens) >= 5 and df_tokens[1].isdigit() and df_tokens[3].isdigit():
+            total_kb = int(df_tokens[1])
+            avail_kb = int(df_tokens[3])
+            result["disk_fs_total_mb"] = round(total_kb / 1024, 1)
+            result["disk_fs_avail_mb"] = round(avail_kb / 1024, 1)
+            pct_raw = df_tokens[4].rstrip("%")
+            if pct_raw.isdigit():
+                result["disk_fs_used_percent"] = float(pct_raw)
+
+        du_tokens = du_part.strip().split()
+        if du_tokens and du_tokens[0].isdigit():
+            used_bytes = int(du_tokens[0]) * 1024
+            result["disk_usage_bytes"] = used_bytes
+            result["disk_usage_mb"] = round(used_bytes / (1024 * 1024), 1)
+
+        return result
+
+    def has_active_work(self, sandbox: Sandbox) -> tuple[bool, str]:
+        """Detect user background daemons or active agent child processes before auto-sleeping."""
+        container = self.get(sandbox)
+        container.reload()
+        if container.status != "running":
+            return False, "not-running"
+        probe = (
+            "if ls /home/workspace/.dsh-sandbox/services/conf.d/*.conf >/dev/null 2>&1; then "
+            "echo ACTIVE:user-services; exit 0; fi; "
+            "dsh_pid=$(pgrep -u workspace -f '/usr/local/bin/dsh ' | head -n 1); "
+            "if [ -n \"$dsh_pid\" ] && ps -o pid=,comm= --ppid \"$dsh_pid\" 2>/dev/null "
+            "| awk '$2 != \"tee\" && $2 != \"\" {found=1} END {exit !found}'; then "
+            "echo ACTIVE:agent-subprocess; exit 0; fi; "
+            "echo IDLE"
+        )
+        try:
+            ec, out = container.exec_run(["sh", "-c", probe], user="root")
+        except Exception:
+            return False, "probe-skipped"
+        text = out.decode("utf-8", errors="replace").strip() if out else ""
+        if ec == 0 and text.startswith("ACTIVE:"):
+            return True, text.split(":", 1)[1]
+        return False, "idle"
+
+    def stats(self, sandbox: Sandbox) -> dict[str, float | int | str | None]:
+        """Return live CPU %, memory usage, and workspace disk stats for a running sandbox."""
         container = self.get(sandbox)
         raw = container.stats(stream=False)
         mem_stats = raw.get("memory_stats") or {}
@@ -395,30 +501,184 @@ class DockerService:
         if system_delta > 0 and cpu_delta > 0:
             cpu_percent = round((cpu_delta / system_delta) * online_cpus * 100.0, 2)
 
+        disk = self.workspace_disk_usage(sandbox)
         return {
             "cpu_percent": cpu_percent,
             "memory_usage_bytes": mem_usage,
             "memory_limit_bytes": mem_limit,
             "memory_usage_mb": round(mem_usage / (1024 * 1024), 1),
             "memory_limit_mb": round(mem_limit / (1024 * 1024), 1),
+            **disk,
         }
 
-    def export_workspace_tar(self, sandbox: Sandbox):
+    def export_workspace_tar(self, sandbox: Sandbox, exclude_caches: bool = False):
         """Stream a tar archive of /home/workspace from the sandbox container."""
         container = self.get(sandbox)
+        if exclude_caches:
+            container.reload()
+            if container.status == "running":
+                _ec, stream = container.exec_run(
+                    [
+                        "tar",
+                        "--exclude=*/node_modules",
+                        "--exclude=*/.venv",
+                        "--exclude=*/venv",
+                        "--exclude=*/__pycache__",
+                        "--exclude=*/.cache",
+                        "--exclude=*/.pnpm-store",
+                        "--exclude=*/.npm",
+                        "--exclude=*/logs/*.log",
+                        "-cf",
+                        "-",
+                        "-C",
+                        "/home",
+                        "workspace",
+                    ],
+                    user="root",
+                    stream=True,
+                    demux=True,
+                )
+
+                def _stdout_chunks():
+                    for stdout_chunk, _stderr_chunk in stream:
+                        if stdout_chunk:
+                            yield stdout_chunk
+
+                return _stdout_chunks()
         bits, _stat = container.get_archive("/home/workspace")
         return bits
 
+    def _sanitize_restore_member(self, member: tarfile.TarInfo) -> tarfile.TarInfo | None:
+        """Normalize archive paths relative to /home/workspace and reject escapes/devices."""
+        raw_name = member.name.replace("\\", "/")
+        stripped = raw_name.lstrip("/")
+        if raw_name.startswith("/"):
+            raise SandboxRuntimeError(f"unsafe absolute archive path: {member.name}")
+        parts = [p for p in PurePosixPath(stripped).parts if p not in ("", ".")]
+        if any(p == ".." for p in parts):
+            raise SandboxRuntimeError(f"unsafe archive path traversal: {member.name}")
+        if parts and parts[0] == "workspace":
+            parts = parts[1:]
+        if not parts:
+            return None
+        rel = "/".join(parts)
+        if member.isdev() or member.isfifo():
+            raise SandboxRuntimeError(f"unsupported special file in backup: {member.name}")
+        if member.issym() or member.islnk():
+            target = member.linkname.replace("\\", "/")
+            if target.startswith("/"):
+                raise SandboxRuntimeError(f"unsafe link target in backup: {member.name} -> {target}")
+            base = rel if member.islnk() else posixpath.dirname(rel)
+            joined = posixpath.normpath(target if member.islnk() else posixpath.join(base, target))
+            if joined == ".." or joined.startswith("../") or joined.startswith("/"):
+                raise SandboxRuntimeError(f"link escapes workspace root: {member.name} -> {target}")
+        cloned = copy.copy(member)
+        cloned.name = rel
+        cloned.uid = 1000
+        cloned.gid = 1000
+        cloned.uname = "workspace"
+        cloned.gname = "workspace"
+        return cloned
+
+    def restore_workspace_tar(
+        self,
+        sandbox: Sandbox,
+        archive_fileobj,
+        mode: str = "merge",
+    ) -> dict[str, int | bool]:
+        """Validate and extract a tar/tar.gz backup into the sandbox /home/workspace."""
+        if mode not in {"merge", "clean"}:
+            raise SandboxRuntimeError(f"unsupported restore mode: {mode}")
+
+        spooled = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
+        restored_entries = 0
+        try:
+            archive_fileobj.seek(0)
+            with tarfile.open(fileobj=archive_fileobj, mode="r:*") as src_tar:
+                with tarfile.open(fileobj=spooled, mode="w") as dst_tar:
+                    for member in src_tar:
+                        clean_member = self._sanitize_restore_member(member)
+                        if clean_member is None:
+                            continue
+                        extracted = src_tar.extractfile(member) if member.isfile() else None
+                        dst_tar.addfile(clean_member, extracted)
+                        restored_entries += 1
+        except SandboxRuntimeError:
+            spooled.close()
+            raise
+        except Exception as exc:
+            spooled.close()
+            raise SandboxRuntimeError(f"invalid tar archive: {exc}") from exc
+
+        if restored_entries == 0:
+            spooled.close()
+            raise SandboxRuntimeError("backup archive contains no restorable workspace entries")
+
+        container = self.get(sandbox)
+        container.reload()
+        was_running = container.status == "running"
+        try:
+            if was_running:
+                container.exec_run(["supervisorctl", "stop", "dsh"], user="root")
+                if mode == "clean":
+                    container.exec_run(
+                        [
+                            "find",
+                            "/home/workspace",
+                            "-mindepth",
+                            "1",
+                            "-maxdepth",
+                            "1",
+                            "!",
+                            "-name",
+                            ".dsh-sandbox",
+                            "-exec",
+                            "rm",
+                            "-rf",
+                            "{}",
+                            "+",
+                        ],
+                        user="root",
+                    )
+            spooled.seek(0)
+            ok = container.put_archive("/home/workspace", spooled.read())
+            if not ok:
+                raise SandboxRuntimeError("docker put_archive returned failure")
+            if was_running:
+                container.exec_run(["chown", "-R", "workspace:workspace", "/home/workspace"], user="root")
+                container.exec_run(["supervisorctl", "start", "dsh"], user="root")
+                self.wait_healthy(sandbox)
+        finally:
+            spooled.close()
+
+        return {"restored_entries": restored_entries, "restarted_dsh": was_running}
+
     def sync_plugin_market(
-        self, sandbox: Sandbox, reinstall_plugins: list[str] | None = None
-    ) -> dict[str, str | bool]:
-        """Ensure DSH Plugin Market bundle & self-hosted index URL are active in a running sandbox."""
+        self,
+        sandbox: Sandbox,
+        reinstall_plugins: list[str] | None = None,
+        force_reinstall: bool = False,
+    ) -> dict[str, Any]:
+        """Ensure Plugin Market config and optionally force-reinstall built-in plugins in a sandbox."""
         container = self.get(sandbox)
         container.reload()
         if container.status != "running":
             return {"slug": sandbox.slug, "ok": False, "detail": f"status={container.status}"}
 
-        index_url = f"{self.settings.sandbox_reachable_manager_url}/plugins/index.json"
+        manager_url = self.settings.sandbox_reachable_manager_url
+        index_url = f"{manager_url}/plugins/index.json"
+        npm_registry = f"{manager_url}/plugins/npm"
+        registry = PluginRegistryService(self.settings)
+        registry_packages = {pkg.name: pkg for pkg in registry.list_packages()}
+
+        explicit_targets: list[str] = []
+        for raw_spec in reinstall_plugins or []:
+            spec = raw_spec.strip()
+            if not spec:
+                continue
+            pkg = registry.get_by_package_name(spec) or registry.get_by_slug_or_filename(spec)
+            explicit_targets.append(pkg.name if pkg else spec)
+
         node_script = """
 const fs = require('fs');
 const indexUrl = process.env.INDEX_URL;
@@ -427,8 +687,10 @@ fs.mkdirSync('/home/workspace/.dsh-sandbox', { recursive: true });
 fs.writeFileSync('/home/workspace/.dsh-sandbox/plugin-index-url.txt', indexUrl + '\\n');
 const pkgPath = '/home/workspace/.dsh/profiles/web/package.json';
 const patchPath = '/home/workspace/.dsh/profiles/web/cordis.patch.yml';
+let installedDeps = [];
 if (fs.existsSync(pkgPath)) {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  installedDeps = Object.keys(pkg.dependencies || {});
   pkg.dsh = pkg.dsh || {};
   pkg.dsh.profile = pkg.dsh.profile || {};
   pkg.dsh.profile.bundles = Array.isArray(pkg.dsh.profile.bundles) ? pkg.dsh.profile.bundles : [];
@@ -452,23 +714,77 @@ if (fs.existsSync(patchPath)) {
     fs.writeFileSync(patchPath, content);
   }
 }
+console.log('INSTALLED_DEPS=' + JSON.stringify(installedDeps));
 """
         ec1, out1 = container.exec_run(
             ["node", "-e", node_script],
             user="workspace",
             environment={"INDEX_URL": index_url, "HOME": "/home/workspace"},
         )
+        text1 = out1.decode("utf-8", errors="replace").strip() if out1 else ""
         if ec1 != 0:
-            text1 = out1.decode("utf-8", errors="replace").strip() if out1 else ""
             return {"slug": sandbox.slug, "ok": False, "detail": text1[-300:]}
 
-        if reinstall_plugins:
-            for tgz_url in reinstall_plugins:
+        installed_deps: list[str] = []
+        for line in text1.splitlines():
+            if line.startswith("INSTALLED_DEPS="):
+                try:
+                    parsed = json.loads(line.split("=", 1)[1])
+                    if isinstance(parsed, list):
+                        installed_deps = [str(x) for x in parsed]
+                except Exception:
+                    pass
+
+        targets_to_install = list(explicit_targets)
+        if not targets_to_install and force_reinstall:
+            configured = self._resolve_auto_install_plugins(sandbox.auto_install_plugins)
+            configured_list = [x.strip() for x in configured.split(",") if x.strip()]
+            installed_builtin = [name for name in installed_deps if name in registry_packages]
+            seen_targets: set[str] = set()
+            for item in [*installed_builtin, *configured_list]:
+                if item not in seen_targets:
+                    seen_targets.add(item)
+                    targets_to_install.append(item)
+
+        reinstalled: list[str] = []
+        if targets_to_install:
+            env = {
+                "HOME": "/home/workspace",
+                "DSH_HOME": "/home/workspace/.dsh",
+                "npm_config_registry": npm_registry,
+            }
+            container.exec_run(
+                [
+                    "sh",
+                    "-c",
+                    "rm -rf /home/workspace/.dsh/profiles/web/.pnpm-store "
+                    "/home/workspace/.local/share/pnpm/store /home/workspace/.cache/pnpm",
+                ],
+                user="workspace",
+                environment=env,
+            )
+            to_remove = [p for p in targets_to_install if p in installed_deps]
+            if to_remove:
                 container.exec_run(
-                    ["dsh", "plugin", "--profile", "web", "add", tgz_url],
+                    ["dsh", "plugin", "--profile", "web", "remove", *to_remove],
                     user="workspace",
-                    environment={"HOME": "/home/workspace", "DSH_HOME": "/home/workspace/.dsh"},
+                    environment=env,
                 )
+            for spec in targets_to_install:
+                cmd = ["dsh", "plugin", "--profile", "web", "add"]
+                if not spec.startswith(("http://", "https://", "/", "file:")):
+                    cmd.append(f"--registry={npm_registry}")
+                cmd.append(spec)
+                ec_add, out_add = container.exec_run(cmd, user="workspace", environment=env)
+                if ec_add != 0:
+                    add_msg = out_add.decode("utf-8", errors="replace").strip() if out_add else ""
+                    return {
+                        "slug": sandbox.slug,
+                        "ok": False,
+                        "reinstalled": reinstalled,
+                        "detail": f"failed to install {spec}: {add_msg[-240:]}",
+                    }
+                reinstalled.append(spec)
 
         ec2, out2 = container.exec_run(
             ["supervisorctl", "restart", "dsh"],
@@ -478,6 +794,7 @@ if (fs.existsSync(patchPath)) {
         return {
             "slug": sandbox.slug,
             "ok": ec2 == 0,
+            "reinstalled": reinstalled,
             "detail": text[-300:] if text else "synced",
         }
 

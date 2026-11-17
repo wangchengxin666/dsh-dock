@@ -99,7 +99,7 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.db import SessionLocal, init_db
 from app.main import app
-from app.models import AuditLog, LlmProfile, PlatformAdmin, Sandbox, SandboxTemplate, User
+from app.models import AuditLog, LlmProfile, PlatformAdmin, PlatformSetting, Sandbox, SandboxTemplate, User
 from app.plugin_registry import PluginRegistryService
 from app.services import ensure_bootstrap_admin, ensure_default_templates
 
@@ -198,25 +198,53 @@ class FakeDockerService:
         self.calls.append(("launch_token_url", sandbox.slug))
         return None
 
-    def stats(self, sandbox: Sandbox) -> dict[str, float | int | str]:
+    def stats(self, sandbox: Sandbox) -> dict[str, Any]:
         self.calls.append(("stats", sandbox.slug))
         return {
             "cpu_percent": 12.5,
             "memory_usage_mb": 256.0,
             "memory_limit_mb": 4096.0,
+            **self.workspace_disk_usage(sandbox),
         }
 
-    def export_workspace_tar(self, sandbox: Sandbox):
-        self.calls.append(("export_workspace_tar", sandbox.slug))
+    def export_workspace_tar(self, sandbox: Sandbox, exclude_caches: bool = False):
+        self.calls.append(("export_workspace_tar", (sandbox.slug, exclude_caches)))
         return iter([b"fake-tar-chunk-1", b"fake-tar-chunk-2"])
+
+    def workspace_disk_usage(self, sandbox: Sandbox) -> dict[str, Any]:
+        return {
+            "disk_usage_bytes": 128 * 1024 * 1024,
+            "disk_usage_mb": 128.0,
+            "disk_fs_total_mb": 20480.0,
+            "disk_fs_avail_mb": 15360.0,
+            "disk_fs_used_percent": 25.0,
+        }
+
+    def has_active_work(self, sandbox: Sandbox) -> tuple[bool, str]:
+        return False, "idle"
+
+    def restore_workspace_tar(
+        self, sandbox: Sandbox, archive_fileobj, mode: str = "merge"
+    ) -> dict[str, int | bool]:
+        data = archive_fileobj.read()
+        self.calls.append(("restore_workspace_tar", (sandbox.slug, mode, len(data))))
+        return {"restored_entries": 2, "restarted_dsh": True}
 
     def sync_plugin_market(
         self,
         sandbox: Sandbox,
         reinstall_plugins: list[str] | None = None,
+        force_reinstall: bool = False,
     ) -> dict[str, Any]:
-        self.calls.append(("sync_plugin_market", (sandbox.slug, reinstall_plugins)))
-        return {"slug": sandbox.slug, "ok": True, "detail": "synced"}
+        self.calls.append(
+            ("sync_plugin_market", (sandbox.slug, reinstall_plugins, force_reinstall))
+        )
+        return {
+            "slug": sandbox.slug,
+            "ok": True,
+            "reinstalled": reinstall_plugins or [],
+            "detail": "synced",
+        }
 
     def remove(self, sandbox: Sandbox, purge_volume: bool = False) -> None:
         self.calls.append(("remove", (sandbox.slug, purge_volume)))
@@ -231,6 +259,7 @@ def reset_database() -> None:
     init_db()
     with SessionLocal() as db:
         db.query(AuditLog).delete()
+        db.query(PlatformSetting).delete()
         db.query(Sandbox).delete()
         db.query(SandboxTemplate).delete()
         db.query(LlmProfile).delete()

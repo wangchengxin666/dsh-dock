@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from .config import DEFAULT_AUTO_INSTALL_PLUGINS
+
 _MEMORY_RE = re.compile(r"^[1-9][0-9]*(\.[0-9]+)?[kmg]$", re.IGNORECASE)
 
 
@@ -92,7 +94,7 @@ class TemplateCreate(BaseModel):
     image_tag: str = "latest"
     default_cpu_limit: float = Field(default=2.0, gt=0, le=64)
     default_memory_limit: str = "4g"
-    auto_install_plugins: str | None = "file-manager"
+    auto_install_plugins: str | None = DEFAULT_AUTO_INSTALL_PLUGINS
     init_script: str | None = None
     default_env_json: str | None = "{}"
 
@@ -152,6 +154,7 @@ class SandboxCreate(BaseModel):
     llm_profile_id: str | None = None
     cpu_limit: float | None = Field(default=None, gt=0, le=64)
     memory_limit: str | None = None
+    auto_sleep_exempt: bool = False
 
     @field_validator("initial_password")
     @classmethod
@@ -170,6 +173,7 @@ class SandboxPatch(BaseModel):
     llm_profile_id: str | None = None
     cpu_limit: float | None = Field(default=None, gt=0, le=64)
     memory_limit: str | None = None
+    auto_sleep_exempt: bool | None = None
 
     @field_validator("memory_limit")
     @classmethod
@@ -195,11 +199,30 @@ class SandboxOut(BaseModel):
     llm_profile_name: str | None = None
     cpu_limit: float | None
     memory_limit: str | None
+    auto_sleep_exempt: bool = False
+    disk_usage_mb: float | None = None
+    disk_updated_at: datetime | None = None
     status: str
     url: str
     created_at: datetime
     last_seen_at: datetime | None
     deleted_at: datetime | None
+
+
+class PluginSyncRequest(BaseModel):
+    mode: Literal["market_only", "reinstall_builtin", "reinstall_selected"] = "market_only"
+    plugins: list[str] = Field(default_factory=list)
+    sandbox_ids: list[str] | None = None
+
+
+class IdleSleepPolicyOut(BaseModel):
+    enabled: bool = False
+    idle_minutes: int = Field(default=240, ge=5, le=43200)
+
+
+class IdleSleepPolicyUpdate(BaseModel):
+    enabled: bool
+    idle_minutes: int = Field(default=240, ge=5, le=43200)
 
 
 class SandboxList(BaseModel):

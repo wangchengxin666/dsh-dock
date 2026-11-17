@@ -68,7 +68,11 @@ def test_init_db_fresh_and_legacy_port_migration(tmp_path: Path, monkeypatch):
         "init_script",
         "extra_env_json",
         "auto_install_plugins",
+        "auto_sleep_exempt",
+        "disk_usage_mb",
+        "disk_updated_at",
     }.issubset(sbx_cols)
+    assert inspector.has_table("platform_settings")
 
     with test_engine.begin() as c:
         row = c.execute(text("SELECT slug, image_repo, cpu_limit FROM sandboxes WHERE id = 's1'")).fetchone()
@@ -108,3 +112,71 @@ def test_background_worker_tick_reconciles_statuses(db_session, fake_docker, mon
     db_session.expire_all()
     assert db_session.get(Sandbox, s1.id).status == "running"
     assert db_session.get(Sandbox, s2.id).status == "missing"
+
+
+def test_background_worker_idle_sleep_respects_policy_exempt_and_active_work(
+    db_session, fake_docker, monkeypatch
+):
+    from datetime import datetime, timedelta, timezone
+    from app.services import set_idle_sleep_policy
+
+    monkeypatch.setattr("app.scheduler.SessionLocal", db_mod.SessionLocal)
+    user = User(email="sleepy@example.com", display_name="Sleepy")
+    db_session.add(user)
+    db_session.flush()
+
+    stale_at = (datetime.now(timezone.utc) - timedelta(hours=3)).replace(tzinfo=None)
+    s_idle = Sandbox(
+        user_id=user.id,
+        slug="idle-one",
+        volume_name="dsh-idle-one-home",
+        image_tag="latest",
+        status="running",
+        auto_sleep_exempt=False,
+        last_seen_at=stale_at,
+    )
+    s_exempt = Sandbox(
+        user_id=user.id,
+        slug="keep-alive",
+        volume_name="dsh-keep-alive-home",
+        image_tag="latest",
+        status="running",
+        auto_sleep_exempt=True,
+        last_seen_at=stale_at,
+    )
+    s_busy = Sandbox(
+        user_id=user.id,
+        slug="busy-one",
+        volume_name="dsh-busy-one-home",
+        image_tag="latest",
+        status="running",
+        auto_sleep_exempt=False,
+        last_seen_at=stale_at,
+    )
+    db_session.add_all([s_idle, s_exempt, s_busy])
+    db_session.commit()
+
+    fake_docker.containers["idle-one"] = {"id": "c1", "status": "running"}
+    fake_docker.containers["keep-alive"] = {"id": "c2", "status": "running"}
+    fake_docker.containers["busy-one"] = {"id": "c3", "status": "running"}
+
+    orig_has_active = fake_docker.has_active_work
+    fake_docker.has_active_work = lambda sbx: (
+        (True, "user-services") if sbx.slug == "busy-one" else orig_has_active(sbx)
+    )
+
+    worker = BackgroundWorker(Settings(_env_file=None, background_tasks=True), fake_docker)  # type: ignore[arg-type]
+
+    # 1. Default OFF: nothing stopped even when idle > 3h
+    worker.tick()
+    db_session.expire_all()
+    assert db_session.get(Sandbox, s_idle.id).status == "running"
+    assert db_session.get(Sandbox, s_idle.id).disk_usage_mb == 128.0
+
+    # 2. Enable 60-minute idle sleep: only idle-one stops
+    set_idle_sleep_policy(db_session, enabled=True, idle_minutes=60, actor="admin@example.com")
+    worker.tick()
+    db_session.expire_all()
+    assert db_session.get(Sandbox, s_idle.id).status == "stopped"
+    assert db_session.get(Sandbox, s_exempt.id).status == "running"
+    assert db_session.get(Sandbox, s_busy.id).status == "running"

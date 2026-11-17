@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, Unicode
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from .config import DEFAULT_AUTO_INSTALL_PLUGINS
 from .db import Base
 
 
@@ -63,7 +64,7 @@ class SandboxTemplate(Base):
     default_cpu_limit: Mapped[float] = mapped_column(Float, default=2.0)
     default_memory_limit: Mapped[str] = mapped_column(String(32), default="4g")
     auto_install_plugins: Mapped[str | None] = mapped_column(
-        Unicode(512), default="file-manager", nullable=True
+        Unicode(512), default=DEFAULT_AUTO_INSTALL_PLUGINS, nullable=True
     )
     init_script: Mapped[str | None] = mapped_column(Text, nullable=True)
     default_env_json: Mapped[str | None] = mapped_column(Text, default="{}", nullable=True)
@@ -97,6 +98,9 @@ class Sandbox(Base):
     )
     cpu_limit: Mapped[float | None] = mapped_column(Float, nullable=True)
     memory_limit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    auto_sleep_exempt: Mapped[bool] = mapped_column(Boolean, default=False)
+    disk_usage_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    disk_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="creating")
     llm_profile_id: Mapped[str | None] = mapped_column(
         ForeignKey("llm_profiles.id"), nullable=True
@@ -119,3 +123,13 @@ class AuditLog(Base):
     target: Mapped[str | None] = mapped_column(String(128), nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PlatformSetting(Base):
+    __tablename__ = "platform_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow
+    )

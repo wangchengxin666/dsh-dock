@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -65,6 +66,7 @@ def test_environment_generation_and_plugin_resolution(tmp_path):
     assert env["DSH_PUBLIC_URL"] == "https://sandbox.corp.example/s/alice/dsh/"
     assert env["DSH_TOKEN_COOKIE_NAME"] == "dsh_token_seen_alice"
     assert env["DSH_PLUGIN_INDEX_URL"] == "http://dsh-manager:9000/plugins/index.json"
+    assert env["DSH_PLUGIN_NPM_REGISTRY"] == "http://dsh-manager:9000/plugins/npm"
     assert env["DSH_DEFAULT_LLM_PROVIDER"] == "openai-compatible"
     assert env["DSH_DEFAULT_LLM_BASE_URL"] == "https://api.deepseek.com/v1"
     assert env["DSH_DEFAULT_LLM_MODEL"] == "deepseek-chat"
@@ -73,10 +75,22 @@ def test_environment_generation_and_plugin_resolution(tmp_path):
     assert env["SANDBOX_INIT_REPO_URL"] == "https://git.example.com/starter.git"
     assert env["SANDBOX_INIT_SCRIPT"] == "#!/usr/bin/env bash\necho ready"
 
-    # Relative plugin slugs resolve against manager_internal_url packages endpoint
+    # Relative plugin slugs: known built-in packages resolve to npm package names,
+    # while unknown slugs fall back to the packages tarball endpoint.
     assert (
         env["DSH_AUTO_INSTALL_PLUGINS"]
         == "http://dsh-manager:9000/plugins/packages/extra-plugin.tgz,https://custom.example.com/p.tgz"
+    )
+    builtin_svc = DockerService(
+        Settings(
+            _env_file=None,
+            manager_internal_url="http://dsh-manager:9000",
+            plugins_dir=str(Path(__file__).resolve().parents[2] / "plugins"),
+        )
+    )
+    builtin_sbx = _make_sandbox(auto_install_plugins="file-manager,workspace-user,custom-theme")
+    assert builtin_svc.environment(builtin_sbx)["DSH_AUTO_INSTALL_PLUGINS"] == (
+        "@local/dsh-plugin-file-manager,@dsh-dock/workspace-user,@dsh-dock/custom-theme"
     )
 
     blank_script_sbx = _make_sandbox(init_script="   \n  ")
@@ -131,6 +145,10 @@ def test_create_container_uses_no_host_ports_and_traefik_forwardauth(tmp_path):
     assert (
         labels["traefik.http.middlewares.dsh-auth-alice.forwardauth.address"]
         == "http://dsh-manager:9000/api/auth/verify-sandbox/alice"
+    )
+    assert labels["traefik.http.middlewares.dsh-auth-alice.forwardauth.authResponseHeaders"] == (
+        "X-Auth-Request-Email,X-Forwarded-User,X-Sandbox-Owner,"
+        "X-Auth-Request-Name,X-Auth-Request-Admin,X-Sandbox-Owner-Name"
     )
     assert labels["traefik.http.services.dsh-sbx-alice.loadbalancer.server.port"] == "8080"
 
@@ -189,7 +207,17 @@ def test_wait_healthy_stats_logs_backup_and_sync(monkeypatch):
     mock_client.containers.get.return_value = container
 
     sbx = _make_sandbox()
+    # Wait until Docker container Health leaves "starting" so Traefik can route immediately
+    health_seq = iter(["starting", "healthy"])
+
+    def _reload_health():
+        container.attrs = {"State": {"Health": {"Status": next(health_seq, "healthy")}}}
+
+    container.reload.side_effect = _reload_health
     svc.wait_healthy(sbx)
+    assert container.reload.call_count == 2
+    container.reload.side_effect = None
+    container.attrs = {"State": {"Health": {"Status": "healthy"}}}
 
     assert "ok" in svc.logs(sbx)
     assert "\x1b[" not in svc.logs(sbx)
@@ -213,3 +241,90 @@ def test_wait_healthy_stats_logs_backup_and_sync(monkeypatch):
     svc.settings.health_timeout_seconds = 0
     with pytest.raises(SandboxRuntimeError, match="did not become healthy"):
         svc.wait_healthy(sbx)
+
+
+def test_disk_usage_active_work_lite_backup_and_restore(tmp_path):
+    import io
+    import tarfile
+
+    svc = DockerService(Settings(_env_file=None, manager_internal_url="http://dsh-manager:9000"))
+    mock_client = MagicMock()
+    svc._client = mock_client
+
+    container = MagicMock()
+    container.status = "running"
+
+    def fake_exec_run(cmd, **_kwargs):
+        joined = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
+        if "df -Pk" in joined:
+            return (
+                0,
+                b"/dev/sda1 20971520 5242880 15728640 25% /home/workspace\n"
+                b"---DU---\n"
+                b"131072 /home/workspace\n",
+            )
+        if "ACTIVE:" in joined:
+            return (0, b"ACTIVE:user-services\n")
+        if cmd[0] == "tar":
+            return (0, iter([(b"lite-tar-", None), (b"bytes", b"stderr-ignored")]))
+        return (0, b"")
+
+    container.exec_run.side_effect = fake_exec_run
+    container.put_archive.return_value = True
+    container.attrs = {"State": {"Health": {"Status": "healthy"}}}
+    mock_client.containers.get.return_value = container
+
+    sbx = _make_sandbox()
+
+    disk = svc.workspace_disk_usage(sbx)
+    assert disk["disk_usage_mb"] == 128.0
+    assert disk["disk_fs_avail_mb"] == 15360.0
+    assert disk["disk_fs_used_percent"] == 25.0
+
+    busy, reason = svc.has_active_work(sbx)
+    assert busy is True and reason == "user-services"
+
+    lite = b"".join(svc.export_workspace_tar(sbx, exclude_caches=True))
+    assert lite == b"lite-tar-bytes"
+
+    # Build valid .tar.gz with workspace/ prefix
+    good_buf = io.BytesIO()
+    with tarfile.open(fileobj=good_buf, mode="w:gz") as tf:
+        data = b"hello world"
+        info = tarfile.TarInfo("workspace/projects/app.txt")
+        info.size = len(data)
+        tf.addfile(info, io.BytesIO(data))
+    good_buf.seek(0)
+
+    svc.wait_healthy = MagicMock()
+    res = svc.restore_workspace_tar(sbx, good_buf, mode="merge")
+    assert res["restored_entries"] == 1
+    assert res["restarted_dsh"] is True
+    assert container.put_archive.called
+    put_path, put_bytes = container.put_archive.call_args[0]
+    assert put_path == "/home/workspace"
+    with tarfile.open(fileobj=io.BytesIO(put_bytes), mode="r:*") as check_tf:
+        names = check_tf.getnames()
+        assert names == ["projects/app.txt"]
+        assert check_tf.getmember("projects/app.txt").uid == 1000
+
+    # Unsafe archive traversal rejected
+    bad_buf = io.BytesIO()
+    with tarfile.open(fileobj=bad_buf, mode="w") as tf:
+        info = tarfile.TarInfo("workspace/../../etc/evil")
+        info.size = 1
+        tf.addfile(info, io.BytesIO(b"x"))
+    bad_buf.seek(0)
+    with pytest.raises(SandboxRuntimeError, match="unsafe archive path traversal"):
+        svc.restore_workspace_tar(sbx, bad_buf)
+
+    # Escaping symlink rejected
+    sym_buf = io.BytesIO()
+    with tarfile.open(fileobj=sym_buf, mode="w") as tf:
+        info = tarfile.TarInfo("workspace/badlink")
+        info.type = tarfile.SYMTYPE
+        info.linkname = "../../etc/passwd"
+        tf.addfile(info)
+    sym_buf.seek(0)
+    with pytest.raises(SandboxRuntimeError, match="escapes workspace root"):
+        svc.restore_workspace_tar(sbx, sym_buf)

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import html as html_lib
 import logging
 import os
+import tempfile
+import threading
+import time
 from contextlib import asynccontextmanager, suppress
 from functools import lru_cache
 from pathlib import Path
@@ -11,12 +15,16 @@ from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import (
+    Body,
     Depends,
     FastAPI,
+    File,
+    Form,
     HTTPException,
     Query,
     Request,
     Response,
+    UploadFile,
     status,
 )
 from fastapi.responses import (
@@ -37,15 +45,18 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import Settings, get_settings
 from .db import SessionLocal, get_db, init_db
 from .docker_service import DockerService, SandboxRuntimeError
-from .models import AuditLog, LlmProfile, Sandbox, SandboxTemplate, User
+from .models import AuditLog, LlmProfile, PlatformAdmin, Sandbox, SandboxTemplate, User
 from .plugin_registry import PluginRegistryService
 from .scheduler import BackgroundWorker
 from .schemas import (
     AdminCreate,
     AdminOut,
     HealthOut,
+    IdleSleepPolicyOut,
+    IdleSleepPolicyUpdate,
     LlmProfileCreate,
     LlmProfileOut,
+    PluginSyncRequest,
     SandboxCreate,
     SandboxList,
     SandboxOut,
@@ -69,10 +80,9 @@ from .services import (
     create_sandbox,
     create_template,
     deactivate_platform_admin,
-    delete_sandbox,
-    delete_template,
     ensure_bootstrap_admin,
     ensure_default_templates,
+    get_idle_sleep_policy,
     is_platform_admin,
     list_platform_admins,
     list_templates,
@@ -80,11 +90,16 @@ from .services import (
     load_sandbox_by_slug,
     refresh_status,
     restart_sandbox,
+    set_idle_sleep_policy,
     start_sandbox,
     stop_sandbox,
+    touch_sandbox_activity,
     update_sandbox_limits,
     update_template,
     upgrade_sandbox,
+    utcnow,
+    delete_sandbox,
+    delete_template,
 )
 
 logger = logging.getLogger("dsh-manager")
@@ -221,12 +236,108 @@ def sandbox_out(sandbox: Sandbox) -> SandboxOut:
             else settings.sandbox_cpus
         ),
         memory_limit=sandbox.memory_limit or settings.sandbox_memory,
+        auto_sleep_exempt=bool(sandbox.auto_sleep_exempt),
+        disk_usage_mb=sandbox.disk_usage_mb,
+        disk_updated_at=sandbox.disk_updated_at,
         status=sandbox.status,
         url=settings.sandbox_url(sandbox.slug),
         created_at=sandbox.created_at,
         last_seen_at=sandbox.last_seen_at,
         deleted_at=sandbox.deleted_at,
     )
+
+
+_wake_locks_guard = threading.Lock()
+_wake_locks: dict[str, threading.Lock] = {}
+
+
+def _get_wake_lock(slug: str) -> threading.Lock:
+    with _wake_locks_guard:
+        lock = _wake_locks.get(slug)
+        if lock is None:
+            lock = threading.Lock()
+            _wake_locks[slug] = lock
+        return lock
+
+
+def _ensure_sandbox_awake(db: Session, sandbox: Sandbox) -> Sandbox:
+    """Start a stopped sandbox container under a per-slug lock and wait until healthy."""
+    docker = get_docker()
+    with _get_wake_lock(sandbox.slug):
+        current = docker.status(sandbox)
+        if current != "running":
+            docker.start(sandbox)
+            audit(db, "sandbox.auto_wake", target=sandbox.id, detail=f"slug={sandbox.slug}")
+        docker.wait_healthy(sandbox)
+        sandbox.status = "running"
+        sandbox.last_seen_at = utcnow()
+        db.commit()
+        db.refresh(sandbox)
+        # Allow Traefik Docker provider a moment to pick up the running container labels.
+        time.sleep(0.4)
+    return sandbox
+
+
+def _render_wake_html(slug: str, redirect_target: str) -> str:
+    safe_slug = html_lib.escape(slug)
+    js_slug = json_dumps_safe(slug)
+    js_target = json_dumps_safe(redirect_target)
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>正在唤醒工作区 /s/{safe_slug}/ - DSH Sandbox Cloud</title>
+  <style>
+    body{{margin:0;background:#09090b;color:#f4f4f5;font-family:system-ui,-apple-system,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center}}
+    .card{{max-width:440px;width:90%;padding:28px;border-radius:16px;background:#18181b;border:1px solid #27272a;box-shadow:0 24px 48px rgba(0,0,0,.55);text-align:center}}
+    .spin{{width:32px;height:32px;margin:0 auto 16px;border:3px solid #27272a;border-top-color:#10b981;border-radius:50%;animation:s .9s linear infinite}}
+    @keyframes s{{to{{transform:rotate(360deg)}}}}
+    h2{{margin:0 0 8px;font-size:18px;font-weight:600}}
+    p{{margin:0 0 18px;font-size:13px;color:#a1a1aa;line-height:1.6}}
+    code{{background:#27272a;padding:2px 6px;border-radius:4px;color:#e4e4e7}}
+    .err{{color:#fb7185;display:none;margin-top:12px;font-size:12px}}
+    .btn{{display:none;margin-top:14px;padding:8px 16px;border-radius:8px;border:1px solid #3f3f46;background:#27272a;color:#f4f4f5;cursor:pointer;font-size:13px}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spin" id="spinner"></div>
+    <h2>正在唤醒休眠工作区</h2>
+    <p>工作区 <code>/s/{safe_slug}/</code> 当前处于休眠状态，正在自动启动容器并等待服务就绪...</p>
+    <p id="err" class="err"></p>
+    <button id="retry" class="btn" onclick="wake()">重试唤醒</button>
+  </div>
+  <script>
+    const slug = {js_slug};
+    const target = {js_target};
+    async function wake() {{
+      const errEl = document.getElementById('err');
+      const retryEl = document.getElementById('retry');
+      const spinEl = document.getElementById('spinner');
+      errEl.style.display = 'none';
+      retryEl.style.display = 'none';
+      spinEl.style.display = 'block';
+      try {{
+        const res = await fetch('/api/wake/' + encodeURIComponent(slug), {{ method: 'POST', credentials: 'same-origin' }});
+        const data = await res.json().catch(() => ({{}}));
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        window.location.replace(target);
+      }} catch (e) {{
+        spinEl.style.display = 'none';
+        errEl.textContent = '唤醒失败: ' + (e && e.message ? e.message : String(e));
+        errEl.style.display = 'block';
+        retryEl.style.display = 'inline-block';
+      }}
+    }}
+    wake();
+  </script>
+</body>
+</html>"""
+
+
+def json_dumps_safe(val: str) -> str:
+    import json
+    return json.dumps(val).replace("<", "\\u003c")
 
 
 def _user_out(user: User, sandbox_count: int = 0) -> UserOut:
@@ -422,9 +533,38 @@ class LoginPayload(BaseModel):
     mode: str = "admin"
 
 
+def _resolve_display_name(
+    db: Session,
+    email: str | None,
+    *,
+    session_name: str | None = None,
+    user_row: User | None = None,
+) -> str | None:
+    if email:
+        user = user_row or db.scalar(select(User).where(User.email == email))
+        if user and user.display_name:
+            return user.display_name
+        admin_row = db.scalar(
+            select(PlatformAdmin).where(PlatformAdmin.email == email)
+        )
+        if admin_row and admin_row.display_name:
+            return admin_row.display_name
+    cleaned_session_name = (session_name or "").strip()
+    if cleaned_session_name and (
+        not email or cleaned_session_name.lower() != email.lower()
+    ):
+        return cleaned_session_name
+    return None
+
+
 @app.get("/api/auth/me")
 @app.get("/auth/me", include_in_schema=False)
-def auth_me(request: Request, response: Response, db: Session = Depends(get_db)):
+def auth_me(
+    request: Request,
+    response: Response,
+    slug: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
     response.headers["Cache-Control"] = "no-store"
     email = session_email(request)
     admin = _is_authenticated_admin(request, db)
@@ -433,9 +573,40 @@ def auth_me(request: Request, response: Response, db: Session = Depends(get_db))
         if email
         else None
     )
+    session_name = request.session.get("name")
+    display_name = _resolve_display_name(
+        db,
+        email,
+        session_name=session_name if isinstance(session_name, str) else None,
+        user_row=user_row,
+    )
+    sandbox_info = None
+    if slug and (email or admin):
+        try:
+            sandbox = load_sandbox_by_slug(db, slug)
+        except NotFoundError:
+            sandbox = None
+        if sandbox is not None:
+            owner_email = sandbox.user.email.lower()
+            if admin or email == owner_email:
+                sandbox_info = {
+                    "slug": sandbox.slug,
+                    "owner_email": owner_email,
+                    "owner_display_name": _resolve_display_name(
+                        db,
+                        owner_email,
+                        session_name=(
+                            session_name
+                            if isinstance(session_name, str) and email == owner_email
+                            else None
+                        ),
+                        user_row=sandbox.user,
+                    ),
+                }
     return {
         "authenticated": bool(email),
         "email": email,
+        "display_name": display_name,
         "admin": admin,
         "user_status": user_row.status if user_row else "active",
         "has_password": bool(user_row and user_row.password_hash),
@@ -443,6 +614,7 @@ def auth_me(request: Request, response: Response, db: Session = Depends(get_db))
         "default_admin_email": settings.manager_admin_email,
         "public_url": settings.manager_base_url,
         "plugin_index_url": settings.plugin_index_url,
+        "sandbox": sandbox_info,
     }
 
 
@@ -515,12 +687,32 @@ a.btn{{display:inline-block;background:#27272a;color:#f4f4f5;text-decoration:non
         )
 
     effective_user = email or settings.manager_admin_email.lower()
+    session_name = request.session.get("name")
+    session_name_str = session_name if isinstance(session_name, str) else None
+    owner_name = _resolve_display_name(
+        db,
+        owner_email,
+        session_name=session_name_str if effective_user == owner_email else None,
+        user_row=sandbox.user,
+    )
+    if effective_user == owner_email:
+        viewer_name = owner_name
+    else:
+        viewer_name = _resolve_display_name(
+            db,
+            effective_user,
+            session_name=session_name_str,
+        )
+    touch_sandbox_activity(db, sandbox)
     return Response(
         status_code=200,
         headers={
             "X-Auth-Request-Email": effective_user,
             "X-Forwarded-User": effective_user,
             "X-Sandbox-Owner": owner_email,
+            "X-Auth-Request-Name": quote(viewer_name or "", safe=""),
+            "X-Auth-Request-Admin": "true" if is_admin else "false",
+            "X-Sandbox-Owner-Name": quote(owner_name or "", safe=""),
         },
     )
 
@@ -776,13 +968,13 @@ def open_sandbox_with_token(
     db: Session = Depends(get_db),
 ):
     sandbox = load_sandbox(db, sandbox_id)
-    email = session_email(request)
-    is_admin = _is_authenticated_admin(request, db)
-    if (
-        (not is_admin and sandbox.user.email.lower() != email)
-        or (not is_admin and sandbox.user.status != "active")
-    ):
-        return verify_sandbox_access(sandbox.slug, request, db)
+    auth_resp = verify_sandbox_access(sandbox.slug, request, db)
+    if auth_resp.status_code != 200:
+        return auth_resp
+    if get_docker().status(sandbox) != "running":
+        return HTMLResponse(
+            _render_wake_html(sandbox.slug, f"/sandboxes/{sandbox.id}/open")
+        )
     base = settings.sandbox_url(sandbox.slug).rstrip("/")
     raw_launch = get_docker().launch_token_url(sandbox)
     if raw_launch:
@@ -792,32 +984,119 @@ def open_sandbox_with_token(
     return RedirectResponse(f"{base}/", status_code=302)
 
 
+@app.post("/api/wake/{slug}")
+def wake_sandbox_endpoint(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    sandbox = load_sandbox_by_slug(db, slug)
+    auth_resp = verify_sandbox_access(sandbox.slug, request, db)
+    if auth_resp.status_code != 200:
+        raise HTTPException(
+            status_code=auth_resp.status_code,
+            detail="无权唤醒此工作区",
+        )
+    try:
+        awake = _ensure_sandbox_awake(db, sandbox)
+    except Exception as exc:
+        raise _manager_error(exc) from exc
+    return {"ok": True, "ready": True, "status": awake.status}
+
+
+def _require_sandbox_owner_or_admin(
+    sandbox: Sandbox,
+    request: Request,
+    db: Session,
+    forbidden_detail: str,
+) -> str:
+    email = session_email(request)
+    if _is_authenticated_admin(request, db):
+        return email or settings.manager_admin_email.lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="请先登录")
+    if sandbox.user.email.lower() != email:
+        raise HTTPException(status_code=403, detail=forbidden_detail)
+    if sandbox.user.status != "active":
+        raise HTTPException(status_code=403, detail="该账号已被管理员禁用")
+    return email
+
+
 @app.get("/api/sandboxes/{sandbox_id}/backup")
 @app.get("/sandboxes/{sandbox_id}/backup", include_in_schema=False)
 def backup_sandbox_workspace(
     sandbox_id: str,
     request: Request,
+    exclude_caches: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
     sandbox = load_sandbox(db, sandbox_id)
-    email = session_email(request)
-    if not _is_authenticated_admin(request, db):
-        if not email:
-            raise HTTPException(status_code=401, detail="请先登录")
-        if sandbox.user.email.lower() != email:
-            raise HTTPException(status_code=403, detail="无权备份他人的工作区")
-        if sandbox.user.status != "active":
-            raise HTTPException(status_code=403, detail="该账号已被管理员禁用")
+    _require_sandbox_owner_or_admin(sandbox, request, db, "无权备份他人的工作区")
     try:
-        stream = get_docker().export_workspace_tar(sandbox)
+        stream = get_docker().export_workspace_tar(
+            sandbox, exclude_caches=exclude_caches
+        )
     except Exception as exc:
         raise _manager_error(exc) from exc
-    filename = f"{sandbox.slug}-home.tar"
+    suffix = "lite" if exclude_caches else "home"
+    filename = f"{sandbox.slug}-{suffix}.tar"
     return StreamingResponse(
         stream,
         media_type="application/x-tar",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.post("/api/sandboxes/{sandbox_id}/restore")
+@app.post("/api/my/sandboxes/{sandbox_id}/restore")
+def restore_sandbox_workspace(
+    sandbox_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    mode: str = Form("merge"),
+    db: Session = Depends(get_db),
+):
+    sandbox = load_sandbox(db, sandbox_id)
+    actor = _require_sandbox_owner_or_admin(sandbox, request, db, "无权恢复他人的工作区")
+    if mode not in {"merge", "clean"}:
+        raise HTTPException(status_code=400, detail="恢复模式仅支持 merge 或 clean")
+
+    raw_name = (file.filename or "").lower()
+    if raw_name and not raw_name.endswith((".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz")):
+        raise HTTPException(status_code=400, detail="仅支持上传 .tar / .tar.gz / .tgz 备份归档")
+
+    max_bytes = settings.restore_max_bytes
+    total_bytes = 0
+    tmp = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
+    try:
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            total_bytes += len(chunk)
+            if total_bytes > max_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"备份文件过大，最大允许 {round(max_bytes / (1024 * 1024))} MB",
+                )
+            tmp.write(chunk)
+        tmp.seek(0)
+        try:
+            result = get_docker().restore_workspace_tar(sandbox, tmp, mode=mode)
+        except Exception as exc:
+            raise _manager_error(exc) from exc
+    finally:
+        tmp.close()
+
+    audit(
+        db,
+        "sandbox.restore",
+        target=sandbox.id,
+        actor=actor,
+        detail=f"slug={sandbox.slug},mode={mode},entries={result.get('restored_entries')}",
+    )
+    db.commit()
+    return {"ok": True, **result}
 
 
 # ---------------------------------------------------------------------------
@@ -938,6 +1217,7 @@ def api_overview(
         (s.cpu_limit if s.cpu_limit is not None else settings.sandbox_cpus)
         for s in sandboxes
     )
+    idle_enabled, idle_minutes = get_idle_sleep_policy(db, settings)
     return {
         "total_sandboxes": len(sandboxes),
         "running_sandboxes": running_count,
@@ -952,6 +1232,8 @@ def api_overview(
         "default_memory": settings.sandbox_memory,
         "manager_auth_mode": settings.manager_auth_mode,
         "plugin_index_url": settings.plugin_index_url,
+        "idle_sleep_enabled": idle_enabled,
+        "idle_sleep_minutes": idle_minutes,
         "local_images": get_docker().list_local_images(),
         "audit_logs": [
             {
@@ -1026,20 +1308,69 @@ def api_plugins(
 
 @app.post("/api/plugins/sync-sandboxes")
 def api_sync_plugins_to_sandboxes(
+    request: Request,
+    payload: PluginSyncRequest | None = Body(default=None),
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_api),
 ):
-    sandboxes = list(
-        db.scalars(select(Sandbox).where(Sandbox.deleted_at.is_(None))).all()
+    req = payload or PluginSyncRequest()
+    query = select(Sandbox).where(Sandbox.deleted_at.is_(None))
+    if req.sandbox_ids:
+        query = query.where(Sandbox.id.in_(req.sandbox_ids))
+    sandboxes = list(db.scalars(query).all())
+
+    reinstall_plugins = (
+        req.plugins if req.mode == "reinstall_selected" and req.plugins else None
     )
+    force_reinstall = req.mode == "reinstall_builtin"
+
     results = []
     for sbx in sandboxes:
         try:
-            res = get_docker().sync_plugin_market(sbx)
+            res = get_docker().sync_plugin_market(
+                sbx,
+                reinstall_plugins=reinstall_plugins,
+                force_reinstall=force_reinstall,
+            )
             results.append(res)
         except Exception as exc:
             results.append({"slug": sbx.slug, "ok": False, "detail": str(exc)})
-    return {"synced": len([r for r in results if r.get("ok")]), "results": results}
+    synced = len([r for r in results if r.get("ok")])
+    actor = session_email(request) if request is not None else None
+    audit(
+        db,
+        "plugins.sync",
+        target="sandboxes",
+        actor=actor,
+        detail=f"mode={req.mode},synced={synced}/{len(results)}",
+    )
+    db.commit()
+    return {"synced": synced, "mode": req.mode, "results": results}
+
+
+@app.get("/api/policies/idle-sleep", response_model=IdleSleepPolicyOut)
+def api_get_idle_sleep_policy(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_api),
+):
+    enabled, idle_minutes = get_idle_sleep_policy(db, settings)
+    return IdleSleepPolicyOut(enabled=enabled, idle_minutes=idle_minutes)
+
+
+@app.put("/api/policies/idle-sleep", response_model=IdleSleepPolicyOut)
+def api_update_idle_sleep_policy(
+    payload: IdleSleepPolicyUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_api),
+):
+    enabled, idle_minutes = set_idle_sleep_policy(
+        db,
+        enabled=payload.enabled,
+        idle_minutes=payload.idle_minutes,
+        actor=session_email(request) or settings.manager_admin_email,
+    )
+    return IdleSleepPolicyOut(enabled=enabled, idle_minutes=idle_minutes)
 
 
 # ---------------------------------------------------------------------------
@@ -1318,6 +1649,7 @@ def create_sandbox_endpoint(
             init_script=payload.init_script,
             auto_install_plugins=payload.auto_install_plugins,
             initial_password=payload.initial_password,
+            auto_sleep_exempt=payload.auto_sleep_exempt,
         )
     except Exception as exc:
         raise _manager_error(exc) from exc
@@ -1431,11 +1763,24 @@ def patch_sandbox(
         and payload.llm_profile_id is None
         and payload.cpu_limit is None
         and payload.memory_limit is None
+        and payload.auto_sleep_exempt is None
     ):
         raise HTTPException(status_code=400, detail="nothing to update")
     try:
         sandbox = load_sandbox(db, sandbox_id)
         need_recreate = False
+        if (
+            payload.auto_sleep_exempt is not None
+            and payload.auto_sleep_exempt != sandbox.auto_sleep_exempt
+        ):
+            sandbox.auto_sleep_exempt = payload.auto_sleep_exempt
+            audit(
+                db,
+                "sandbox.sleep_policy",
+                target=sandbox.id,
+                detail=f"slug={sandbox.slug},auto_sleep_exempt={payload.auto_sleep_exempt}",
+            )
+            db.commit()
         if payload.llm_profile_id is not None:
             if payload.llm_profile_id == "":
                 sandbox.llm_profile_id = None
@@ -1502,14 +1847,7 @@ def sandbox_logs(
 ):
     try:
         sandbox = load_sandbox(db, sandbox_id, include_deleted=True)
-        if not _is_authenticated_admin(request, db):
-            email = session_email(request)
-            if not email:
-                raise HTTPException(status_code=401, detail="请先登录")
-            if sandbox.user.email.lower() != email:
-                raise HTTPException(status_code=403, detail="无权查看他人的工作区日志")
-            if sandbox.user.status != "active":
-                raise HTTPException(status_code=403, detail="该账号已被管理员禁用")
+        _require_sandbox_owner_or_admin(sandbox, request, db, "无权查看他人的工作区日志")
         return {"logs": get_docker().logs(sandbox, tail=tail)}
     except HTTPException:
         raise
@@ -1518,6 +1856,7 @@ def sandbox_logs(
 
 
 @app.get("/api/sandboxes/{sandbox_id}/stats")
+@app.get("/api/my/sandboxes/{sandbox_id}/stats")
 def sandbox_stats(
     sandbox_id: str,
     request: Request,
@@ -1525,19 +1864,71 @@ def sandbox_stats(
 ):
     try:
         sandbox = load_sandbox(db, sandbox_id)
-        if not _is_authenticated_admin(request, db):
-            email = session_email(request)
-            if not email:
-                raise HTTPException(status_code=401, detail="请先登录")
-            if sandbox.user.email.lower() != email:
-                raise HTTPException(status_code=403, detail="无权查看他人的工作区状态")
-            if sandbox.user.status != "active":
-                raise HTTPException(status_code=403, detail="该账号已被管理员禁用")
-        return get_docker().stats(sandbox)
+        _require_sandbox_owner_or_admin(sandbox, request, db, "无权查看他人的工作区状态")
+        data = get_docker().stats(sandbox)
+        if data.get("disk_usage_mb") is not None:
+            sandbox.disk_usage_mb = float(data["disk_usage_mb"])
+            sandbox.disk_updated_at = utcnow()
+            db.commit()
+        return data
     except HTTPException:
         raise
     except Exception as exc:
         raise _manager_error(exc) from exc
+
+
+# ---------------------------------------------------------------------------
+# Sleeping Sandbox Auto-Wake Fallback (/s/<slug>/* when container is stopped)
+# ---------------------------------------------------------------------------
+
+
+def _handle_sleeping_sandbox_fallback(
+    slug: str,
+    request: Request,
+    db: Session,
+) -> Response:
+    """Traefik falls through here when a sandbox container is stopped or waking."""
+    auth_resp = verify_sandbox_access(slug, request, db)
+    if auth_resp.status_code != 200:
+        return auth_resp
+
+    accept = (request.headers.get("accept") or "").lower()
+    is_html_nav = request.method == "GET" and (
+        "text/html" in accept or "*/*" in accept or accept == ""
+    )
+    target_url = str(request.url.path) + (
+        f"?{request.url.query}" if request.url.query else ""
+    )
+    if is_html_nav:
+        return HTMLResponse(_render_wake_html(slug, target_url))
+    return JSONResponse(
+        {
+            "detail": "工作区当前处于休眠状态，请打开工作区页面自动唤醒",
+            "sleeping": True,
+            "slug": slug,
+        },
+        status_code=503,
+    )
+
+
+@app.api_route(
+    "/s/{slug}",
+    methods=["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    include_in_schema=False,
+)
+@app.api_route(
+    "/s/{slug}/{rest:path}",
+    methods=["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    include_in_schema=False,
+)
+def sleeping_sandbox_fallback(
+    slug: str,
+    request: Request,
+    rest: str = "",
+    db: Session = Depends(get_db),
+):
+    _ = rest
+    return _handle_sleeping_sandbox_fallback(slug, request, db)
 
 
 # ---------------------------------------------------------------------------

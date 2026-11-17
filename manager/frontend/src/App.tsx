@@ -36,6 +36,8 @@ import {
   Lock,
   Edit3,
   Globe,
+  Upload,
+  Moon,
 } from 'lucide-react'
 import {
   Button,
@@ -53,7 +55,7 @@ import {
   Dialog,
   cn,
 } from './components/ui'
-import { apiFetch, resolveInitialView } from './lib/client.ts'
+import { apiFetch, parseApiErrorDetail, resolveInitialView } from './lib/client.ts'
 import {
   DEFAULT_LOCALE,
   Locale,
@@ -148,6 +150,9 @@ interface SandboxItem {
   llm_profile_name: string | null
   cpu_limit: number
   memory_limit: string
+  auto_sleep_exempt?: boolean
+  disk_usage_mb?: number | null
+  disk_updated_at?: string | null
   status: string
   url: string
   created_at: string
@@ -158,6 +163,11 @@ interface SandboxStats {
   cpu_percent: number
   memory_usage_mb: number
   memory_limit_mb: number
+  disk_usage_bytes?: number | null
+  disk_usage_mb?: number | null
+  disk_fs_total_mb?: number | null
+  disk_fs_avail_mb?: number | null
+  disk_fs_used_percent?: number | null
 }
 
 interface TemplateItem {
@@ -221,6 +231,8 @@ interface OverviewData {
   default_memory: string
   manager_auth_mode: string
   plugin_index_url: string
+  idle_sleep_enabled?: boolean
+  idle_sleep_minutes?: number
   local_images: LocalImageItem[]
   audit_logs: Array<{
     id: string
@@ -230,6 +242,149 @@ interface OverviewData {
     detail: string | null
     created_at: string
   }>
+}
+
+function formatDiskSize(mb?: number | null): string {
+  if (mb === null || mb === undefined || Number.isNaN(mb)) return '—'
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`
+  return `${mb.toFixed(1)} MB`
+}
+
+function BackupRestoreDialog({
+  sandbox,
+  isAdmin,
+  onClose,
+  notify,
+  onRestored,
+}: {
+  sandbox: SandboxItem | null
+  isAdmin: boolean
+  onClose: () => void
+  notify: (msg: string, type?: 'success' | 'error') => void
+  onRestored: () => Promise<void> | void
+}) {
+  const { t } = useI18n()
+  const [excludeCaches, setExcludeCaches] = useState(true)
+  const [restoreMode, setRestoreMode] = useState<'merge' | 'clean'>('merge')
+  const [file, setFile] = useState<File | null>(null)
+  const [restoring, setRestoring] = useState(false)
+
+  useEffect(() => {
+    setFile(null)
+    setRestoreMode('merge')
+    setRestoring(false)
+  }, [sandbox?.id])
+
+  const handleRestore = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!sandbox || !file) {
+      notify(t('dialog.backup.noFile'), 'error')
+      return
+    }
+    setRestoring(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('mode', restoreMode)
+      const endpoint = isAdmin
+        ? `/api/sandboxes/${sandbox.id}/restore`
+        : `/api/my/sandboxes/${sandbox.id}/restore`
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(parseApiErrorDetail(payload, res.status))
+      }
+      notify(
+        t('dialog.backup.restoreSuccess', {
+          count: payload?.restored_entries ?? 0,
+        }),
+      )
+      await onRestored()
+      onClose()
+    } catch (err: any) {
+      notify(err.message || 'Restore failed', 'error')
+    } finally {
+      setRestoring(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={!!sandbox}
+      onOpenChange={(o) => !o && onClose()}
+      title={t('dialog.backup.title', { slug: sandbox?.slug ?? '' })}
+      description={t('dialog.backup.desc')}
+    >
+      <div className="space-y-5 text-xs">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 space-y-3">
+          <div className="font-medium text-zinc-200">{t('dialog.backup.exportTitle')}</div>
+          <label className="flex items-center gap-2 text-zinc-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={excludeCaches}
+              onChange={(e) => setExcludeCaches(e.target.checked)}
+              className="rounded border-zinc-700 bg-zinc-900 accent-emerald-500"
+            />
+            <span>{t('dialog.backup.excludeCachesLabel')}</span>
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (!sandbox) return
+              window.open(
+                `/api/sandboxes/${sandbox.id}/backup?exclude_caches=${excludeCaches ? 'true' : 'false'}`,
+                '_blank',
+              )
+            }}
+          >
+            <Download className="h-3.5 w-3.5" />
+            {t('dialog.backup.downloadBtn')}
+          </Button>
+        </div>
+
+        <form
+          onSubmit={handleRestore}
+          className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 space-y-3"
+        >
+          <div className="font-medium text-zinc-200">{t('dialog.backup.restoreTitle')}</div>
+          <p className="text-zinc-400 leading-relaxed">{t('dialog.backup.restoreHint')}</p>
+          <div className="space-y-1.5">
+            <Label>{t('dialog.backup.fileLabel')}</Label>
+            <Input
+              type="file"
+              accept=".tar,.tar.gz,.tgz,.tar.bz2,.tar.xz"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('dialog.backup.modeLabel')}</Label>
+            <Select
+              value={restoreMode}
+              onChange={(e) => setRestoreMode(e.target.value as 'merge' | 'clean')}
+            >
+              <option value="merge">{t('dialog.backup.modeMerge')}</option>
+              <option value="clean">{t('dialog.backup.modeClean')}</option>
+            </Select>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={restoring || !file}>
+              <Upload className="h-3.5 w-3.5" />
+              {restoring ? t('dialog.backup.restoring') : t('dialog.backup.restoreBtn')}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </Dialog>
+  )
 }
 
 interface UserItem {
@@ -657,6 +812,7 @@ function AdminConsoleView({
     init_repo_url: '',
     auto_install_plugins: 'file-manager',
     init_script: '',
+    auto_sleep_exempt: false,
   })
   const [creatingSbx, setCreatingSbx] = useState(false)
 
@@ -668,8 +824,18 @@ function AdminConsoleView({
     image_repo: 'dsh-sandbox',
     image_tag: 'latest',
     llm_profile_id: '',
+    auto_sleep_exempt: false,
   })
   const [savingSbx, setSavingSbx] = useState(false)
+
+  // Backup & Restore Modal + Idle Sleep Policy
+  const [backupTarget, setBackupTarget] = useState<SandboxItem | null>(null)
+  const [sleepPolicy, setSleepPolicy] = useState({
+    enabled: false,
+    idle_minutes: '240',
+  })
+  const [savingSleepPolicy, setSavingSleepPolicy] = useState(false)
+  const [syncingPlugins, setSyncingPlugins] = useState(false)
 
   // Delete Sandbox Modal
   const [deleteSbxTarget, setDeleteSbxTarget] = useState<SandboxItem | null>(null)
@@ -744,6 +910,10 @@ function AdminConsoleView({
         apiFetch<AdminItem[]>('/api/admins'),
       ])
       setOverview(ov)
+      setSleepPolicy({
+        enabled: Boolean(ov.idle_sleep_enabled),
+        idle_minutes: String(ov.idle_sleep_minutes ?? 240),
+      })
       setSandboxes(sbxRes.items)
       setTemplates(tplRes)
       setLlmProfiles(llmRes)
@@ -823,6 +993,7 @@ function AdminConsoleView({
           init_repo_url: sbxForm.init_repo_url.trim() || null,
           auto_install_plugins: sbxForm.auto_install_plugins.trim(),
           init_script: sbxForm.init_script,
+          auto_sleep_exempt: sbxForm.auto_sleep_exempt,
         }),
       })
       notify(t('admin.sandboxProvisioned', { email: sbxForm.email }))
@@ -870,6 +1041,7 @@ function AdminConsoleView({
           image_repo: editSbxForm.image_repo.trim(),
           image_tag: editSbxForm.image_tag.trim(),
           llm_profile_id: editSbxForm.llm_profile_id,
+          auto_sleep_exempt: editSbxForm.auto_sleep_exempt,
         }),
       })
       notify(t('admin.sandboxUpdated', { slug: editSbx.slug }))
@@ -879,6 +1051,55 @@ function AdminConsoleView({
       notify(err.message, 'error')
     } finally {
       setSavingSbx(false)
+    }
+  }
+
+  const handleSaveSleepPolicy = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingSleepPolicy(true)
+    try {
+      const minutes = Math.max(5, parseInt(sleepPolicy.idle_minutes, 10) || 240)
+      await apiFetch('/api/policies/idle-sleep', {
+        method: 'PUT',
+        body: JSON.stringify({
+          enabled: sleepPolicy.enabled,
+          idle_minutes: minutes,
+        }),
+      })
+      notify(t('admin.sandboxes.sleepPolicySaved'))
+      await refreshAll()
+    } catch (err: any) {
+      notify(err.message, 'error')
+    } finally {
+      setSavingSleepPolicy(false)
+    }
+  }
+
+  const handleSyncPlugins = async (
+    mode: 'market_only' | 'reinstall_builtin' | 'reinstall_selected',
+    plugins: string[] = [],
+  ) => {
+    setSyncingPlugins(true)
+    try {
+      notify(
+        mode === 'market_only'
+          ? t('admin.pluginsSyncing')
+          : t('admin.pluginsReinstalling'),
+      )
+      const res = await apiFetch<{ synced: number }>('/api/plugins/sync-sandboxes', {
+        method: 'POST',
+        body: JSON.stringify({ mode, plugins }),
+      })
+      notify(
+        mode === 'market_only'
+          ? t('admin.pluginsSynced', { count: res.synced })
+          : t('admin.pluginsReinstalled', { count: res.synced }),
+      )
+      await refreshAll()
+    } catch (err: any) {
+      notify(err.message || t('admin.pluginsSyncFailed'), 'error')
+    } finally {
+      setSyncingPlugins(false)
     }
   }
 
@@ -1179,7 +1400,7 @@ function AdminConsoleView({
       {/* TAB 1: Sandboxes Management */}
       {activeTab === 'sandboxes' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-xs text-zinc-400">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-xs text-zinc-400">
             <div className="flex items-center gap-2">
               <Lock className="h-3.5 w-3.5 text-amber-400" />
               <span>
@@ -1193,6 +1414,54 @@ function AdminConsoleView({
               {t('admin.sandboxes.gatewaySuffix')}
             </span>
           </div>
+
+          <form
+            onSubmit={handleSaveSleepPolicy}
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-xs"
+          >
+            <div className="flex items-center gap-2.5 text-zinc-300">
+              <Moon className="h-4 w-4 text-indigo-400 shrink-0" />
+              <div>
+                <span className="font-medium text-zinc-100">
+                  {t('admin.sandboxes.sleepPolicyTitle')}
+                </span>
+                <span className="ml-2 text-zinc-400">
+                  {sleepPolicy.enabled
+                    ? `${t('admin.sandboxes.sleepPolicyOn')} ${sleepPolicy.idle_minutes} ${t('admin.sandboxes.sleepMinutesUnit')}`
+                    : t('admin.sandboxes.sleepPolicyOff')}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sleepPolicy.enabled}
+                  onChange={(e) =>
+                    setSleepPolicy({ ...sleepPolicy, enabled: e.target.checked })
+                  }
+                  className="rounded border-zinc-700 bg-zinc-900 accent-indigo-500"
+                />
+                <span>{t('admin.sandboxes.sleepEnableLabel')}</span>
+              </label>
+              <div className="flex items-center gap-1.5">
+                <span className="text-zinc-400">{t('admin.sandboxes.sleepMinutesLabel')}</span>
+                <Input
+                  type="number"
+                  min={5}
+                  max={43200}
+                  className="h-7 w-20 text-xs"
+                  value={sleepPolicy.idle_minutes}
+                  onChange={(e) =>
+                    setSleepPolicy({ ...sleepPolicy, idle_minutes: e.target.value })
+                  }
+                />
+              </div>
+              <Button type="submit" variant="outline" size="sm" disabled={savingSleepPolicy}>
+                {savingSleepPolicy ? t('common.saving') : t('admin.sandboxes.sleepSaveBtn')}
+              </Button>
+            </div>
+          </form>
 
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
@@ -1277,6 +1546,12 @@ function AdminConsoleView({
                                 />
                                 {formatStatus(sbx.status)}
                               </Badge>
+                              {sbx.auto_sleep_exempt && (
+                                <Badge variant="outline" className="text-[10px]">
+                                  <Moon className="h-2.5 w-2.5 mr-1" />
+                                  {t('admin.sandboxes.keepAliveBadge')}
+                                </Badge>
+                              )}
                             </div>
                             <div className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-indigo-400">
                               <a
@@ -1306,11 +1581,29 @@ function AdminConsoleView({
                                   </span>
                                 </div>
                                 <Progress value={memPct} />
+                                <div className="flex justify-between text-[11px] pt-0.5">
+                                  <span className="text-zinc-400">DISK</span>
+                                  <span className="font-mono text-zinc-200">
+                                    {formatDiskSize(st.disk_usage_mb ?? sbx.disk_usage_mb)}
+                                    {st.disk_fs_avail_mb != null
+                                      ? ` (${formatDiskSize(st.disk_fs_avail_mb)} free)`
+                                      : ''}
+                                  </span>
+                                </div>
                               </div>
                             ) : (
-                              <span className="text-zinc-500 text-[11px]">
-                                {t('admin.sandboxes.notRunning')}
-                              </span>
+                              <div className="space-y-1">
+                                <span className="text-zinc-500 text-[11px] block">
+                                  {t('admin.sandboxes.notRunning')}
+                                </span>
+                                {sbx.disk_usage_mb != null && (
+                                  <span className="text-zinc-400 text-[11px] font-mono block">
+                                    {t('admin.sandboxes.diskCachedLabel', {
+                                      size: formatDiskSize(sbx.disk_usage_mb),
+                                    })}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </td>
 
@@ -1375,6 +1668,7 @@ function AdminConsoleView({
                                     image_repo: sbx.image_repo || 'dsh-sandbox',
                                     image_tag: sbx.image_tag,
                                     llm_profile_id: sbx.llm_profile_id || '',
+                                    auto_sleep_exempt: Boolean(sbx.auto_sleep_exempt),
                                   })
                                 }}
                               >
@@ -1385,7 +1679,7 @@ function AdminConsoleView({
                                 variant="outline"
                                 size="icon"
                                 title={t('admin.sandboxes.backupTooltip')}
-                                onClick={() => window.open(`/api/sandboxes/${sbx.id}/backup`, '_blank')}
+                                onClick={() => setBackupTarget(sbx)}
                               >
                                 <Download className="h-3.5 w-3.5" />
                               </Button>
@@ -1558,26 +1852,26 @@ function AdminConsoleView({
                 <CardTitle>{t('admin.plugins.title')}</CardTitle>
                 <CardDescription className="mt-1">{t('admin.plugins.desc')}</CardDescription>
               </div>
-              <Button
-                variant="emerald"
-                size="sm"
-                className="shrink-0"
-                onClick={async () => {
-                  try {
-                    notify(t('admin.pluginsSyncing'))
-                    const res = await apiFetch<{ synced: number }>('/api/plugins/sync-sandboxes', {
-                      method: 'POST',
-                    })
-                    notify(t('admin.pluginsSynced', { count: res.synced }))
-                    await refreshAll()
-                  } catch (err: any) {
-                    notify(err.message || t('admin.pluginsSyncFailed'), 'error')
-                  }
-                }}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                {t('admin.plugins.syncBtn')}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={syncingPlugins}
+                  onClick={() => handleSyncPlugins('market_only')}
+                >
+                  <RefreshCw className={cn('h-3.5 w-3.5', syncingPlugins && 'animate-spin')} />
+                  {t('admin.plugins.syncBtn')}
+                </Button>
+                <Button
+                  variant="emerald"
+                  size="sm"
+                  disabled={syncingPlugins}
+                  onClick={() => handleSyncPlugins('reinstall_builtin')}
+                >
+                  <Package className="h-3.5 w-3.5" />
+                  {t('admin.plugins.reinstallAllBtn')}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2 text-xs">
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-center justify-between gap-2">
@@ -1670,7 +1964,16 @@ function AdminConsoleView({
                       )}
                     </Button>
                   </div>
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={syncingPlugins}
+                      onClick={() => handleSyncPlugins('reinstall_selected', [plg.slug])}
+                    >
+                      <RefreshCw className={cn('h-3.5 w-3.5', syncingPlugins && 'animate-spin')} />
+                      {t('admin.plugins.reinstallOneBtn')}
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -2270,6 +2573,20 @@ function AdminConsoleView({
                 onChange={(e) => setSbxForm({ ...sbxForm, init_script: e.target.value })}
               />
             </div>
+
+            <div className="sm:col-span-2">
+              <label className="flex items-center gap-2 text-zinc-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sbxForm.auto_sleep_exempt}
+                  onChange={(e) =>
+                    setSbxForm({ ...sbxForm, auto_sleep_exempt: e.target.checked })
+                  }
+                  className="rounded border-zinc-700 bg-zinc-900 accent-indigo-500"
+                />
+                <span>{t('dialog.provision.autoSleepExemptLabel')}</span>
+              </label>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
@@ -2490,6 +2807,19 @@ function AdminConsoleView({
                 ))}
               </Select>
             </div>
+            <div className="col-span-2 pt-1">
+              <label className="flex items-center gap-2 text-zinc-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editSbxForm.auto_sleep_exempt}
+                  onChange={(e) =>
+                    setEditSbxForm({ ...editSbxForm, auto_sleep_exempt: e.target.checked })
+                  }
+                  className="rounded border-zinc-700 bg-zinc-900 accent-indigo-500"
+                />
+                <span>{t('dialog.editSandbox.autoSleepExemptLabel')}</span>
+              </label>
+            </div>
           </div>
           <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
             <Button type="button" variant="ghost" onClick={() => setEditSbx(null)}>
@@ -2501,6 +2831,14 @@ function AdminConsoleView({
           </div>
         </form>
       </Dialog>
+
+      <BackupRestoreDialog
+        sandbox={backupTarget}
+        isAdmin={true}
+        onClose={() => setBackupTarget(null)}
+        notify={notify}
+        onRestored={refreshAll}
+      />
 
       {/* DIALOG 4: Container Logs */}
       <Dialog
@@ -2656,6 +2994,7 @@ function UserPortalView({
   const [logsTarget, setLogsTarget] = useState<SandboxItem | null>(null)
   const [logsText, setLogsText] = useState('')
   const [loadingLogs, setLoadingLogs] = useState(false)
+  const [backupTarget, setBackupTarget] = useState<SandboxItem | null>(null)
   const [pwModalOpen, setPwModalOpen] = useState(false)
   const [pwForm, setPwForm] = useState({
     current_password: '',
@@ -2690,6 +3029,30 @@ function UserPortalView({
         `/api/my/sandboxes${qEmail ? `?email=${encodeURIComponent(qEmail)}` : ''}`,
       )
       setSandboxes(res.items)
+      const running = res.items.filter((s) => s.status === 'running')
+      if (running.length > 0) {
+        const statsEntries = await Promise.all(
+          running.map(async (s) => {
+            try {
+              const st = await apiFetch<SandboxStats>(`/api/my/sandboxes/${s.id}/stats`)
+              return [s.id, st.disk_usage_mb] as const
+            } catch {
+              return null
+            }
+          }),
+        )
+        const diskById: Record<string, number> = {}
+        for (const entry of statsEntries) {
+          if (entry && entry[1] != null) diskById[entry[0]] = entry[1]
+        }
+        if (Object.keys(diskById).length > 0) {
+          setSandboxes((prev) =>
+            prev.map((item) =>
+              item.id in diskById ? { ...item, disk_usage_mb: diskById[item.id] } : item,
+            ),
+          )
+        }
+      }
     } catch (err: any) {
       notify(err.message || tRef.current('portal.loadFailed'), 'error')
     } finally {
@@ -2781,6 +3144,9 @@ function UserPortalView({
                         cpu: sbx.cpu_limit,
                         memory: sbx.memory_limit,
                       })}
+                      {sbx.disk_usage_mb != null
+                        ? t('portal.diskLabel', { disk: formatDiskSize(sbx.disk_usage_mb) })
+                        : ''}
                     </span>
                   </div>
                 </div>
@@ -2819,7 +3185,7 @@ function UserPortalView({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => window.open(`/api/sandboxes/${sbx.id}/backup`, '_blank')}
+                    onClick={() => setBackupTarget(sbx)}
                   >
                     <Download className="h-3.5 w-3.5" />
                     {t('portal.backupBtn')}
@@ -2830,6 +3196,14 @@ function UserPortalView({
           ))}
         </div>
       )}
+
+      <BackupRestoreDialog
+        sandbox={backupTarget}
+        isAdmin={false}
+        onClose={() => setBackupTarget(null)}
+        notify={notify}
+        onRestored={loadMySandboxes}
+      />
 
       {/* User Portal Logs Modal */}
       <Dialog

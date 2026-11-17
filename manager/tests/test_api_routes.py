@@ -228,6 +228,16 @@ def test_token_auth_admin_crud_backup_and_user_portal(api_env):
     assert ok_verify.status_code == 200
     assert ok_verify.headers["x-auth-request-email"] == "alice@example.com"
     assert ok_verify.headers["x-sandbox-owner"] == "alice@example.com"
+    assert ok_verify.headers["x-auth-request-name"] == "Alice"
+    assert ok_verify.headers["x-sandbox-owner-name"] == "Alice"
+    assert ok_verify.headers["x-auth-request-admin"] == "false"
+
+    alice_me = client.get("/api/auth/me?slug=alice").json()
+    assert alice_me["display_name"] == "Alice"
+    assert alice_me["sandbox"]["owner_email"] == "alice@example.com"
+    assert alice_me["sandbox"]["owner_display_name"] == "Alice"
+    assert client.get("/api/auth/me?slug=bob").json()["sandbox"] is None
+
     assert client.get("/api/auth/verify-sandbox/bob").status_code == 403
     assert client.get("/api/auth/verify-sandbox/does-not-exist").status_code == 404
 
@@ -248,6 +258,28 @@ def test_token_auth_admin_crud_backup_and_user_portal(api_env):
         client.post(
             "/api/auth/login",
             json={"email": "alice@example.com", "password": "alice-new-password-456", "mode": "user"},
+        ).status_code
+        == 200
+    )
+
+    # Verify UTF-8 non-ASCII display_name URL-encoding in ForwardAuth headers
+    assert (
+        client.patch(
+            f"/api/users/{alice_id}",
+            headers=admin_headers,
+            json={"display_name": "爱丽丝"},
+        ).status_code
+        == 200
+    )
+    cn_verify = client.get("/api/auth/verify-sandbox/alice")
+    assert cn_verify.status_code == 200
+    assert cn_verify.headers["x-auth-request-name"] == "%E7%88%B1%E4%B8%BD%E4%B8%9D"
+    assert cn_verify.headers["x-sandbox-owner-name"] == "%E7%88%B1%E4%B8%BD%E4%B8%9D"
+    assert (
+        client.patch(
+            f"/api/users/{alice_id}",
+            headers=admin_headers,
+            json={"display_name": "Alice"},
         ).status_code
         == 200
     )
@@ -273,7 +305,15 @@ def test_token_auth_admin_crud_backup_and_user_portal(api_env):
         == 200
     )
     assert client.delete("/api/admins/admin@example.com").status_code == 400
-    assert client.get("/api/auth/verify-sandbox/alice").status_code == 200
+    admin_verify = client.get("/api/auth/verify-sandbox/alice")
+    assert admin_verify.status_code == 200
+    assert admin_verify.headers["x-auth-request-email"] == "admin@example.com"
+    assert admin_verify.headers["x-sandbox-owner"] == "alice@example.com"
+    assert admin_verify.headers["x-sandbox-owner-name"] == "Alice"
+    assert admin_verify.headers["x-auth-request-admin"] == "true"
+    admin_me = client.get("/api/auth/me?slug=alice").json()
+    assert admin_me["admin"] is True
+    assert admin_me["sandbox"]["owner_email"] == "alice@example.com"
     open_resp = client.get(f"/sandboxes/{alice_sbx_id}/open", follow_redirects=False)
     assert open_resp.status_code == 302
     assert open_resp.headers["location"].endswith("/s/alice/")
@@ -355,11 +395,16 @@ def test_none_and_oidc_auth_modes(api_env, monkeypatch):
     assert cb_res.headers["location"] == "/my"
     assert client.cookies.get("dsh_manager_id_token") == "fake-id-token-jwt"
 
-    me_oidc = client.get("/api/auth/me").json()
+    me_oidc = client.get("/api/auth/me?slug=sso-user").json()
     assert me_oidc["authenticated"] is True
     assert me_oidc["email"] == "sso-user@example.com"
+    assert me_oidc["display_name"] == "SSO User"
     assert me_oidc["admin"] is False
-    assert client.get("/api/auth/verify-sandbox/sso-user").status_code == 200
+    assert me_oidc["sandbox"]["owner_email"] == "sso-user@example.com"
+    oidc_verify = client.get("/api/auth/verify-sandbox/sso-user")
+    assert oidc_verify.status_code == 200
+    assert oidc_verify.headers["x-auth-request-name"] == "SSO%20User"
+    assert oidc_verify.headers["x-auth-request-admin"] == "false"
 
     # API logout clears local session + id_token and returns RP-Initiated Logout URL
     logout_res = client.post("/api/auth/logout")
@@ -407,3 +452,128 @@ def test_none_and_oidc_auth_modes(api_env, monkeypatch):
     assert client.get("/auth/callback", follow_redirects=False).status_code == 303
     override_logout = client.post("/api/auth/logout")
     assert override_logout.json()["logout_url"].startswith("https://custom-idp.example.com/v2/logout?")
+
+
+def test_plugin_reinstall_disk_stats_backup_restore_and_auto_wake(api_env):
+    import io
+    import tarfile
+
+    client, fake_docker, _registry = api_env
+    admin_headers = {
+        "Authorization": "Bearer test-admin-token",
+        "X-Admin-Email": "admin@example.com",
+    }
+
+    sbx_res = client.post(
+        "/api/sandboxes",
+        headers=admin_headers,
+        json={
+            "email": "alice@example.com",
+            "initial_password": "alice-password-123",
+            "auto_sleep_exempt": True,
+        },
+    )
+    assert sbx_res.status_code == 201
+    sbx_data = sbx_res.json()
+    sbx_id = sbx_data["id"]
+    assert sbx_data["auto_sleep_exempt"] is True
+
+    # Idle sleep policy default OFF, can be updated by admin
+    policy = client.get("/api/policies/idle-sleep", headers=admin_headers)
+    assert policy.status_code == 200 and policy.json()["enabled"] is False
+    updated_policy = client.put(
+        "/api/policies/idle-sleep",
+        headers=admin_headers,
+        json={"enabled": True, "idle_minutes": 90},
+    )
+    assert updated_policy.status_code == 200
+    assert updated_policy.json() == {"enabled": True, "idle_minutes": 90}
+    ov = client.get("/api/overview", headers=admin_headers).json()
+    assert ov["idle_sleep_enabled"] is True and ov["idle_sleep_minutes"] == 90
+
+    # Patch auto_sleep_exempt without container recreate
+    calls_before_patch = len(fake_docker.calls)
+    patched = client.patch(
+        f"/api/sandboxes/{sbx_id}",
+        headers=admin_headers,
+        json={"auto_sleep_exempt": False},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["auto_sleep_exempt"] is False
+    assert len(fake_docker.calls) == calls_before_patch
+
+    # Stats includes disk metrics and persists disk_usage_mb
+    stats = client.get(f"/api/sandboxes/{sbx_id}/stats", headers=admin_headers)
+    assert stats.status_code == 200
+    assert stats.json()["disk_usage_mb"] == 128.0
+    assert client.get(f"/api/sandboxes/{sbx_id}", headers=admin_headers).json()["disk_usage_mb"] == 128.0
+
+    # Plugin reinstall modes
+    sync_builtin = client.post(
+        "/api/plugins/sync-sandboxes",
+        headers=admin_headers,
+        json={"mode": "reinstall_builtin", "sandbox_ids": [sbx_id]},
+    )
+    assert sync_builtin.status_code == 200
+    assert sync_builtin.json()["synced"] == 1
+    assert ("sync_plugin_market", ("alice", None, True)) in fake_docker.calls
+
+    # Lite backup with exclude_caches=true
+    lite = client.get(
+        f"/api/sandboxes/{sbx_id}/backup?exclude_caches=true",
+        headers=admin_headers,
+    )
+    assert lite.status_code == 200
+    assert 'filename="alice-lite.tar"' in lite.headers["content-disposition"]
+    assert ("export_workspace_tar", ("alice", True)) in fake_docker.calls
+
+    # User logs in and restores backup onto own sandbox
+    bob_res = client.post(
+        "/api/sandboxes",
+        headers=admin_headers,
+        json={"email": "bob@example.com", "initial_password": "bob-password-123"},
+    )
+    bob_id = bob_res.json()["id"]
+
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "alice@example.com", "password": "alice-password-123", "mode": "user"},
+    )
+    assert login.status_code == 200
+
+    tar_buf = io.BytesIO()
+    with tarfile.open(fileobj=tar_buf, mode="w:gz") as tf:
+        b = b"restored"
+        ti = tarfile.TarInfo("workspace/note.txt")
+        ti.size = len(b)
+        tf.addfile(ti, io.BytesIO(b))
+    tar_buf.seek(0)
+
+    restore_ok = client.post(
+        f"/api/my/sandboxes/{sbx_id}/restore",
+        files={"file": ("alice-home.tar.gz", tar_buf.getvalue(), "application/gzip")},
+        data={"mode": "merge"},
+    )
+    assert restore_ok.status_code == 200
+    assert restore_ok.json()["ok"] is True
+
+    # Cannot restore someone else's sandbox
+    restore_forbidden = client.post(
+        f"/api/my/sandboxes/{bob_id}/restore",
+        files={"file": ("x.tar.gz", tar_buf.getvalue(), "application/gzip")},
+        data={"mode": "merge"},
+    )
+    assert restore_forbidden.status_code == 403
+
+    # Stopped sandbox returns wake HTML and /api/wake/{slug} starts it cleanly
+    fake_docker.containers["alice"]["status"] = "exited"
+    wake_page = client.get("/s/alice/dsh/", headers={"Accept": "text/html"})
+    assert wake_page.status_code == 200 and "正在唤醒休眠工作区" in wake_page.text
+
+    open_wake = client.get(f"/sandboxes/{sbx_id}/open", headers={"Accept": "text/html"}, follow_redirects=False)
+    assert open_wake.status_code == 200 and "正在唤醒休眠工作区" in open_wake.text
+
+    woke = client.post("/api/wake/alice")
+    assert woke.status_code == 200 and woke.json()["ready"] is True
+    assert fake_docker.containers["alice"]["status"] == "running"
+    assert client.post("/api/wake/bob").status_code == 403

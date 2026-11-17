@@ -8,3 +8,4 @@ cryptography>=44
 httpx>=0.28
 authlib>=1.5
 itsdangerous>=2.2
+python-multipart>=0.0.12

@@ -6,9 +6,17 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from .config import Settings
+from .config import DEFAULT_AUTO_INSTALL_PLUGINS, Settings
 from .docker_service import DockerService, SandboxRuntimeError
-from .models import AuditLog, LlmProfile, PlatformAdmin, Sandbox, SandboxTemplate, User
+from .models import (
+    AuditLog,
+    LlmProfile,
+    PlatformAdmin,
+    PlatformSetting,
+    Sandbox,
+    SandboxTemplate,
+    User,
+)
 from .schemas import TemplateCreate, TemplateUpdate
 from .security import hash_password
 
@@ -165,28 +173,30 @@ def ensure_default_templates(db: Session, settings: Settings) -> None:
     default_tpl = db.scalar(
         select(SandboxTemplate).where(SandboxTemplate.key == "agent-os")
     )
+    default_plugins = (
+        settings.sandbox_auto_install_plugins or DEFAULT_AUTO_INSTALL_PLUGINS
+    )
     if default_tpl is None:
         db.add(
             SandboxTemplate(
                 key="agent-os",
                 name="默认 Agent OS 环境 (Default)",
-                description="默认远程 DeepSeek Harness 操作系统环境，预装文件管理器插件、进程守护 (sandbox-service) 与持久化定时任务 (sandbox-cron)。",
+                description="默认远程 DeepSeek Harness 操作系统环境，预装文件管理器、当前用户身份栏、自定义主题插件、进程守护 (sandbox-service) 与持久化定时任务 (sandbox-cron)。",
                 image_repo=settings.dsh_image_repo,
                 image_tag=settings.dsh_image_tag,
                 default_cpu_limit=settings.sandbox_cpus,
                 default_memory_limit=settings.sandbox_memory,
-                auto_install_plugins=settings.sandbox_auto_install_plugins
-                or "file-manager",
+                auto_install_plugins=default_plugins,
                 init_script=None,
                 default_env_json="{}",
                 is_builtin=True,
             )
         )
-    elif (
-        default_tpl.is_builtin
-        and default_tpl.init_script == legacy_default_init_script
-    ):
-        default_tpl.init_script = None
+    elif default_tpl.is_builtin:
+        if default_tpl.init_script == legacy_default_init_script:
+            default_tpl.init_script = None
+        if (default_tpl.auto_install_plugins or "").strip() == "file-manager":
+            default_tpl.auto_install_plugins = default_plugins
     db.commit()
 
 
@@ -283,6 +293,7 @@ def create_sandbox(
     init_script: str | None = None,
     auto_install_plugins: str | None = None,
     initial_password: str | None = None,
+    auto_sleep_exempt: bool = False,
 ) -> Sandbox:
     email = email.strip().lower()
     pw_hash = hash_password(initial_password) if initial_password else None
@@ -347,6 +358,7 @@ def create_sandbox(
         auto_install_plugins=resolved_plugins,
         cpu_limit=resolved_cpu,
         memory_limit=resolved_mem,
+        auto_sleep_exempt=auto_sleep_exempt,
         llm_profile_id=llm_profile.id if llm_profile else None,
         status="creating",
     )
@@ -573,3 +585,67 @@ def create_llm_profile(
     db.commit()
     db.refresh(profile)
     return profile
+
+
+def get_idle_sleep_policy(db: Session, settings: Settings) -> tuple[bool, int]:
+    """Return global (enabled, idle_minutes) policy with DB override over env defaults."""
+    enabled_row = db.get(PlatformSetting, "idle_sleep_enabled")
+    minutes_row = db.get(PlatformSetting, "idle_sleep_minutes")
+
+    enabled = settings.idle_sleep_enabled
+    if enabled_row is not None:
+        enabled = enabled_row.value.strip().lower() in {"1", "true", "yes", "on"}
+
+    idle_minutes = settings.idle_sleep_minutes
+    if minutes_row is not None:
+        try:
+            parsed = int(minutes_row.value.strip())
+            if parsed >= 5:
+                idle_minutes = parsed
+        except ValueError:
+            pass
+    return enabled, idle_minutes
+
+
+def set_idle_sleep_policy(
+    db: Session,
+    enabled: bool,
+    idle_minutes: int,
+    actor: str | None = None,
+) -> tuple[bool, int]:
+    """Persist platform idle auto-sleep policy in SQLite and record an audit entry."""
+    pairs = {
+        "idle_sleep_enabled": "true" if enabled else "false",
+        "idle_sleep_minutes": str(idle_minutes),
+    }
+    now = utcnow()
+    for key, val in pairs.items():
+        row = db.get(PlatformSetting, key)
+        if row is None:
+            db.add(PlatformSetting(key=key, value=val, updated_at=now))
+        else:
+            row.value = val
+            row.updated_at = now
+    audit(
+        db,
+        "policy.idle_sleep",
+        target="platform",
+        detail=f"enabled={enabled},idle_minutes={idle_minutes}",
+        actor=actor,
+    )
+    db.commit()
+    return enabled, idle_minutes
+
+
+def touch_sandbox_activity(
+    db: Session,
+    sandbox: Sandbox,
+    min_interval_seconds: int = 60,
+) -> None:
+    """Update sandbox.last_seen_at with debouncing so ForwardAuth subrequests avoid write amplification."""
+    now = utcnow()
+    last = sandbox.last_seen_at
+    if last is not None and (now - last).total_seconds() < min_interval_seconds:
+        return
+    sandbox.last_seen_at = now
+    db.commit()
