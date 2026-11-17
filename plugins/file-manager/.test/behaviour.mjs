@@ -51,6 +51,36 @@ ok('rename onto existing refused', await service.rename(join(root, 'a2.txt'), 'b
 const text = await service.preview(join(root, 'a2.txt'))
 ok('text preview', text.kind === 'text' && text.text === 'hello')
 ok('listings carry a modification time', typeof listing.entries[1].modified === 'number' && listing.entries[1].modified > 0)
+ok('listings carry a mode', typeof listing.entries[1].mode === 'number')
+
+const expectedMode = process.platform === 'win32' ? 0o444 : 0o750
+const ch = await service.chmod(join(root, 'a2.txt'), expectedMode)
+const afterChmod = await service.list(root, true)
+const chEntry = afterChmod.entries.find(e => e.name === 'a2.txt')
+ok('chmod updates file permissions', ch.mode === expectedMode
+  && (process.platform === 'win32' ? (chEntry.mode & 0o222) === 0 : chEntry.mode === expectedMode))
+if (process.platform === 'win32') await service.chmod(join(root, 'a2.txt'), 0o666)
+ok('chmod invalid mode refused', await service.chmod(join(root, 'a2.txt'), '999').then(() => false, e => e.code === 'file-manager/invalid-name'))
+ok('chmod out-of-range mode refused', await service.chmod(join(root, 'a2.txt'), 0o10000).then(() => false, e => e.code === 'file-manager/invalid-name'))
+ok('chmod missing path refused', await service.chmod(join(root, 'missing.txt'), 0o644).then(() => false, e => e.code === 'file-manager/not-found'))
+ok('chmod outside root refused', await service.chmod(join(root, '..', 'outside.txt'), 0o644).then(() => false, e => e.code === 'file-manager/not-allowed'))
+
+const written = await service.writeText(join(root, 'a2.txt'), 'hello\nline2\nneedle')
+ok('writeText updates file contents', written.path === join(root, 'a2.txt') && readFileSync(join(root, 'a2.txt'), 'utf8') === 'hello\nline2\nneedle')
+ok('writeText directory refused', await service.writeText(join(root, 'sub'), 'x').then(() => false, e => e.code === 'file-manager/not-file'))
+ok('writeText missing path refused', await service.writeText(join(root, 'none.txt'), 'x').then(() => false, e => e.code === 'file-manager/not-found'))
+
+const nameSearch = await service.search(root, 'a2', 'name', false)
+ok('search by name finds matching entries', nameSearch.entries.some(e => e.relativePath === 'a2.txt'))
+const contentSearch = await service.search(root, 'NEEDLE', 'content', false)
+ok('search by content finds text line snippet', contentSearch.entries.length === 1 && contentSearch.entries[0].matchLine === 3 && contentSearch.entries[0].matchText === 'needle')
+
+await service.createDirectory(root, 'dest')
+const moved = await service.moveEntries([join(root, 'a2.txt')], join(root, 'dest'))
+ok('moveEntries relocates entries cleanly', moved.length === 1 && moved[0].ok && readFileSync(join(root, 'dest', 'a2.txt'), 'utf8') === 'hello\nline2\nneedle')
+const selfMove = await service.moveEntries([join(root, 'dest')], join(root, 'dest'))
+ok('moveEntries into self refused', selfMove.length === 1 && !selfMove[0].ok)
+await service.moveEntries([join(root, 'dest', 'a2.txt')], root)
 ok('listings report unaddressable names', listing.unaddressable === 0)
 const image = await service.preview(join(root, 'b.bin'))
 ok('binary preview', image.kind === 'binary')

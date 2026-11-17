@@ -43,8 +43,8 @@ window.__ModuleLoader__.load({
           buttonPrimary: 'fmButtonPrimary',
           buttonDanger: 'fmButtonDanger',
           buttonIcon: 'fmButtonIcon',
-          toggleButton: 'fmToggleButton',
-          toggleButtonOn: 'fmToggleButtonOn',
+          hiddenCheck: 'fmHiddenCheck',
+          hiddenCheckDisabled: 'fmHiddenCheckDisabled',
           breadcrumb: 'fmBreadcrumb',
           crumb: 'fmCrumb',
           crumbCurrent: 'fmCrumbCurrent',
@@ -67,6 +67,13 @@ window.__ModuleLoader__.load({
           checkCell: 'fmCheckCell',
           cellSize: 'fmCellSize',
           cellModified: 'fmCellModified',
+          cellPerms: 'fmCellPerms',
+          permBadge: 'fmPermBadge',
+          permMatrix: 'fmPermMatrix',
+          permPresets: 'fmPermPresets',
+          permOctalRow: 'fmPermOctalRow',
+          permPreview: 'fmPermPreview',
+          permError: 'fmPermError',
           cellActions: 'fmCellActions',
           actionButton: 'fmActionButton',
           status: 'fmStatus',
@@ -87,6 +94,13 @@ window.__ModuleLoader__.load({
           previewTitle: 'fmPreviewTitle',
           previewBody: 'fmPreviewBody',
           previewText: 'fmPreviewText',
+          editorArea: 'fmEditorArea',
+          editorNote: 'fmEditorNote',
+          searchModeSelect: 'fmSearchModeSelect',
+          searchBanner: 'fmSearchBanner',
+          matchMeta: 'fmMatchMeta',
+          moveTargets: 'fmMoveTargets',
+          dropTarget: 'fmDropTarget',
           previewImage: 'fmPreviewImage',
           previewFrame: 'fmPreviewFrame',
           links: 'fmLinks',
@@ -187,12 +201,35 @@ window.__ModuleLoader__.load({
         .${css.buttonDanger} { color: var(--dsw-alias-state-error-primary); }
         .${css.buttonDanger}:hover:not(:disabled) { background: var(--dsw-alias-bg-layer-2); }
         .${css.buttonIcon} { padding: 5px 8px; }
-        .${css.toggleButton} { padding: 5px 10px; font-size: 12px; }
-        .${css.toggleButton} svg { flex: none; }
-        .${css.toggleButtonOn} {
-          border-color: var(--dsw-alias-brand-primary);
-          color: var(--dsw-alias-brand-primary);
+        .${css.hiddenCheck} {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          height: 28px;
+          box-sizing: border-box;
+          padding: 5px 10px;
+          border: 0.5px solid var(--dsw-alias-border-l2);
+          border-radius: var(--dsw-radius-md, 6px);
+          background: transparent;
+          color: var(--dsw-alias-label-primary);
+          font-size: 12px;
+          font-weight: 500;
+          line-height: 1;
+          cursor: pointer;
+          user-select: none;
+          margin: 0;
+          white-space: nowrap;
         }
+        .${css.hiddenCheck}:hover { background: var(--dsw-alias-bg-layer-1); }
+        .${css.hiddenCheck} input[type="checkbox"] {
+          margin: 0;
+          width: 14px;
+          height: 14px;
+          accent-color: var(--dsw-alias-brand-primary);
+          cursor: pointer;
+        }
+        .${css.hiddenCheckDisabled} { opacity: 0.45; cursor: not-allowed; }
+        .${css.hiddenCheckDisabled} input[type="checkbox"] { cursor: not-allowed; }
         .${css.breadcrumb} {
           display: flex;
           flex-wrap: wrap;
@@ -318,7 +355,72 @@ window.__ModuleLoader__.load({
         .${css.checkCell} { width: 28px; }
         .${css.cellSize} { width: 96px; color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
         .${css.cellModified} { width: 150px; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
-        .${css.cellActions} { width: 150px; text-align: right; white-space: nowrap; }
+        .${css.cellPerms} { width: 138px; white-space: nowrap; }
+        .${css.permBadge} {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 2px 6px;
+          border: 0.5px solid transparent;
+          border-radius: var(--dsw-radius-sm, 4px);
+          background: transparent;
+          color: var(--dsw-alias-label-secondary);
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .${css.permBadge}:hover, .${css.permBadge}:focus-visible {
+          border-color: var(--dsw-alias-border-l2);
+          background: var(--dsw-alias-bg-layer-1);
+          color: var(--dsw-alias-brand-primary);
+          outline: none;
+        }
+        .${css.permMatrix} {
+          width: 100%;
+          margin-top: 12px;
+          border-collapse: collapse;
+          font-size: 12px;
+        }
+        .${css.permMatrix} th, .${css.permMatrix} td {
+          padding: 6px 8px;
+          border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+          text-align: center;
+          color: var(--dsw-alias-label-primary);
+        }
+        .${css.permMatrix} th:first-child, .${css.permMatrix} td:first-child {
+          text-align: left;
+          color: var(--dsw-alias-label-secondary);
+          font-weight: 500;
+        }
+        .${css.permMatrix} input[type="checkbox"] {
+          margin: 0;
+          width: 15px;
+          height: 15px;
+          accent-color: var(--dsw-alias-brand-primary);
+          cursor: pointer;
+        }
+        .${css.permPresets} {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 12px;
+        }
+        .${css.permOctalRow} {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .${css.permOctalRow} input {
+          width: 110px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+        .${css.permPreview} {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 13px;
+          color: var(--dsw-alias-label-secondary);
+        }
+        .${css.permError} { margin: 6px 0 0; color: var(--dsw-alias-state-error-primary); font-size: 12px; }
+        .${css.cellActions} { width: 248px; text-align: right; white-space: nowrap; }
         .${css.actionButton} {
           padding: 2px 6px;
           margin-left: 2px;
@@ -433,6 +535,72 @@ window.__ModuleLoader__.load({
         }
         .${css.previewImage} { max-width: 100%; max-height: 100%; object-fit: contain; }
         .${css.previewFrame} { flex: 1; align-self: stretch; width: 100%; border: 0; background: var(--dsw-alias-bg-base); }
+        .${css.editorArea} {
+          flex: 1;
+          align-self: stretch;
+          width: 100%;
+          box-sizing: border-box;
+          padding: 10px 12px;
+          border: 0.5px solid var(--dsw-alias-border-l2);
+          border-radius: var(--dsw-radius-md, 6px);
+          background: var(--dsw-alias-bg-layer-1);
+          color: var(--dsw-alias-label-primary);
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 12.5px;
+          line-height: 1.6;
+          resize: none;
+        }
+        .${css.editorArea}:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+        .${css.editorNote} {
+          margin: 0;
+          padding: 6px 14px;
+          border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+          color: var(--dsw-alias-state-error-primary);
+          font-size: 12px;
+        }
+        .${css.searchModeSelect} {
+          padding: 5px 8px;
+          border: 0.5px solid var(--dsw-alias-border-l2);
+          border-radius: var(--dsw-radius-md, 6px);
+          background: var(--dsw-alias-bg-layer-1);
+          color: var(--dsw-alias-label-primary);
+          font: inherit;
+          font-size: 12px;
+        }
+        .${css.searchBanner} {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          margin: 8px 24px 0;
+          padding: 6px 10px;
+          border-radius: var(--dsw-radius-md, 6px);
+          background: var(--dsw-alias-bg-layer-2);
+          color: var(--dsw-alias-label-secondary);
+          font-size: 12px;
+        }
+        .${css.matchMeta} {
+          display: block;
+          margin-top: 2px;
+          color: var(--dsw-alias-label-secondary);
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 11px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 420px;
+        }
+        .${css.moveTargets} {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 10px;
+        }
+        .${css.dropTarget} {
+          outline: 1.5px dashed var(--dsw-alias-brand-primary);
+          background: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent);
+        }
         .${css.links} { display: flex; gap: 8px; align-items: center; }
         `
       return { css: css, STYLES: STYLES }
@@ -483,6 +651,8 @@ window.__ModuleLoader__.load({
           name: 'Name',
           size: 'Size',
           modified: 'Modified',
+          permissions: 'Permissions',
+          editPermissions: 'Edit permissions for {name}',
           actions: 'Actions',
           emptyFolder: 'This folder is empty.',
           truncated: 'Only the first entries are shown. Open a subfolder or use the path bar.',
@@ -496,7 +666,11 @@ window.__ModuleLoader__.load({
 
           // Row actions.
           preview: 'Preview',
+          editFile: 'Edit',
+          editTruncated: 'Truncated files cannot be edited inline.',
           download: 'Download',
+          move: 'Move',
+          moveSelected: 'Move',
           rename: 'Rename',
           delete: 'Delete',
 
@@ -525,6 +699,39 @@ window.__ModuleLoader__.load({
           deletePartial: '{done} deleted, {failed} not deleted:',
           renameDone: 'Renamed.',
           createDone: 'Folder created.',
+          permissionsDone: 'Permissions updated.',
+          saveDone: 'File saved.',
+          moveDone: '{count} item(s) moved.',
+          movePartial: '{done} moved, {failed} not moved:',
+          moveTitle: 'Move items',
+          moveOneNote: 'Move “{name}” to:',
+          moveManyNote: 'Move {count} item(s) to:',
+          moveLabel: 'Destination folder',
+          movePlaceholder: '/path/to/destination',
+          moveQuickTargets: 'Quick folders',
+          searchModeName: 'By name (recursive)',
+          searchModeContent: 'By content (text)',
+          searchSubfolders: 'Search',
+          searching: 'Searching…',
+          searchClear: 'Clear search',
+          searchResultCount: 'Search “{query}”: {count} match(es)',
+          searchResultTruncated: 'Results capped at limit; narrow your query.',
+          searchEmpty: 'No matching entries found.',
+          permissionsTitle: 'Permissions for {name}',
+          permOctalLabel: 'Octal mode',
+          permOctalHint: '3 or 4 octal digits (e.g. 755 or 0644)',
+          permOwner: 'Owner',
+          permGroup: 'Group',
+          permOthers: 'Others',
+          permRead: 'Read',
+          permWrite: 'Write',
+          permExec: 'Execute',
+          permPresets: 'Quick presets',
+          permPreset755: '755 (rwxr-xr-x)',
+          permPreset644: '644 (rw-r--r--)',
+          permPreset600: '600 (rw-------)',
+          permPreset700: '700 (rwx------)',
+          permInvalid: 'Enter a valid octal mode (000–7777).',
           actionFailed: 'Action failed: {reason}',
 
           // Preview.
@@ -565,6 +772,8 @@ window.__ModuleLoader__.load({
           name: '名称',
           size: '大小',
           modified: '修改时间',
+          permissions: '权限',
+          editPermissions: '修改 {name} 的权限',
           actions: '操作',
           emptyFolder: '这个文件夹是空的。',
           truncated: '只显示了部分条目。可以进入子目录或直接用路径栏跳转。',
@@ -577,7 +786,11 @@ window.__ModuleLoader__.load({
           filtered: '空——没有匹配“{filter}”的条目',
 
           preview: '预览',
+          editFile: '编辑',
+          editTruncated: '文件过大已被截断，暂不支持在线编辑。',
           download: '下载',
+          move: '移动',
+          moveSelected: '移动',
           rename: '重命名',
           delete: '删除',
 
@@ -604,6 +817,39 @@ window.__ModuleLoader__.load({
           deletePartial: '已删除 {done} 项，{failed} 项未删除：',
           renameDone: '已重命名。',
           createDone: '已创建文件夹。',
+          permissionsDone: '权限已更新。',
+          saveDone: '文件已保存。',
+          moveDone: '已移动 {count} 项。',
+          movePartial: '{done} 项已移动，{failed} 项失败：',
+          moveTitle: '移动条目',
+          moveOneNote: '将“{name}”移动到：',
+          moveManyNote: '将这 {count} 项移动到：',
+          moveLabel: '目标文件夹路径',
+          movePlaceholder: '/path/to/destination',
+          moveQuickTargets: '快速选择目录',
+          searchModeName: '按名称搜索（递归）',
+          searchModeContent: '按文件内容搜索（文本）',
+          searchSubfolders: '全目录搜索',
+          searching: '搜索中…',
+          searchClear: '清空搜索',
+          searchResultCount: '搜索“{query}”：共 {count} 条结果',
+          searchResultTruncated: '结果数量已达上限，请缩小搜索范围。',
+          searchEmpty: '未找到匹配的文件或目录。',
+          permissionsTitle: '{name} 的权限',
+          permOctalLabel: '八进制权限值',
+          permOctalHint: '3 或 4 位八进制数字（如 755 或 0644）',
+          permOwner: '所有者',
+          permGroup: '用户组',
+          permOthers: '其他人',
+          permRead: '读取',
+          permWrite: '写入',
+          permExec: '执行',
+          permPresets: '常用预设',
+          permPreset755: '755 (rwxr-xr-x)',
+          permPreset644: '644 (rw-r--r--)',
+          permPreset600: '600 (rw-------)',
+          permPreset700: '700 (rwx------)',
+          permInvalid: '请输入有效的八进制权限值（000–7777）。',
           actionFailed: '操作失败：{reason}',
 
           previewBinary: '这个文件无法在页面内显示，请下载后打开。',
@@ -707,6 +953,7 @@ window.__ModuleLoader__.load({
                 type: z.enum(['file', 'directory', 'other']),
                 size: z.number().int().nonnegative(),
                 modified: z.number().nonnegative(),
+                mode: z.number().int().nonnegative().optional(),
               }).readonly()).readonly(),
               truncated: z.boolean(),
               unaddressable: z.number().int().nonnegative(),
@@ -758,6 +1005,68 @@ window.__ModuleLoader__.load({
             description: 'The directory the page opens at when it has no other preference.',
             parameters: [],
             result: z => z.string(),
+          },
+          chmod: {
+            description: 'Change POSIX permission bits on one file or directory.',
+            parameters: [
+              { name: 'path', description: 'Absolute path to modify.', schema: z => z.string() },
+              { name: 'mode', description: 'POSIX permission bits (0..4095 integer).', schema: z => z.number().int().min(0).max(0o7777) },
+            ],
+            result: z => z.object({
+              path: z.string(),
+              mode: z.number().int().nonnegative(),
+            }).readonly(),
+          },
+          writeText: {
+            description: 'Overwrite an existing text file with UTF-8 content.',
+            parameters: [
+              { name: 'path', description: 'Absolute file path.', schema: z => z.string() },
+              { name: 'content', description: 'Full UTF-8 text content.', schema: z => z.string() },
+            ],
+            result: z => z.object({
+              path: z.string(),
+              size: z.number().int().nonnegative(),
+              modified: z.number().nonnegative(),
+            }).readonly(),
+          },
+          moveEntries: {
+            description: 'Move files or directories into a destination directory.',
+            parameters: [
+              { name: 'paths', description: 'Absolute source paths to move.', schema: z => z.array(z.string()) },
+              { name: 'destinationDir', description: 'Absolute destination directory path.', schema: z => z.string() },
+            ],
+            result: z => z.array(z.object({
+              from: z.string(),
+              path: z.string(),
+              ok: z.boolean(),
+              error: z.string().optional(),
+            }).readonly()).readonly(),
+          },
+          search: {
+            description: 'Search recursively inside a directory by entry name or file text content.',
+            parameters: [
+              { name: 'directory', description: 'Absolute directory path to search.', schema: z => z.string() },
+              { name: 'query', description: 'Search substring.', schema: z => z.string() },
+              { name: 'mode', description: 'Search by entry name or file text content.', schema: z => z.enum(['name', 'content']) },
+              { name: 'showHidden', description: 'Include dotfiles in search results.', schema: z => z.boolean() },
+            ],
+            result: z => z.object({
+              directory: z.string(),
+              query: z.string(),
+              mode: z.enum(['name', 'content']),
+              truncated: z.boolean(),
+              entries: z.array(z.object({
+                name: z.string(),
+                path: z.string(),
+                relativePath: z.string(),
+                type: z.enum(['file', 'directory', 'other']),
+                size: z.number().int().nonnegative(),
+                modified: z.number().nonnegative(),
+                mode: z.number().int().nonnegative().optional(),
+                matchLine: z.number().int().positive().optional(),
+                matchText: z.string().optional(),
+              }).readonly()).readonly(),
+            }).readonly(),
           },
         }
 
@@ -1091,6 +1400,10 @@ window.__ModuleLoader__.load({
             const [preview, setPreview] = useState(null)
             const [dragging, setDragging] = useState(false)
             const [reloads, setReloads] = useState(0)
+            const [searchMode, setSearchMode] = useState('name')
+            const [searchResult, setSearchResult] = useState(null)
+            const [searching, setSearching] = useState(false)
+            const [dropTargetPath, setDropTargetPath] = useState(null)
             const [showHidden, setShowHidden] = useState(() => {
               try {
                 return window.localStorage.getItem('dsh.file-manager.showHidden') === '1'
@@ -1180,6 +1493,7 @@ window.__ModuleLoader__.load({
 
             const navigate = useCallback((next) => {
               if (typeof next !== 'string' || next.trim() === '') return
+              setSearchResult(null)
               setPath(next.trim())
             }, [])
 
@@ -1191,9 +1505,11 @@ window.__ModuleLoader__.load({
             }
 
             const entries = listing.value?.entries ?? []
-            const visible = filter.trim() === ''
-              ? entries
-              : entries.filter(entry => entry.name.toLowerCase().includes(filter.trim().toLowerCase()))
+            const visible = searchResult !== null
+              ? searchResult.entries
+              : (filter.trim() === ''
+                ? entries
+                : entries.filter(entry => entry.name.toLowerCase().includes(filter.trim().toLowerCase())))
 
             const allSelected = visible.length > 0 && visible.every(entry => selected.has(entry.path))
             const someSelected = selected.size > 0
@@ -1338,6 +1654,12 @@ window.__ModuleLoader__.load({
               void act(() => call(api.rename(entry.path, name)), t('renameDone'))
             }, [act, api, t])
 
+            const submitChmod = useCallback((entry, mode) => {
+              setDialog(null)
+              if (typeof entry.mode === 'number' && mode === entry.mode) return
+              void act(() => call(api.chmod(entry.path, mode)), t('permissionsDone'))
+            }, [act, api, t])
+
             const submitDelete = useCallback((paths) => {
               setDialog(null)
               void act(async () => {
@@ -1349,6 +1671,79 @@ window.__ModuleLoader__.load({
                 }
               }, t('deleteDone', { count: paths.length }))
             }, [act, api, t])
+
+            const submitMove = useCallback((paths, destinationDir) => {
+              setDialog(null)
+              void act(async () => {
+                const results = await call(api.moveEntries(paths, destinationDir))
+                const failed = results.filter(entry => !entry.ok)
+                if (failed.length > 0) {
+                  throw new Error(`${t('movePartial', { failed: failed.length, done: results.length - failed.length })} ${failed.map(entry => entry.from).join(', ')}`)
+                }
+                setSelected(new Set())
+              }, t('moveDone', { count: paths.length }))
+            }, [act, api, t])
+
+            const savePreviewText = useCallback(async (entryPath, content) => {
+              const saved = await call(api.writeText(entryPath, content))
+              setPreview(curr => curr && curr.path === entryPath && curr.state.status === 'ready'
+                ? {
+                  ...curr,
+                  state: {
+                    ...curr.state,
+                    value: { ...curr.state.value, text: content, size: saved.size, truncated: false },
+                  },
+                }
+                : curr)
+              showNotice('ok', t('saveDone'))
+              reload()
+            }, [api, reload, showNotice, t])
+
+            const runSearch = useCallback(async (rawQuery = filter, rawMode = searchMode) => {
+              const trimmed = rawQuery.trim()
+              if (trimmed === '' || path === null) {
+                setSearchResult(null)
+                return
+              }
+              setSearching(true)
+              try {
+                const result = await call(api.search(path, trimmed, rawMode, showHidden))
+                setSearchResult(result)
+              } catch (error) {
+                showNotice('error', t('actionFailed', { reason: String(error.message ?? error) }))
+              } finally {
+                setSearching(false)
+              }
+            }, [api, filter, path, searchMode, showHidden, showNotice, t])
+
+            const INTERNAL_DRAG_MIME = 'application/x-fm-paths'
+            const dropOnTargetProps = (targetDir) => ({
+              onDragOver: (event) => {
+                if (!event.dataTransfer?.types?.includes(INTERNAL_DRAG_MIME)) return
+                event.preventDefault()
+                event.stopPropagation()
+                setDropTargetPath(targetDir)
+              },
+              onDragLeave: (event) => {
+                if (event.currentTarget?.contains?.(event.relatedTarget)) return
+                setDropTargetPath(curr => (curr === targetDir ? null : curr))
+              },
+              onDrop: (event) => {
+                const raw = event.dataTransfer?.getData(INTERNAL_DRAG_MIME)
+                if (!raw) return
+                event.preventDefault()
+                event.stopPropagation()
+                setDropTargetPath(null)
+                try {
+                  const paths = JSON.parse(raw)
+                  if (Array.isArray(paths) && paths.length > 0 && !paths.includes(targetDir)) {
+                    submitMove(paths, targetDir)
+                  }
+                } catch {
+                  // Ignore malformed internal drag data.
+                }
+              },
+            })
 
             // Escape closes the preview; the dialogs own their own Escape handling.
             useEffect(() => {
@@ -1412,15 +1807,19 @@ window.__ModuleLoader__.load({
                     type: 'button', className: css.button,
                     onClick: () => setDialog({ kind: 'new-folder', value: '' }), disabled: busy || path === null,
                   }, t('newFolder')),
-                  h('button', {
-                    type: 'button',
-                    className: `${css.button} ${css.toggleButton}${showHidden ? ` ${css.toggleButtonOn}` : ''}`,
-                    onClick: toggleHidden,
-                    disabled: path === null || listing.value?.hiddenForced === true,
-                    'aria-pressed': showHidden || listing.value?.hiddenForced === true,
+                  h('label', {
+                    className: `${css.hiddenCheck}${path === null || listing.value?.hiddenForced === true ? ` ${css.hiddenCheckDisabled}` : ''}`,
                     title: listing.value?.hiddenForced === true ? t('hiddenForced') : t('toggleHidden'),
+                  },
+                  h('input', {
+                    type: 'checkbox',
+                    checked: showHidden || listing.value?.hiddenForced === true,
+                    disabled: path === null || listing.value?.hiddenForced === true,
+                    onChange: toggleHidden,
                     'aria-label': t('toggleHidden'),
-                  }, glyph('eye'), t('hiddenShort')),
+                  }),
+                  h('span', null, t('hiddenShort')),
+                  ),
                   h('button', {
                     type: 'button', className: `${css.button} ${css.buttonIcon}`,
                     onClick: reload, disabled: path === null, title: t('refresh'), 'aria-label': t('refresh'),
@@ -1459,10 +1858,11 @@ window.__ModuleLoader__.load({
                     index > 0 ? h('span', { className: css.crumbSep, 'aria-hidden': 'true' }, '/') : null,
                     h('button', {
                       type: 'button',
-                      className: `${css.crumb}${last ? ` ${css.crumbCurrent}` : ''}`,
+                      className: `${css.crumb}${last ? ` ${css.crumbCurrent}` : ''}${!last && dropTargetPath === crumb.path ? ` ${css.dropTarget}` : ''}`,
                       'aria-current': last ? 'page' : undefined,
                       title: crumb.path,
                       onClick: () => { if (!last) navigate(crumb.path) },
+                      ...(!last ? dropOnTargetProps(crumb.path) : {}),
                     }, crumb.name),
                   )
                 }),
@@ -1482,9 +1882,54 @@ window.__ModuleLoader__.load({
                 h('input', {
                   className: css.filterInput, value: filter, spellCheck: false,
                   placeholder: t('searchPlaceholder'), 'aria-label': t('searchPlaceholder'),
-                  onChange: (event) => { setFilter(event.target.value) },
+                  onChange: (event) => {
+                    const val = event.target.value
+                    setFilter(val)
+                    if (val.trim() === '') setSearchResult(null)
+                  },
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter' && filter.trim() !== '') {
+                      event.preventDefault()
+                      void runSearch(filter, searchMode)
+                    }
+                  },
                 }),
+                h('select', {
+                  className: css.searchModeSelect,
+                  value: searchMode,
+                  'aria-label': t('searchSubfolders'),
+                  onChange: (event) => { setSearchMode(event.target.value) },
+                },
+                h('option', { value: 'name' }, t('searchModeName')),
+                h('option', { value: 'content' }, t('searchModeContent')),
+                ),
+                h('button', {
+                  type: 'button',
+                  className: css.button,
+                  disabled: searching || path === null || filter.trim() === '',
+                  onClick: () => { void runSearch(filter, searchMode) },
+                }, searching ? t('searching') : t('searchSubfolders')),
+                searchResult !== null
+                  ? h('button', {
+                    type: 'button',
+                    className: css.button,
+                    onClick: () => { setSearchResult(null) },
+                  }, t('searchClear'))
+                  : null,
               ),
+
+              searchResult !== null
+                ? h('div', { className: css.searchBanner, role: 'status' },
+                  h('span', null,
+                    t('searchResultCount', { query: searchResult.query, count: searchResult.entries.length }),
+                    searchResult.truncated ? ` · ${t('searchResultTruncated')}` : ''),
+                  h('button', {
+                    type: 'button',
+                    className: css.actionButton,
+                    onClick: () => { setSearchResult(null) },
+                  }, t('searchClear')),
+                )
+                : null,
 
               notice !== null
                 ? h('p', {
@@ -1500,6 +1945,15 @@ window.__ModuleLoader__.load({
                     type: 'button', className: css.button,
                     onClick: () => downloadArchive([...selected]),
                   }, selected.size === 1 ? t('downloadSelected') : t('downloadSelectedZip')),
+                  h('button', {
+                    type: 'button', className: css.button,
+                    onClick: () => setDialog({
+                      kind: 'move',
+                      paths: [...selected],
+                      names: [...selected].map((entryPath) => entries.find(item => item.path === entryPath)?.name ?? entryPath),
+                      dest: path ?? '',
+                    }),
+                  }, t('moveSelected')),
                   h('button', {
                     type: 'button', className: `${css.button} ${css.buttonDanger}`,
                     onClick: () => setDialog({ kind: 'delete', paths: [...selected], names: [...selected].map((entryPath) => entries.find(item => item.path === entryPath)?.name ?? entryPath) }),
@@ -1536,16 +1990,26 @@ window.__ModuleLoader__.load({
                           h('th', null, t('name')),
                           h('th', { className: css.cellSize }, t('size')),
                           h('th', { className: css.cellModified }, t('modified')),
+                          h('th', { className: css.cellPerms }, t('permissions')),
                           h('th', { className: css.cellActions }, h('span', { hidden: true }, t('actions'))),
                         ),
                       ),
                       h('tbody', { key: tableLabel },
                         visible.length === 0
-                          ? h('tr', null, h('td', { colSpan: 5, className: css.empty },
-                            filter.trim() === '' ? t('emptyFolder') : t('filtered', { filter: filter.trim() })))
+                          ? h('tr', null, h('td', { colSpan: 6, className: css.empty },
+                            searchResult !== null
+                              ? t('searchEmpty')
+                              : (filter.trim() === '' ? t('emptyFolder') : t('filtered', { filter: filter.trim() }))))
                           : visible.map(entry => h('tr', {
                             key: entry.path,
-                            className: `${css.row}${selected.has(entry.path) ? ` ${css.rowSelected}` : ''}`,
+                            className: `${css.row}${selected.has(entry.path) ? ` ${css.rowSelected}` : ''}${entry.type === 'directory' && dropTargetPath === entry.path ? ` ${css.dropTarget}` : ''}`,
+                            draggable: searchResult === null && path !== null,
+                            onDragStart: (event) => {
+                              const dragPaths = selected.has(entry.path) ? [...selected] : [entry.path]
+                              event.dataTransfer?.setData(INTERNAL_DRAG_MIME, JSON.stringify(dragPaths))
+                              if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+                            },
+                            ...(entry.type === 'directory' && searchResult === null ? dropOnTargetProps(entry.path) : {}),
                             onDoubleClick: () => { openEntry(entry) },
                           },
                           h('td', { className: css.checkCell },
@@ -1558,13 +2022,26 @@ window.__ModuleLoader__.load({
                             h('button', {
                               type: 'button', className: css.rowName,
                               onClick: () => { openEntry(entry) },
-                              title: entry.name,
+                              title: entry.path,
                             },
                             h('span', { className: css.rowIcon }, glyph(entry.type === 'directory' ? 'folder' : entry.type === 'file' ? 'file' : 'other')),
-                            h('span', null, entry.name)),
+                            h('span', null, entry.relativePath ?? entry.name)),
+                            entry.matchLine !== undefined
+                              ? h('span', { className: css.matchMeta }, `L${entry.matchLine}: ${entry.matchText ?? ''}`)
+                              : null,
                           ),
                           h('td', { className: css.cellSize }, entry.type === 'file' ? formatSize(entry.size) : ''),
                           h('td', { className: css.cellModified }, formatTime(entry.modified)),
+                          h('td', { className: css.cellPerms },
+                            typeof entry.mode === 'number'
+                              ? h('button', {
+                                type: 'button',
+                                className: css.permBadge,
+                                title: t('editPermissions', { name: entry.name }),
+                                'aria-label': t('editPermissions', { name: entry.name }),
+                                onClick: () => setDialog({ kind: 'chmod', entry }),
+                              }, `${formatSymbolicMode(entry.mode)} ${formatOctalMode(entry.mode)}`)
+                              : ''),
                           h('td', { className: css.cellActions },
                             entry.type === 'file'
                               ? h(React.Fragment, null,
@@ -1575,6 +2052,14 @@ window.__ModuleLoader__.load({
                             entry.type === 'directory'
                               ? h('button', { type: 'button', className: css.actionButton, onClick: () => { downloadEntry(entry) } }, t('download'))
                               : null,
+                            h('button', {
+                              type: 'button', className: css.actionButton,
+                              onClick: () => setDialog({ kind: 'chmod', entry }),
+                            }, t('permissions')),
+                            h('button', {
+                              type: 'button', className: css.actionButton,
+                              onClick: () => setDialog({ kind: 'move', paths: [entry.path], names: [entry.name], dest: path ?? '' }),
+                            }, t('move')),
                             h('button', {
                               type: 'button', className: css.actionButton,
                               onClick: () => setDialog({ kind: 'rename', entry, value: entry.name }),
@@ -1636,11 +2121,79 @@ window.__ModuleLoader__.load({
                     h('button', { type: 'button', className: `${css.button} ${css.buttonDanger}`, onClick: () => submitDelete(dialog.paths) }, t('delete')),
                   ))
                 : null,
+              dialog?.kind === 'chmod'
+                ? h(Modal, { title: t('permissionsTitle', { name: dialog.entry.name }), onClose: () => setDialog(null) },
+                  h(PermissionsForm, {
+                    entry: dialog.entry,
+                    t,
+                    onSubmit: (mode) => submitChmod(dialog.entry, mode),
+                    onCancel: () => setDialog(null),
+                  }))
+                : null,
+              dialog?.kind === 'move'
+                ? h(Modal, { title: t('moveTitle'), onClose: () => setDialog(null) },
+                  h(MoveForm, {
+                    names: dialog.names,
+                    initialDest: dialog.dest,
+                    quickDirs: [...new Set([
+                      listing.value?.parent,
+                      ...entries.filter(item => item.type === 'directory' && !dialog.paths.includes(item.path)).map(item => item.path),
+                      ...roots,
+                    ].filter(dir => typeof dir === 'string' && dir !== '' && !dialog.paths.includes(dir)))],
+                    t,
+                    onSubmit: (destDir) => submitMove(dialog.paths, destDir),
+                    onCancel: () => setDialog(null),
+                  }))
+                : null,
 
               preview !== null
-                ? overlay(h(PreviewDialog, { preview, onClose: () => setPreview(null), download, t }))
+                ? overlay(h(PreviewDialog, { preview, onClose: () => setPreview(null), download, onSaveText: savePreviewText, t }))
                 : null,
             )
+          }
+
+          /**
+           * Formats a numeric POSIX mode into a 3- or 4-digit octal string.
+           * @param mode - file mode bits.
+           * @returns octal string such as '755' or '4755'.
+           */
+          function formatOctalMode(mode) {
+            const masked = mode & 0o7777
+            return masked > 0o777
+              ? masked.toString(8).padStart(4, '0')
+              : masked.toString(8).padStart(3, '0')
+          }
+
+          /**
+           * Formats a numeric POSIX mode into a 9-character symbolic string (e.g. 'rwxr-xr-x').
+           * @param mode - file mode bits.
+           * @returns symbolic permission string.
+           */
+          function formatSymbolicMode(mode) {
+            const masked = mode & 0o7777
+            const triad = (rBit, wBit, xBit, specialBit, specialChar) => {
+              const r = (masked & rBit) !== 0 ? 'r' : '-'
+              const w = (masked & wBit) !== 0 ? 'w' : '-'
+              const xSet = (masked & xBit) !== 0
+              const sSet = (masked & specialBit) !== 0
+              const x = sSet ? (xSet ? specialChar : specialChar.toUpperCase()) : (xSet ? 'x' : '-')
+              return `${r}${w}${x}`
+            }
+            return triad(0o400, 0o200, 0o100, 0o4000, 's')
+              + triad(0o040, 0o020, 0o010, 0o2000, 's')
+              + triad(0o004, 0o002, 0o001, 0o1000, 't')
+          }
+
+          /**
+           * Parses a 3- or 4-digit octal mode string from the permission dialog input.
+           * @param raw - user input string.
+           * @returns numeric mode in 0..0o7777, or null when invalid.
+           */
+          function parseOctalModeInput(raw) {
+            const trimmed = raw.trim()
+            if (!/^[0-7]{3,4}$/.test(trimmed)) return null
+            const parsed = Number.parseInt(trimmed, 8)
+            return parsed >= 0 && parsed <= 0o7777 ? parsed : null
           }
 
           /**
@@ -1673,19 +2226,194 @@ window.__ModuleLoader__.load({
           }
 
           /**
-           * The inline file preview dialog.
-           * @param props - the open preview, its close handler, the download starter, and copy.
+           * Form combining an r/w/x checkbox matrix, quick presets, and octal mode input.
+           * @param props - target entry, localized strings, and submit/cancel handlers.
+           * @returns the form element.
+           */
+          function PermissionsForm({ entry, t, onSubmit, onCancel }) {
+            const permGroups = [
+              { key: 'permOwner', bits: [0o400, 0o200, 0o100] },
+              { key: 'permGroup', bits: [0o040, 0o020, 0o010] },
+              { key: 'permOthers', bits: [0o004, 0o002, 0o001] },
+            ]
+            const permPresets = [
+              { mode: 0o755, key: 'permPreset755' },
+              { mode: 0o644, key: 'permPreset644' },
+              { mode: 0o600, key: 'permPreset600' },
+              { mode: 0o700, key: 'permPreset700' },
+            ]
+            const initialMode = typeof entry.mode === 'number'
+              ? (entry.mode & 0o7777)
+              : (entry.type === 'directory' ? 0o755 : 0o644)
+            const [state, setState] = useState(() => ({
+              mode: initialMode,
+              text: formatOctalMode(initialMode),
+            }))
+            const validMode = parseOctalModeInput(state.text)
+            const applyMode = (nextMode) => {
+              const masked = nextMode & 0o7777
+              setState({ mode: masked, text: formatOctalMode(masked) })
+            }
+
+            return h('form', {
+              onSubmit: (event) => {
+                event.preventDefault()
+                if (validMode !== null) onSubmit(validMode)
+              },
+            },
+            h('div', { className: css.field },
+              h('label', null, t('permOctalLabel')),
+              h('div', { className: css.permOctalRow },
+                h('input', {
+                  className: css.input,
+                  value: state.text,
+                  placeholder: '755',
+                  autoComplete: 'off',
+                  spellCheck: false,
+                  'aria-label': t('permOctalLabel'),
+                  onChange: (event) => {
+                    const text = event.target.value
+                    const parsed = parseOctalModeInput(text)
+                    setState(prev => ({ mode: parsed ?? prev.mode, text }))
+                  },
+                }),
+                h('span', { className: css.permPreview }, formatSymbolicMode(validMode ?? state.mode)),
+              ),
+              h('span', null, t('permOctalHint')),
+            ),
+            validMode === null ? h('p', { className: css.permError }, t('permInvalid')) : null,
+            h('table', { className: css.permMatrix },
+              h('thead', null,
+                h('tr', null,
+                  h('th', null, ''),
+                  h('th', null, t('permRead')),
+                  h('th', null, t('permWrite')),
+                  h('th', null, t('permExec')),
+                ),
+              ),
+              h('tbody', null,
+                permGroups.map(group => h('tr', { key: group.key },
+                  h('td', null, t(group.key)),
+                  group.bits.map((bit, colIndex) => {
+                    const colLabel = colIndex === 0 ? t('permRead') : colIndex === 1 ? t('permWrite') : t('permExec')
+                    return h('td', { key: bit },
+                      h('input', {
+                        type: 'checkbox',
+                        checked: (state.mode & bit) !== 0,
+                        'aria-label': `${t(group.key)} ${colLabel}`,
+                        onChange: () => applyMode(state.mode ^ bit),
+                      }),
+                    )
+                  }),
+                )),
+              ),
+            ),
+            h('div', { className: css.permPresets },
+              permPresets.map(preset => h('button', {
+                key: preset.mode,
+                type: 'button',
+                className: css.button,
+                onClick: () => applyMode(preset.mode),
+              }, t(preset.key))),
+            ),
+            h('div', { className: css.dialogActions },
+              h('button', { type: 'button', className: css.button, onClick: onCancel }, t('cancel')),
+              h('button', {
+                type: 'submit',
+                className: `${css.button} ${css.buttonPrimary}`,
+                disabled: validMode === null,
+              }, t('save')),
+            ))
+          }
+
+          /**
+           * Form to pick or type a destination directory for moving selected entries.
+           * @param props - selected entry names, initial destination, quick target chips, and handlers.
+           * @returns the form element.
+           */
+          function MoveForm({ names, initialDest, quickDirs, t, onSubmit, onCancel }) {
+            const [dest, setDest] = useState(initialDest)
+            return h('form', {
+              onSubmit: (event) => {
+                event.preventDefault()
+                if (dest.trim() !== '') onSubmit(dest.trim())
+              },
+            },
+            h('p', { className: css.dialogBody },
+              names.length === 1 ? t('moveOneNote', { name: names[0] }) : t('moveManyNote', { count: names.length })),
+            h('div', { className: css.field },
+              h('label', null, t('moveLabel')),
+              h('input', {
+                className: css.input,
+                value: dest,
+                placeholder: t('movePlaceholder'),
+                autoComplete: 'off',
+                spellCheck: false,
+                onChange: (event) => { setDest(event.target.value) },
+              })),
+            quickDirs.length > 0
+              ? h('div', { className: css.field },
+                h('label', null, t('moveQuickTargets')),
+                h('div', { className: css.moveTargets },
+                  quickDirs.map(dir => h('button', {
+                    key: dir,
+                    type: 'button',
+                    className: css.rootChip,
+                    onClick: () => { setDest(dir) },
+                  }, dir === '/' ? t('rootCrumb') : dir)),
+                ))
+              : null,
+            h('div', { className: css.dialogActions },
+              h('button', { type: 'button', className: css.button, onClick: onCancel }, t('cancel')),
+              h('button', {
+                type: 'submit',
+                className: `${css.button} ${css.buttonPrimary}`,
+                disabled: dest.trim() === '',
+              }, t('move')),
+            ))
+          }
+
+          /**
+           * The inline file preview and text editor dialog.
+           * @param props - the open preview, close handler, download/save handlers, and copy.
            * @returns the dialog element.
            */
-          function PreviewDialog({ preview, onClose, download, t }) {
+          function PreviewDialog({ preview, onClose, download, onSaveText, t }) {
             const headingId = useId()
+            const [editing, setEditing] = useState(false)
+            const [draft, setDraft] = useState('')
+            const [saving, setSaving] = useState(false)
+            const [saveError, setSaveError] = useState('')
+
+            useEffect(() => {
+              setEditing(false)
+              setSaveError('')
+            }, [preview.path])
+
             const state = preview.state
+            const canEditText = state.status === 'ready' && state.value.kind === 'text' && !state.value.truncated
+            const unchanged = state.status === 'ready' && draft === (state.value.text ?? '')
+
+            const handleSave = async () => {
+              if (saving || unchanged || !canEditText) return
+              setSaving(true)
+              setSaveError('')
+              try {
+                await onSaveText(preview.path, draft)
+                setEditing(false)
+              } catch (error) {
+                setSaveError(String(error.message ?? error))
+              } finally {
+                setSaving(false)
+              }
+            }
+
             return h('div', {
               className: css.previewBackdrop, role: 'presentation',
               onMouseDown: (event) => {
                 if (event.target !== event.currentTarget) return
-                // Only a completed click on the backdrop closes the panel.
-                if (window.getSelection()?.toString()) return
+                // Avoid accidental dismissal when selecting text or editing a file.
+                if (editing || window.getSelection()?.toString()) return
                 onClose()
               },
             },
@@ -1693,6 +2421,28 @@ window.__ModuleLoader__.load({
               h('div', { className: css.previewHead },
                 h('h2', { id: headingId, className: css.previewTitle }, preview.name),
                 h('div', { className: css.links },
+                  editing
+                    ? h(React.Fragment, null,
+                      h('button', {
+                        type: 'button',
+                        className: `${css.button} ${css.buttonPrimary}`,
+                        disabled: saving || unchanged,
+                        onClick: () => { void handleSave() },
+                      }, t('save')),
+                      h('button', {
+                        type: 'button',
+                        className: css.button,
+                        disabled: saving,
+                        onClick: () => { setEditing(false); setSaveError('') },
+                      }, t('cancel')),
+                    )
+                    : canEditText
+                      ? h('button', {
+                        type: 'button',
+                        className: css.button,
+                        onClick: () => { setDraft(state.value.text ?? ''); setSaveError(''); setEditing(true) },
+                      }, t('editFile'))
+                      : null,
                   h('a', {
                     className: css.button,
                     href: `api/file-manager.raw?path=${encodeURIComponent(preview.path)}`,
@@ -1703,11 +2453,23 @@ window.__ModuleLoader__.load({
                   h('button', { type: 'button', className: `${css.button} ${css.buttonIcon}`, onClick: onClose, 'aria-label': t('close') }, glyph('close')),
                 ),
               ),
+              saveError !== '' ? h('p', { className: css.editorNote, role: 'alert' }, saveError) : null,
+              state.status === 'ready' && state.value.kind === 'text' && state.value.truncated
+                ? h('p', { className: css.editorNote }, t('editTruncated'))
+                : null,
               h('div', { className: css.previewBody },
                 state.status === 'loading' ? h('p', { className: css.status, role: 'status' }, t('loading')) : null,
                 state.status === 'error' ? h('p', { className: `${css.status} ${css.noticeError}`, role: 'alert' }, `${t('previewFailed')} ${state.error}`) : null,
                 state.status === 'ready' && state.value.kind === 'text'
-                  ? h('pre', { className: css.previewText }, `${state.value.text ?? ''}${state.value.truncated ? `\n\n… ${t('previewTruncated')}` : ''}`)
+                  ? (editing
+                    ? h('textarea', {
+                      className: css.editorArea,
+                      value: draft,
+                      spellCheck: false,
+                      'aria-label': preview.name,
+                      onChange: (event) => { setDraft(event.target.value) },
+                    })
+                    : h('pre', { className: css.previewText }, `${state.value.text ?? ''}${state.value.truncated ? `\n\n… ${t('previewTruncated')}` : ''}`))
                   : null,
                 state.status === 'ready' && state.value.kind === 'image'
                   ? h('img', { className: css.previewImage, src: state.url, alt: preview.name })

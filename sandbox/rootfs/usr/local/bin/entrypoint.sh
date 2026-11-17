@@ -276,14 +276,38 @@ if [ -n "${DSH_AUTO_INSTALL_PLUGINS:-}" ] && [ "${SANDBOX_TEMPLATE}" != "minimal
   marker_file="/home/workspace/.dsh/.auto_installed_plugins"
   touch "${marker_file}"
   chown "${WORKSPACE_USER}:${WORKSPACE_USER}" "${marker_file}"
+
+  # Legacy direct-tarball lockfiles without an integrity field break pnpm 10+ under nodeLinker=hoisted.
+  web_lock="/home/workspace/.dsh/profiles/web/pnpm-lock.yaml"
+  if [ -f "${web_lock}" ] && grep -qE 'resolution: \{tarball:' "${web_lock}" 2>/dev/null; then
+    log "cleaning legacy tarball-only pnpm lockfile without integrity hashes"
+    rm -f "${web_lock}" /home/workspace/.dsh/profiles/web/node_modules/.pnpm/lock.yaml
+  fi
+
+  npm_registry="${DSH_PLUGIN_NPM_REGISTRY:-}"
+  if [ -z "${npm_registry}" ] && [[ "${DSH_PLUGIN_INDEX_URL:-}" == */index.json ]]; then
+    npm_registry="${DSH_PLUGIN_INDEX_URL%/index.json}/npm"
+  fi
+
   IFS=',' read -r -a plugin_specs <<<"${DSH_AUTO_INSTALL_PLUGINS}"
   for spec in "${plugin_specs[@]}"; do
     spec=$(printf '%s' "${spec}" | awk '{gsub(/^[ \t]+|[ \t]+$/, ""); print}')
     [ -n "${spec}" ] || continue
     if ! grep -Fxq "${spec}" "${marker_file}" 2>/dev/null; then
       log "auto-installing DSH plugin into web profile: ${spec}"
-      if runuser -u "${WORKSPACE_USER}" -- env HOME=/home/workspace DSH_HOME=/home/workspace/.dsh \
-        dsh plugin --profile web add "${spec}"; then
+      install_ok=0
+      if [ -n "${npm_registry}" ] && [[ "${spec}" != http://* && "${spec}" != https://* && "${spec}" != /* && "${spec}" != file:* ]]; then
+        if runuser -u "${WORKSPACE_USER}" -- env HOME=/home/workspace DSH_HOME=/home/workspace/.dsh \
+          dsh plugin --profile web add "--registry=${npm_registry}" "${spec}"; then
+          install_ok=1
+        fi
+      else
+        if runuser -u "${WORKSPACE_USER}" -- env HOME=/home/workspace DSH_HOME=/home/workspace/.dsh \
+          dsh plugin --profile web add "${spec}"; then
+          install_ok=1
+        fi
+      fi
+      if [ "${install_ok}" -eq 1 ]; then
         printf '%s\n' "${spec}" >>"${marker_file}"
       else
         log "WARN: failed to auto-install plugin ${spec}; skipping"

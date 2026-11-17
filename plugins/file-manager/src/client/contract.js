@@ -48,6 +48,7 @@ export const SPECS = {
         type: z.enum(['file', 'directory', 'other']),
         size: z.number().int().nonnegative(),
         modified: z.number().nonnegative(),
+        mode: z.number().int().nonnegative().optional(),
       }).readonly()).readonly(),
       truncated: z.boolean(),
       unaddressable: z.number().int().nonnegative(),
@@ -99,6 +100,68 @@ export const SPECS = {
     description: 'The directory the page opens at when it has no other preference.',
     parameters: [],
     result: z => z.string(),
+  },
+  chmod: {
+    description: 'Change POSIX permission bits on one file or directory.',
+    parameters: [
+      { name: 'path', description: 'Absolute path to modify.', schema: z => z.string() },
+      { name: 'mode', description: 'POSIX permission bits (0..4095 integer).', schema: z => z.number().int().min(0).max(0o7777) },
+    ],
+    result: z => z.object({
+      path: z.string(),
+      mode: z.number().int().nonnegative(),
+    }).readonly(),
+  },
+  writeText: {
+    description: 'Overwrite an existing text file with UTF-8 content.',
+    parameters: [
+      { name: 'path', description: 'Absolute file path.', schema: z => z.string() },
+      { name: 'content', description: 'Full UTF-8 text content.', schema: z => z.string() },
+    ],
+    result: z => z.object({
+      path: z.string(),
+      size: z.number().int().nonnegative(),
+      modified: z.number().nonnegative(),
+    }).readonly(),
+  },
+  moveEntries: {
+    description: 'Move files or directories into a destination directory.',
+    parameters: [
+      { name: 'paths', description: 'Absolute source paths to move.', schema: z => z.array(z.string()) },
+      { name: 'destinationDir', description: 'Absolute destination directory path.', schema: z => z.string() },
+    ],
+    result: z => z.array(z.object({
+      from: z.string(),
+      path: z.string(),
+      ok: z.boolean(),
+      error: z.string().optional(),
+    }).readonly()).readonly(),
+  },
+  search: {
+    description: 'Search recursively inside a directory by entry name or file text content.',
+    parameters: [
+      { name: 'directory', description: 'Absolute directory path to search.', schema: z => z.string() },
+      { name: 'query', description: 'Search substring.', schema: z => z.string() },
+      { name: 'mode', description: 'Search by entry name or file text content.', schema: z => z.enum(['name', 'content']) },
+      { name: 'showHidden', description: 'Include dotfiles in search results.', schema: z => z.boolean() },
+    ],
+    result: z => z.object({
+      directory: z.string(),
+      query: z.string(),
+      mode: z.enum(['name', 'content']),
+      truncated: z.boolean(),
+      entries: z.array(z.object({
+        name: z.string(),
+        path: z.string(),
+        relativePath: z.string(),
+        type: z.enum(['file', 'directory', 'other']),
+        size: z.number().int().nonnegative(),
+        modified: z.number().nonnegative(),
+        mode: z.number().int().nonnegative().optional(),
+        matchLine: z.number().int().positive().optional(),
+        matchText: z.string().optional(),
+      }).readonly()).readonly(),
+    }).readonly(),
   },
 }
 

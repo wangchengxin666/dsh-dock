@@ -19,8 +19,8 @@
  */
 
 import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, readdir, realpath, rename, rm, stat } from 'node:fs/promises'
-import { basename, dirname, extname, join, resolve, sep } from 'node:path'
+import { chmod, cp, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { Readable } from 'node:stream'
 import { collectEntries, zipStream } from './src/zip.js'
@@ -30,12 +30,18 @@ import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 const DEFAULT_MAX_ENTRIES = 5000
 /** Default cap on one text file returned for the inline preview. */
 const DEFAULT_MAX_PREVIEW_BYTES = 1024 * 1024
+/** Default cap on one inline text write via the editor. */
+const DEFAULT_MAX_EDIT_BYTES = 2 * 1024 * 1024
 /** Default cap on one image or PDF returned for the inline preview. */
 const DEFAULT_MAX_BINARY_PREVIEW_BYTES = 8 * 1024 * 1024
 /** Default cap on one upload. */
 const DEFAULT_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 /** Default cap on the number of files one archive may contain. */
 const DEFAULT_MAX_ARCHIVE_ENTRIES = 20000
+/** Search bounds to keep recursive traversal snappy and bounded. */
+const MAX_SEARCH_RESULTS = 200
+const MAX_SEARCH_VISITED = 10000
+const MAX_CONTENT_SEARCH_BYTES = 512 * 1024
 /** The multipart envelope's own overhead allowance. */
 const MULTIPART_OVERHEAD_BYTES = 64 * 1024
 
@@ -174,12 +180,31 @@ async function statInfo(path) {
   try {
     const info = await stat(path)
     const modified = info.mtimeMs
-    if (info.isDirectory()) return { type: 'directory', size: 0, modified }
-    if (info.isFile()) return { type: 'file', size: info.size, modified }
-    return { type: 'other', size: 0, modified }
+    const mode = info.mode & 0o7777
+    if (info.isDirectory()) return { type: 'directory', size: 0, modified, mode }
+    if (info.isFile()) return { type: 'file', size: info.size, modified, mode }
+    return { type: 'other', size: 0, modified, mode }
   } catch {
     return undefined
   }
+}
+
+/**
+ * Parse a POSIX permission mode from an integer (`0..0o7777`) or octal string (`"755"`, `"0644"`).
+ * @param raw - numeric or octal mode input.
+ * @returns integer mode in `0..0o7777`, or `undefined` when invalid.
+ */
+function parseModeValue(raw) {
+  if (typeof raw === 'number') {
+    return Number.isInteger(raw) && raw >= 0 && raw <= 0o7777 ? raw : undefined
+  }
+  if (typeof raw === 'string') {
+    const cleaned = raw.trim()
+    if (!/^0?[0-7]{3,4}$/.test(cleaned)) return undefined
+    const parsed = Number.parseInt(cleaned, 8)
+    return parsed >= 0 && parsed <= 0o7777 ? parsed : undefined
+  }
+  return undefined
 }
 
 /**
@@ -433,7 +458,7 @@ async function writeMultipart(body, boundary, directory, maxBytes, overwrite) {
 const REMOTE_METHOD_DESCRIPTOR = '@deepseek-ai/dsh-typert-protocol/remote-methods'
 
 /** Methods exported on the `fileManager` Remote namespace. */
-const EXPORTED_METHODS = ['list', 'createDirectory', 'rename', 'deleteEntries', 'preview', 'startPath']
+const EXPORTED_METHODS = ['list', 'createDirectory', 'rename', 'deleteEntries', 'preview', 'startPath', 'chmod', 'writeText', 'moveEntries', 'search']
 
 /**
  * Record the same prototype marker `@Remote` leaves behind on a compiled
@@ -516,6 +541,7 @@ export class FileManager extends TypertRemoteService {
           type: childInfo?.type ?? 'other',
           size: childInfo?.size ?? 0,
           modified: childInfo?.modified ?? 0,
+          mode: childInfo?.mode ?? 0,
         })
       }
       entries.sort((a, b) => {
@@ -584,6 +610,252 @@ export class FileManager extends TypertRemoteService {
       throw new FileManagerError('file-manager/io', `cannot rename "${source}": ${messageOf(cause)}`)
     }
     return { path: destination }
+  }
+
+  /**
+   * Change POSIX permission bits on one file or directory.
+   * @param path - absolute path to update.
+   * @param mode - integer mode (`0..0o7777`) or octal string (`"755"`, `"0644"`).
+   * @returns the updated path and resolved permission mode.
+   */
+  async chmod(path, mode) {
+    const target = await confine(this.config, path)
+    if (await statInfo(target) === undefined) {
+      throw new FileManagerError('file-manager/not-found', `"${target}" does not exist`)
+    }
+    const numericMode = parseModeValue(mode)
+    if (numericMode === undefined) {
+      throw new FileManagerError('file-manager/invalid-name', `Invalid permission mode "${mode}"`)
+    }
+    try {
+      await chmod(target, numericMode)
+    } catch (cause) {
+      const code = errorCodeOf(cause)
+      if (code === 'EACCES' || code === 'EPERM') {
+        throw new FileManagerError('file-manager/not-allowed', `cannot chmod "${target}": ${messageOf(cause)}`)
+      }
+      throw new FileManagerError('file-manager/io', `cannot chmod "${target}": ${messageOf(cause)}`)
+    }
+    const updated = await statInfo(target)
+    return { path: target, mode: updated?.mode ?? (numericMode & 0o7777) }
+  }
+
+  /**
+   * Overwrite an existing text file with UTF-8 content.
+   * @param path - absolute path to the existing regular file.
+   * @param content - UTF-8 text content to write.
+   * @returns updated path, byte size, and modification time.
+   */
+  async writeText(path, content) {
+    const target = await confine(this.config, path)
+    if (typeof content !== 'string') {
+      throw new FileManagerError('file-manager/invalid-name', 'Content must be text')
+    }
+    const byteLength = Buffer.byteLength(content, 'utf8')
+    if (byteLength > DEFAULT_MAX_EDIT_BYTES) {
+      throw new FileManagerError('file-manager/too-large', `Text exceeds the ${DEFAULT_MAX_EDIT_BYTES} byte edit limit`)
+    }
+    const info = await statInfo(target)
+    if (info === undefined) throw new FileManagerError('file-manager/not-found', `"${target}" does not exist`)
+    if (info.type !== 'file') {
+      throw new FileManagerError('file-manager/not-file', `"${target}" is not a regular file`)
+    }
+    try {
+      await writeFile(target, content, 'utf8')
+    } catch (cause) {
+      const code = errorCodeOf(cause)
+      if (code === 'EACCES' || code === 'EPERM') {
+        throw new FileManagerError('file-manager/not-allowed', `cannot write "${target}": ${messageOf(cause)}`)
+      }
+      throw new FileManagerError('file-manager/io', `cannot write "${target}": ${messageOf(cause)}`)
+    }
+    const updated = await statInfo(target)
+    return {
+      path: target,
+      size: updated?.size ?? byteLength,
+      modified: updated?.modified ?? Date.now(),
+    }
+  }
+
+  /**
+   * Move files or directories into a destination directory.
+   * @param paths - absolute source paths to move.
+   * @param destinationDir - target directory path.
+   * @returns per-entry move results.
+   */
+  async moveEntries(paths, destinationDir) {
+    if (!Array.isArray(paths) || paths.length === 0) {
+      throw new FileManagerError('file-manager/invalid-name', 'Nothing to move')
+    }
+    const dest = await confine(this.config, destinationDir)
+    const destInfo = await statInfo(dest)
+    if (destInfo === undefined) throw new FileManagerError('file-manager/not-found', `"${dest}" does not exist`)
+    if (destInfo.type !== 'directory') {
+      throw new FileManagerError('file-manager/not-directory', `"${dest}" is not a directory`)
+    }
+
+    const done = []
+    for (const raw of paths) {
+      try {
+        const source = await confine(this.config, raw)
+        if (isBrowsableRoot(this.config, source)) {
+          throw new FileManagerError('file-manager/not-allowed', `"${source}" is a browsable root and cannot be moved`)
+        }
+        if (await statInfo(source) === undefined) {
+          throw new FileManagerError('file-manager/not-found', `"${source}" does not exist`)
+        }
+        if (dest === source || dest.startsWith(`${source}${sep}`)) {
+          throw new FileManagerError('file-manager/invalid-name', `Cannot move "${source}" into itself`)
+        }
+        const target = join(dest, basename(source))
+        if (target === source) {
+          done.push({ from: source, path: target, ok: true })
+          continue
+        }
+        if (await statInfo(target) !== undefined) {
+          throw new FileManagerError('file-manager/already-exists', `"${target}" already exists`)
+        }
+        try {
+          await rename(source, target)
+        } catch (cause) {
+          if (errorCodeOf(cause) === 'EXDEV') {
+            await cp(source, target, { recursive: true })
+            await rm(source, { recursive: true, force: true })
+          } else {
+            throw cause
+          }
+        }
+        done.push({ from: source, path: target, ok: true })
+      } catch (cause) {
+        done.push({ from: String(raw), path: '', ok: false, error: messageOf(cause) })
+      }
+    }
+    return done
+  }
+
+  /**
+   * Search recursively inside one directory by entry name or file text content.
+   * @param directory - absolute root directory for the search.
+   * @param query - substring to match (case-insensitive).
+   * @param mode - `'name'` or `'content'`.
+   * @param showHidden - include dotfiles when true.
+   * @returns matching entries and truncation status.
+   */
+  async search(directory, query, mode = 'name', showHidden = false) {
+    const targetDir = await confine(this.config, directory)
+    const dirInfo = await statInfo(targetDir)
+    if (dirInfo === undefined) throw new FileManagerError('file-manager/not-found', `"${targetDir}" does not exist`)
+    if (dirInfo.type !== 'directory') {
+      throw new FileManagerError('file-manager/not-directory', `"${targetDir}" is not a directory`)
+    }
+    const needle = typeof query === 'string' ? query.trim() : ''
+    if (needle === '') {
+      throw new FileManagerError('file-manager/invalid-name', 'Search query is required')
+    }
+
+    const searchMode = mode === 'content' ? 'content' : 'name'
+    const includeHidden = this.config.showHidden || showHidden === true
+    const needleLower = needle.toLowerCase()
+    const queue = [targetDir]
+    const results = []
+    let visited = 0
+    const SKIP_BINARY_EXT = new Set(['pdf', 'zip', 'tar', 'gz', 'tgz', 'wasm', 'exe', 'bin', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'avif', 'bmp'])
+
+    while (queue.length > 0 && results.length < MAX_SEARCH_RESULTS && visited < MAX_SEARCH_VISITED) {
+      const current = queue.shift()
+      let children
+      try {
+        children = await readdir(current, { withFileTypes: true, encoding: 'buffer' })
+      } catch {
+        continue
+      }
+      for (const child of children) {
+        if (results.length >= MAX_SEARCH_RESULTS || visited >= MAX_SEARCH_VISITED) break
+        visited += 1
+        const name = child.name.toString('utf8')
+        if (!Buffer.from(name, 'utf8').equals(child.name)) continue
+        if (!includeHidden && name.startsWith('.')) continue
+        if (child.isSymbolicLink()) continue
+
+        const childPath = join(current, name)
+        const childInfo = await statInfo(childPath)
+        if (childInfo === undefined) continue
+
+        const relPath = relative(targetDir, childPath).split(sep).join('/')
+        if (childInfo.type === 'directory') {
+          if (name !== '.git' && name !== 'node_modules') {
+            queue.push(childPath)
+          }
+          if (searchMode === 'name' && relPath.toLowerCase().includes(needleLower)) {
+            results.push({
+              name,
+              path: childPath,
+              relativePath: relPath,
+              type: 'directory',
+              size: 0,
+              modified: childInfo.modified,
+              mode: childInfo.mode,
+            })
+          }
+          continue
+        }
+
+        if (searchMode === 'name') {
+          if (relPath.toLowerCase().includes(needleLower)) {
+            results.push({
+              name,
+              path: childPath,
+              relativePath: relPath,
+              type: childInfo.type,
+              size: childInfo.size,
+              modified: childInfo.modified,
+              mode: childInfo.mode,
+            })
+          }
+          continue
+        }
+
+        if (childInfo.type !== 'file' || childInfo.size === 0 || childInfo.size > MAX_CONTENT_SEARCH_BYTES) continue
+        const ext = extname(name).slice(1).toLowerCase()
+        if (SKIP_BINARY_EXT.has(ext)) continue
+
+        let rawBytes
+        try {
+          rawBytes = await readFile(childPath)
+        } catch {
+          continue
+        }
+        if (rawBytes.subarray(0, 2048).includes(0)) continue
+        const text = new TextDecoder('utf-8', { fatal: false }).decode(rawBytes)
+        const idx = text.toLowerCase().indexOf(needleLower)
+        if (idx < 0) continue
+
+        const lineNumber = text.slice(0, idx).split('\n').length
+        const lineStart = text.lastIndexOf('\n', idx) + 1
+        const rawEnd = text.indexOf('\n', idx)
+        const lineEnd = rawEnd < 0 ? text.length : rawEnd
+        const snippet = text.slice(lineStart, lineEnd).trim().slice(0, 160)
+        results.push({
+          name,
+          path: childPath,
+          relativePath: relPath,
+          type: 'file',
+          size: childInfo.size,
+          modified: childInfo.modified,
+          mode: childInfo.mode,
+          matchLine: lineNumber,
+          matchText: snippet,
+        })
+      }
+    }
+
+    return {
+      directory: targetDir,
+      query: needle,
+      mode: searchMode,
+      truncated: queue.length > 0 || visited >= MAX_SEARCH_VISITED || results.length >= MAX_SEARCH_RESULTS,
+      entries: results,
+    }
   }
 
   /**

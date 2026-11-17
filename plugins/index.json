@@ -46,6 +46,80 @@
           }
         }
       ]
+    },
+    {
+      "name": "@dsh-dock/workspace-user",
+      "title": {
+        "en": "Workspace User Identity",
+        "zh": "当前用户身份栏"
+      },
+      "description": {
+        "en": "Displays the signed-in user's name and email at the bottom-left of the sidebar, highlights admin inspection access, and opens a quick navigation menu (/my, /admin, Sign Out).",
+        "zh": "在侧边栏左下角显示当前登录用户的名称与邮箱，标记管理员代管访问状态，并提供返回 /my、管理后台与退出登录快捷菜单。"
+      },
+      "icon": "icons/workspace-user.svg",
+      "author": "DSH Dock",
+      "homepage": "https://github.com/wangchengxin666/dsh-dock/tree/main/plugins/workspace-user",
+      "repository": {
+        "url": "https://github.com/wangchengxin666/dsh-dock"
+      },
+      "keywords": [
+        "user",
+        "identity",
+        "admin",
+        "sidebar",
+        "menu"
+      ],
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1794564442,
+          "source": {
+            "type": "npm",
+            "registry": "http://localhost:9000/plugins/npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.0 <0.3.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@dsh-dock/custom-theme",
+      "title": {
+        "en": "Custom Theme & Tokens",
+        "zh": "自定义主题与配色"
+      },
+      "description": {
+        "en": "Ships a default Aurora Blue theme and lets users customize presets, light/dark --dsw-* CSS tokens, custom CSS variables, and sidebar branding with persistent zero-flash injection.",
+        "zh": "自带开箱即用的“极光蔚蓝”默认主题，并支持切换预设、编辑明暗双模式 CSS Token、添加自定义 CSS 变量及定制侧边栏品牌 Logo 与名称，持久化无闪烁生效。"
+      },
+      "icon": "icons/custom-theme.svg",
+      "author": "DSH Dock",
+      "homepage": "https://github.com/wangchengxin666/dsh-dock/tree/main/plugins/custom-theme",
+      "repository": {
+        "url": "https://github.com/wangchengxin666/dsh-dock"
+      },
+      "keywords": [
+        "theme",
+        "tokens",
+        "appearance",
+        "branding",
+        "colors"
+      ],
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1794564442,
+          "source": {
+            "type": "npm",
+            "registry": "http://localhost:9000/plugins/npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.0 <0.3.0"
+          }
+        }
+      ]
     }
   ]
 }

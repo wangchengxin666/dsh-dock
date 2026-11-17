@@ -7,6 +7,8 @@ inserts the plugin rows into a profile.
 | Plugin | What it adds |
 |---|---|
 | [file-manager](file-manager/README.md) | A server file manager page in the left sidebar: breadcrumbs and a path bar, upload, download (including ZIP of a directory or selection), inline preview, new folder, rename, delete. |
+| [workspace-user](workspace-user/README.md) | Bottom-left sidebar launcher showing the current signed-in user's name and email, admin inspection status badge, and quick popup actions (`Settings`, `/my`, `/admin`, `/auth/logout`). |
+| [custom-theme](custom-theme/README.md) | Out-of-the-box Aurora Blue default theme plus interactive Settings editor for presets, light/dark `--dsw-*` tokens, custom CSS variables, sidebar branding, JSON import/export, and Host persistence with zero-flash first paint. |
 
 ## Self-Hosted Discover Index & Registry (via `dsh-manager`)
 
@@ -21,13 +23,13 @@ inserts the plugin rows into a profile.
 
 ### Automatic installation into sandboxes
 
-In `manager/.env`, set:
+By default (and configurable via `SANDBOX_AUTO_INSTALL_PLUGINS` in `manager/.env`), new sandboxes automatically install:
 
 ```dotenv
-SANDBOX_AUTO_INSTALL_PLUGINS=file-manager
+SANDBOX_AUTO_INSTALL_PLUGINS=file-manager,workspace-user,custom-theme
 ```
 
-Every sandbox created by the manager will automatically install `file-manager` from the manager's `/plugins/packages/file-manager.tgz` endpoint during first startup.
+Every sandbox created by the manager will automatically install these plugins from the manager's `/plugins/packages/<slug>.tgz` endpoints during first startup.
 
 ### Manual installation inside a sandbox
 

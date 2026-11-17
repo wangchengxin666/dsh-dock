@@ -1,0 +1,50 @@
+window.__ModuleLoader__.load({
+  id: '@dsh-dock/workspace-user',
+  factory(require) {
+    const React = require('react')
+    const ReactDOM = require('react-dom')
+
+    // __CLIENT_MODULES__
+
+    function readActiveLocale(localeSvc) {
+      if (!localeSvc) return undefined
+      if (typeof localeSvc.getSnapshot === 'function') return localeSvc.getSnapshot()?.active
+      if (typeof localeSvc.getLocale === 'function') return localeSvc.getLocale()?.active
+      return undefined
+    }
+
+    function apply(ctx) {
+      ctx.effect(() => installStyles(), 'workspace-user: styles')
+
+      const WorkspaceUserLauncher = createWorkspaceUserLauncher({
+        React,
+        ReactDOM,
+        getLocale: () => readActiveLocale(ctx.locale),
+        subscribeLocale: (listener) => {
+          if (ctx.locale && typeof ctx.locale.subscribe === 'function') {
+            return ctx.locale.subscribe((snapshot) => listener(snapshot?.active))
+          }
+          if (typeof ctx.on === 'function') {
+            return ctx.on('locale/change', (snapshot) => listener(snapshot?.active))
+          }
+          return () => {}
+        },
+      })
+
+      ctx.slots.inject('settings.launcher', () =>
+        ctx.slots.register(
+          {
+            name: 'settings.launcher',
+            priority: -10,
+          },
+          WorkspaceUserLauncher,
+        ),
+      )
+    }
+
+    return {
+      inject: ['slots', 'locale'],
+      apply,
+    }
+  },
+})

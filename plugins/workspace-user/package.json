@@ -1,0 +1,45 @@
+{
+  "name": "@dsh-dock/workspace-user",
+  "version": "0.1.0",
+  "description": "Display the signed-in workspace user, admin inspection indicator, and portal quick-action menu in the DeepSeek Harness sidebar.",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node .test/run.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-general"
+      ],
+      "external": [
+        "react",
+        "react-dom"
+      ]
+    }
+  },
+  "license": "MIT",
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "workspace-user",
+    "identity",
+    "sidebar"
+  ]
+}

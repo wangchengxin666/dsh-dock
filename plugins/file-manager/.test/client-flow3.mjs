@@ -11,7 +11,9 @@ globalThis.window = {
 const { createPageComponent } = await import('../src/client/page.js')
 
 // One slot list per component; every hook takes the next index in call order.
-const slots = new Map()
+const pageSlots = new Map()
+const childSlots = new WeakMap()
+let activeSlots = pageSlots
 let index = 0
 const pending = []
 const schedule = (fn) => { pending.push(fn) }
@@ -29,8 +31,8 @@ const React = {
   Fragment: 'Fragment',
   useState(init) {
     const i = index++
-    if (!slots.has(i)) slots.set(i, { value: typeof init === 'function' ? init() : init })
-    const slot = slots.get(i)
+    if (!activeSlots.has(i)) activeSlots.set(i, { value: typeof init === 'function' ? init() : init })
+    const slot = activeSlots.get(i)
     return [slot.value, (next) => {
       const value = typeof next === 'function' ? next(slot.value) : next
       if (Object.is(value, slot.value)) return
@@ -40,27 +42,39 @@ const React = {
   },
   useEffect(fn, deps) {
     const i = index++
-    if (!slots.has(i)) slots.set(i, { deps: undefined, cleanup: undefined })
-    const slot = slots.get(i)
+    if (!activeSlots.has(i)) activeSlots.set(i, { deps: undefined, cleanup: undefined })
+    const slot = activeSlots.get(i)
     const changed = slot.deps === undefined || deps === undefined || deps.some((v, k) => !Object.is(v, slot.deps[k]))
     if (!changed) return
     slot.deps = deps
     schedule(() => { slot.cleanup?.(); const cleanup = fn(); if (typeof cleanup === 'function') slot.cleanup = cleanup })
   },
-  useCallback(fn) {
+  useCallback(fn, deps) {
     const i = index++
-    if (!slots.has(i)) slots.set(i, { value: fn })
-    return slots.get(i).value
+    if (!activeSlots.has(i)) activeSlots.set(i, { value: fn, deps })
+    const slot = activeSlots.get(i)
+    const changed = deps === undefined || slot.deps === undefined || deps.some((v, k) => !Object.is(v, slot.deps[k]))
+    if (changed) {
+      slot.value = fn
+      slot.deps = deps
+    }
+    return slot.value
   },
-  useMemo(fn) {
+  useMemo(fn, deps) {
     const i = index++
-    if (!slots.has(i)) slots.set(i, { value: fn() })
-    return slots.get(i).value
+    if (!activeSlots.has(i)) activeSlots.set(i, { value: fn(), deps })
+    const slot = activeSlots.get(i)
+    const changed = deps === undefined || slot.deps === undefined || deps.some((v, k) => !Object.is(v, slot.deps[k]))
+    if (changed) {
+      slot.value = fn()
+      slot.deps = deps
+    }
+    return slot.value
   },
   useRef(init) {
     const i = index++
-    if (!slots.has(i)) slots.set(i, { value: { current: init } })
-    return slots.get(i).value
+    if (!activeSlots.has(i)) activeSlots.set(i, { value: { current: init } })
+    return activeSlots.get(i).value
   },
   useId: () => 'fm-id',
 }
@@ -73,13 +87,26 @@ const api = {
     return { ok: true, value: {
       path, parent: path === '/' ? null : '/', roots: ['/'],
       entries: path === '/'
-        ? [{ name: 'etc', path: '/etc', type: 'directory', size: 0 }, { name: 'notes.txt', path: '/notes.txt', type: 'file', size: 42 }]
-        : [{ name: 'hosts', path: '/etc/hosts', type: 'file', size: 9 }],
+        ? [{ name: 'etc', path: '/etc', type: 'directory', size: 0, mode: 0o755 }, { name: 'notes.txt', path: '/notes.txt', type: 'file', size: 42, mode: 0o644 }]
+        : [{ name: 'hosts', path: '/etc/hosts', type: 'file', size: 9, mode: 0o644 }],
       truncated: false, hiddenForced: false, unaddressable: 0,
     } }
   },
   preview: async (path) => { calls.push(['preview', path]); return { ok: true, value: { path, kind: 'text', mediaType: 'text/plain', text: 'preview body', size: 12, truncated: false } } },
   createDirectory: async (parent, name) => { calls.push(['createDirectory', parent, name]); return { ok: true, value: { path: `${parent}/${name}` } } },
+  chmod: async (path, mode) => { calls.push(['chmod', path, mode]); return { ok: true, value: { path, mode } } },
+  writeText: async (path, content) => { calls.push(['writeText', path, content]); return { ok: true, value: { path, size: content.length, modified: 100 } } },
+  moveEntries: async (paths, destinationDir) => { calls.push(['moveEntries', paths, destinationDir]); return { ok: true, value: paths.map(p => ({ from: p, path: `${destinationDir}/hosts`, ok: true })) } },
+  search: async (directory, query, mode, showHidden) => {
+    calls.push(['search', directory, query, mode, showHidden === true])
+    return {
+      ok: true,
+      value: {
+        directory, query, mode, truncated: false,
+        entries: [{ name: 'hosts', path: '/etc/hosts', relativePath: 'hosts', type: 'file', size: 9, modified: 10, mode: 0o644, matchLine: 1, matchText: 'preview body' }],
+      },
+    }
+  },
   remove: async (paths) => { calls.push(['remove', paths]); return { ok: true, value: [] } },
 }
 // Mirrors the shell: dictionary lookup with {name} substitution.
@@ -92,8 +119,8 @@ const t = (key, params) => {
 const Page = createPageComponent({ React })
 let tree
 const render = () => {
+  activeSlots = pageSlots
   index = 0
-  saveIndex = 0
   tree = Page({ t, fileManager: api })
 }
 // Render function components while walking, the way React does, so a dialog
@@ -101,9 +128,16 @@ const render = () => {
 const findAll = (node, pred, found = []) => {
   if (node === null || node === undefined || typeof node !== 'object') return found
   if (typeof node.type === 'function') {
-    index = saveIndex
-    const rendered = node.type(node.props)
-    index = saveIndex
+    const prevSlots = activeSlots
+    const prevIndex = index
+    let map = childSlots.get(node.type)
+    if (map === undefined) { map = new Map(); childSlots.set(node.type, map) }
+    activeSlots = map
+    index = 0
+    const componentProps = node.children.length === 0 ? node.props : { ...node.props, children: node.children }
+    const rendered = node.type(componentProps)
+    activeSlots = prevSlots
+    index = prevIndex
     findAll(rendered, pred, found)
     return found
   }
@@ -111,7 +145,6 @@ const findAll = (node, pred, found = []) => {
   for (const child of node.children ?? []) findAll(child, pred, found)
   return found
 }
-let saveIndex = 0
 const buttons = () => findAll(tree, n => n.type === 'button')
 const rowButton = (name) => buttons().find(b => b.children.some(c => c?.type === 'span' && (c.children ?? [])[0] === name))
 const dialogs = () => findAll(tree, n => n.props?.role === 'dialog' && typeof n.type === 'string')
@@ -123,7 +156,7 @@ const check = (label, ok) => { if (!ok) failures += 1; console.log(ok ? 'ok  ' :
 const bare = Page({ t })
 check('a missing service renders a notice instead of crashing',
   bare?.props?.className === 'fmPage' && JSON.stringify(bare).includes('not available on this Host'))
-slots.clear()
+pageSlots.clear()
 
 render()
 await flush()
@@ -139,9 +172,9 @@ check('no crumb shows a bare slash', !texts.includes('/'))
 // Hiding dotfiles is the default; the toolbar toggle asks the Host for them.
 const lastList = () => calls.filter(call => call[0] === 'list').at(-1)
 check('the first listing hides dot entries', lastList()[2] === false)
-const hiddenToggle = buttons().find(button => button.props?.['aria-label'] === 'Show or hide dotfiles')
-check('the toolbar offers a hidden-files toggle', hiddenToggle !== undefined && hiddenToggle.props['aria-pressed'] === false)
-hiddenToggle.props.onClick()
+const hiddenToggle = findAll(tree, n => n.type === 'input' && n.props?.type === 'checkbox' && n.props?.['aria-label'] === 'Show or hide dotfiles')[0]
+check('the toolbar offers a hidden-files checkbox', hiddenToggle !== undefined && hiddenToggle.props.checked === false)
+hiddenToggle.props.onChange()
 await flush()
 check('toggling asks the Host for dot entries', lastList()[2] === true)
 check('the choice is remembered', storage.get('dsh.file-manager.showHidden') === '1')
@@ -170,6 +203,59 @@ check('new folder dialog opens with a visible title', dialogs().length === 1
   && newFolderDialog.props['aria-labelledby'] !== undefined)
 const form = findAll(tree, n => n.type === 'form')
 check('new folder form present', form.length >= 1)
+
+buttons().find(b => (b.children ?? []).includes('Cancel'))?.props.onClick()
+await flush()
+
+const permBadge = buttons().find(b => b.props?.['aria-label'] === 'Edit permissions for hosts')
+check('permissions badge shows symbolic and octal mode', permBadge !== undefined && String(permBadge.children[0]) === 'rw-r--r-- 644')
+permBadge.props.onClick()
+await flush()
+
+const chmodHeading = dialogs()[0] === undefined ? undefined : findAll(dialogs()[0], n => n.type === 'h2')[0]
+check('permissions dialog opens', dialogs().length === 1 && chmodHeading?.children?.[0] === 'Permissions for hosts')
+buttons().find(b => (b.children ?? []).includes('755 (rwxr-xr-x)'))?.props.onClick()
+await flush()
+findAll(dialogs()[0], n => n.type === 'form')[0]?.props.onSubmit({ preventDefault() {} })
+await flush()
+check('permissions dialog submits chmod mode', calls.some(c => c[0] === 'chmod' && c[1] === '/etc/hosts' && c[2] === 0o755))
+
+// Online text editing inside PreviewDialog calls writeText.
+rowButton('hosts').props.onClick()
+await flush()
+buttons().find(b => (b.children ?? []).includes('Edit'))?.props.onClick()
+await flush()
+const editorArea = findAll(tree, n => n.type === 'textarea')[0]
+check('preview enters edit mode with textarea', editorArea !== undefined && editorArea.props.value === 'preview body')
+editorArea.props.onChange({ target: { value: 'edited hosts body' } })
+await flush()
+buttons().find(b => (b.children ?? []).includes('Save'))?.props.onClick()
+await flush()
+check('saving editor submits writeText', calls.some(c => c[0] === 'writeText' && c[1] === '/etc/hosts' && c[2] === 'edited hosts body'))
+buttons().find(b => b.props?.['aria-label'] === 'Close')?.props.onClick()
+await flush()
+
+// Recursive search triggers api.search and shows result banner.
+const searchInput = findAll(tree, n => n.type === 'input' && n.props?.['aria-label'] === 'Filter this folder')[0]
+searchInput.props.onChange({ target: { value: 'preview' } })
+await flush()
+buttons().find(b => (b.children ?? []).includes('Search'))?.props.onClick()
+await flush()
+check('recursive search invokes host search', calls.some(c => c[0] === 'search' && c[1] === '/etc' && c[2] === 'preview'))
+check('search match line rendered', findAll(tree, n => n.type === 'span' && String(n.children?.[0] ?? '').includes('L1: preview body')).length > 0)
+buttons().find(b => (b.children ?? []).includes('Clear search'))?.props.onClick()
+searchInput.props.onChange({ target: { value: '' } })
+await flush()
+
+// Move modal triggers api.moveEntries.
+buttons().find(b => (b.children ?? []).includes('Move'))?.props.onClick()
+await flush()
+const moveInput = findAll(dialogs()[0], n => n.type === 'input')[0]
+moveInput.props.onChange({ target: { value: '/' } })
+await flush()
+findAll(dialogs()[0], n => n.type === 'form')[0]?.props.onSubmit({ preventDefault() {} })
+await flush()
+check('move dialog submits moveEntries', calls.some(c => c[0] === 'moveEntries' && c[1][0] === '/etc/hosts' && c[2] === '/'))
 
 check('escape/route cleanup leaves no failures', failures === 0)
 process.exitCode = failures === 0 ? 0 : 1

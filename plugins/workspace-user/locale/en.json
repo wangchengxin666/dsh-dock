@@ -1,0 +1,4 @@
+{
+  "name": "Workspace User Identity",
+  "description": "Display the signed-in user name, email, admin inspection status, and portal navigation menu at the bottom-left of the sidebar."
+}
