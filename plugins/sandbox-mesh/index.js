@@ -1,186 +1,89 @@
 import { createServer } from 'node:http'
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, join } from 'node:path'
 import {
   canStartNewTopic,
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MESH_PORT,
   extractFileReferences,
   extractMentions,
+  pairRoomId,
   parsePairInvite,
   sanitizeSlug,
 } from './src/shared/protocol.js'
 import {
   buildSignedHeaders,
-  constantTimeEqualString,
   createRateLimiter,
   createReplayGuard,
+  deriveEcdhSharedSecret,
+  generateEcdhKeyPair,
   generateRandomHex,
   sha256Hex,
-  verifySignedRequest,
 } from './src/host/crypto.js'
+import {
+  createFileShareGuard,
+  maxMeshBodyBytes,
+  safeFileName,
+  searchWorkspaceFiles,
+} from './src/host/files.js'
 import { createMeshStore, resolveStoragePath } from './src/host/store.js'
 import { installAgentBridge, syncSkillFile } from './src/host/agent-bridge.js'
 import { wireHarnessRuntime } from './src/host/harness-bridge.js'
+import {
+  createIncomingMeshHandler,
+  FILES_ENDPOINT,
+  GROUP_CREATE_ENDPOINT,
+  GROUP_INVITE_ENDPOINT,
+  GROUP_LEAVE_ENDPOINT,
+  GROUP_MODERATE_ENDPOINT,
+  GROUP_REMOVE_ENDPOINT,
+  MARK_READ_ENDPOINT,
+  NEW_TOPIC_ENDPOINT,
+  PAIR_CLAIM_ENDPOINT,
+  PAIR_CODE_ENDPOINT,
+  PEER_PING_ENDPOINT,
+  PEER_REMOVE_ENDPOINT,
+  PROFILE_ENDPOINT,
+  registerBrowserRoutes,
+  ROOM_REMOVE_ENDPOINT,
+  SEND_ENDPOINT,
+  SEND_FILE_ENDPOINT,
+  STATE_ENDPOINT,
+} from './src/host/routes.js'
 
 export const name = 'sandbox-mesh'
 
-export const STATE_ENDPOINT = '/api/sandbox-mesh.state'
-export const PROFILE_ENDPOINT = '/api/sandbox-mesh.profile'
-export const FILES_ENDPOINT = '/api/sandbox-mesh.files'
-export const PAIR_CODE_ENDPOINT = '/api/sandbox-mesh.pair-code'
-export const PAIR_CLAIM_ENDPOINT = '/api/sandbox-mesh.pair-claim'
-export const GROUP_CREATE_ENDPOINT = '/api/sandbox-mesh.group-create'
-export const GROUP_INVITE_ENDPOINT = '/api/sandbox-mesh.group-invite'
-export const GROUP_MODERATE_ENDPOINT = '/api/sandbox-mesh.group-moderate'
-export const NEW_TOPIC_ENDPOINT = '/api/sandbox-mesh.new-topic'
-export const SEND_ENDPOINT = '/api/sandbox-mesh.send'
-export const SEND_FILE_ENDPOINT = '/api/sandbox-mesh.send-file'
-export const MARK_READ_ENDPOINT = '/api/sandbox-mesh.mark-read'
-export const PEER_REMOVE_ENDPOINT = '/api/sandbox-mesh.peer-remove'
-
-function jsonResponse(payload, status = 200) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-    },
-  })
+export {
+  STATE_ENDPOINT,
+  PROFILE_ENDPOINT,
+  FILES_ENDPOINT,
+  PAIR_CODE_ENDPOINT,
+  PAIR_CLAIM_ENDPOINT,
+  GROUP_CREATE_ENDPOINT,
+  GROUP_INVITE_ENDPOINT,
+  GROUP_MODERATE_ENDPOINT,
+  GROUP_REMOVE_ENDPOINT,
+  GROUP_LEAVE_ENDPOINT,
+  NEW_TOPIC_ENDPOINT,
+  SEND_ENDPOINT,
+  SEND_FILE_ENDPOINT,
+  MARK_READ_ENDPOINT,
+  PEER_REMOVE_ENDPOINT,
+  PEER_PING_ENDPOINT,
+  ROOM_REMOVE_ENDPOINT,
+  searchWorkspaceFiles,
+  maxMeshBodyBytes,
 }
 
-async function parseJsonRequest(request) {
-  try {
-    return await request.json()
-  } catch {
-    return null
-  }
-}
-
-function safeFileName(rawName) {
-  const base = basename(String(rawName || 'file.bin').trim())
-  const cleaned = base.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, '_').trim()
-  if (!cleaned || cleaned === '.' || cleaned === '..') return 'shared-file.bin'
-  return cleaned.slice(0, 180)
-}
-
-const IGNORED_DIRS = new Set([
-  '.git',
-  'node_modules',
-  '.cache',
-  '.npm',
-  '.npm-global',
-  '.pnpm-store',
-  '.venv',
-  'venv',
-  '__pycache__',
-])
-
-export function searchWorkspaceFiles(rootDir, query = '', limit = 40) {
-  if (!rootDir || !existsSync(rootDir)) return []
-  const rawQuery = String(query || '').trim().replace(/^#/, '')
-  const isAbsQuery = rawQuery.startsWith('/')
-  const baseRoot = isAbsQuery ? '/' : rootDir
-  const needle = rawQuery.toLowerCase()
-
-  let startDir = baseRoot
-  let subNeedle = needle
-  const lastSlash = rawQuery.lastIndexOf('/')
-  if (lastSlash >= 0) {
-    const dirPart = rawQuery.slice(0, lastSlash + 1)
-    const candidateDir = isAbsQuery ? resolve(dirPart) : resolve(rootDir, dirPart)
-    if (existsSync(candidateDir)) {
-      try {
-        if (statSync(candidateDir).isDirectory()) {
-          startDir = candidateDir
-          subNeedle = rawQuery.slice(lastSlash + 1).toLowerCase()
-        }
-      } catch {}
-    }
-  }
-
-  const queue = [{ dir: startDir, depth: 0 }]
-  const results = []
-  let visited = 0
-  const maxDepth = isAbsQuery && startDir === '/' ? 2 : 5
-
-  while (queue.length > 0 && results.length < limit && visited < 2500) {
-    const { dir: current, depth } = queue.shift()
-    let entries
-    try {
-      entries = readdirSync(current, { withFileTypes: true })
-    } catch {
-      continue
-    }
-    entries.sort((a, b) => {
-      if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? 1 : -1
-      return a.name.localeCompare(b.name)
-    })
-
-    for (const entry of entries) {
-      if (results.length >= limit || visited >= 2500) break
-      visited += 1
-      const entryName = entry.name
-      if (entry.isDirectory() && IGNORED_DIRS.has(entryName)) continue
-
-      const fullPath = join(current, entryName)
-      const relPath = isAbsQuery
-        ? fullPath.split(sep).join('/')
-        : relative(rootDir, fullPath).split(sep).join('/')
-
-      const matchTarget = startDir !== baseRoot ? entryName.toLowerCase() : relPath.toLowerCase()
-      const matches = !subNeedle || matchTarget.includes(subNeedle) || entryName.toLowerCase().includes(subNeedle)
-
-      if (entry.isDirectory()) {
-        if (depth < maxDepth) {
-          queue.push({ dir: fullPath, depth: depth + 1 })
-        }
-        if (matches) {
-          results.push({
-            name: entryName,
-            relativePath: relPath.endsWith('/') ? relPath : `${relPath}/`,
-            path: fullPath,
-            type: 'directory',
-            size: 0,
-          })
-        }
-      } else if (entry.isFile()) {
-        if (matches) {
-          let size = 0
-          try {
-            size = statSync(fullPath).size
-          } catch {}
-          results.push({
-            name: entryName,
-            relativePath: relPath,
-            path: fullPath,
-            type: 'file',
-            size,
-          })
-        }
-      }
-    }
-  }
-
-  results.sort((a, b) => {
-    const aHidden = a.relativePath.startsWith('.') || a.relativePath.includes('/.')
-    const bHidden = b.relativePath.startsWith('.') || b.relativePath.includes('/.')
-    if (aHidden !== bHidden && !needle.startsWith('.')) return aHidden ? 1 : -1
-    if (a.type !== b.type) return a.type === 'file' ? -1 : 1
-    return a.relativePath.localeCompare(b.relativePath)
-  })
-
-  return results.slice(0, limit)
-}
-
-export function buildCandidateBaseUrls(endpointUrl, targetSlug = '', env = process.env) {
+export function buildCandidateBaseUrls(endpointUrl, targetSlug = '', env = process.env, preferredBaseUrl = '') {
   const candidates = []
   const add = (url) => {
     const clean = typeof url === 'string' ? url.trim().replace(/\/+$/, '') : ''
     if (clean && !candidates.includes(clean)) candidates.push(clean)
   }
 
+  add(preferredBaseUrl)
   add(endpointUrl)
 
   const slug = sanitizeSlug(targetSlug)
@@ -200,9 +103,9 @@ export function buildCandidateBaseUrls(endpointUrl, targetSlug = '', env = proce
   return candidates
 }
 
-function buildGroupRoomMeta(room) {
+function buildGroupRoomMeta(room, { syncRemovals = false } = {}) {
   if (!room || room.type !== 'group') return null
-  return {
+  const meta = {
     id: room.id,
     type: 'group',
     name: room.name,
@@ -213,12 +116,17 @@ function buildGroupRoomMeta(room) {
     createdAt: room.createdAt,
     members: room.members,
   }
+  if (syncRemovals) {
+    meta.syncRemovals = true
+  }
+  return meta
 }
 
 export function createMeshService({
   config = {},
   env = process.env,
   fetchImpl = globalThis.fetch,
+  logger = null,
 } = {}) {
   const storagePath = resolveStoragePath(config, env)
   const store = createMeshStore({ filePath: storagePath, config, env })
@@ -227,15 +135,67 @@ export function createMeshService({
     windowMs: 60 * 1000,
     maxAttempts: Number(config.pairRateLimit) > 0 ? Number(config.pairRateLimit) : 5,
   })
+  const wakeLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    maxAttempts: Number(config.wakeRateLimit) > 0 ? Number(config.wakeRateLimit) : 20,
+  })
   const localToken = String(config.localToken || generateRandomHex(24))
   const homeDir = String(config.homeDir || env.HOME || '').trim() || homedir()
   const inboxDir = String(config.inboxDir || join(homeDir, 'mesh-inbox'))
+  const maxFileBytes = Number(config.maxFileBytes) > 0 ? Number(config.maxFileBytes) : DEFAULT_MAX_FILE_BYTES
+  const requestTimeoutMs = Number(config.requestTimeoutMs) > 0 ? Number(config.requestTimeoutMs) : 15 * 1000
+  const fileTimeoutMs = Number(config.fileTimeoutMs) > 0 ? Number(config.fileTimeoutMs) : 120 * 1000
+  const agentWakeEnabled = config.agentWakeEnabled !== false
+  const agentTurnTimeoutMs = Number(config.agentTurnTimeoutMs) > 0 ? Number(config.agentTurnTimeoutMs) : 5 * 60 * 1000
+
+  const resolveShareableFile = createFileShareGuard({
+    homeDir,
+    shareRoots: config.shareRoots,
+    protectedFiles: [storagePath, String(config.localTokenPath || '')],
+  })
+
   const AGENT_STATUS_TTL_MS = 150 * 1000
   const activityMap = new Map()
   const peerStatusSeqMap = new Map()
+  const reachableBaseUrlMap = new Map()
   let localStatusSeq = 0
+  let activityVersion = 0
   let agentWakeHandler = typeof config.onAgentWake === 'function' ? config.onAgentWake : null
   let catalogChangeHandler = null
+  let hasRuntimeSkillProvider = false
+  let outboxFlushPromise = null
+
+  // Tracks active mesh-woken Agent turns so tools/CLI cannot lower `hop` below the turn's hop.
+  const activeAgentTurns = new Map()
+  let agentTurnSeq = 0
+
+  function beginAgentTurn({ roomId = '', sessionId = '', hop = 1 } = {}) {
+    const id = ++agentTurnSeq
+    activeAgentTurns.set(id, {
+      roomId: String(roomId || '').trim(),
+      sessionId: String(sessionId || '').trim(),
+      hop: Math.max(1, Math.trunc(Number(hop) || 1)),
+    })
+    return () => { activeAgentTurns.delete(id) }
+  }
+
+  function getActiveAgentHop(roomId = '', sessionId = '') {
+    const cleanRoom = String(roomId || '').trim()
+    const cleanSid = String(sessionId || '').trim()
+    let max = 0
+    for (const entry of activeAgentTurns.values()) {
+      if (cleanSid && entry.sessionId === cleanSid && entry.hop > max) {
+        max = entry.hop
+      } else if (cleanRoom && entry.roomId === cleanRoom && entry.hop > max) {
+        max = entry.hop
+      }
+    }
+    return max
+  }
+
+  function getRevision() {
+    return store.getRevision() + activityVersion
+  }
 
   function pruneActivity(nowMs = Date.now()) {
     for (const [key, entry] of activityMap.entries()) {
@@ -273,31 +233,130 @@ export function createMeshService({
     }
   }
 
-  async function broadcastActivityToRoom(roomId, payload) {
+  function resolveMemberTransport(room, member) {
+    const peer = store.getPeer(member.slug)
+    // Prefer pairwise secret whenever paired so all direct-peer communication carries `pair` scope.
+    const secret = peer?.sharedSecret || (room?.type === 'group' ? room.groupSecret : '')
+    const endpointUrl = peer?.endpointUrl || member.endpointUrl
+    return { secret, endpointUrl }
+  }
+
+  async function postToPeer({
+    targetSlug,
+    endpointUrl,
+    path,
+    payload,
+    secret,
+    groupId = '',
+    signed = true,
+    timeoutMs = requestTimeoutMs,
+  }) {
+    const body = JSON.stringify(payload)
     const self = store.getSelf()
-    const room = store.getRoom(roomId)
-    if (!room || !Array.isArray(room.members)) return
-    const recipients = room.members.filter((m) => m.slug !== self.slug)
-    await Promise.all(
+    const headers = signed
+      ? buildSignedHeaders({
+          method: 'POST',
+          path,
+          body,
+          secret,
+          fromSlug: self.slug,
+          groupId,
+        })
+      : { 'content-type': 'application/json; charset=utf-8' }
+
+    const preferredUrl = reachableBaseUrlMap.get(sanitizeSlug(targetSlug)) || ''
+    const candidates = buildCandidateBaseUrls(endpointUrl, targetSlug, env, preferredUrl)
+    let lastError = 'No reachable endpoint'
+
+    for (const baseUrl of candidates) {
+      const fullUrl = `${baseUrl}${path}`
+      const ac = typeof AbortController === 'function' ? new AbortController() : null
+      const timer = ac ? setTimeout(() => ac.abort(new Error(`Mesh request timed out after ${timeoutMs}ms`)), timeoutMs) : null
+      try {
+        const res = await fetchImpl(fullUrl, {
+          method: 'POST',
+          headers,
+          body,
+          signal: ac?.signal,
+        })
+        const data = await res.json().catch(() => ({}))
+        if (res.ok && data.ok !== false) {
+          if (targetSlug) reachableBaseUrlMap.set(sanitizeSlug(targetSlug), baseUrl)
+          return { ok: true, data, usedBaseUrl: baseUrl }
+        }
+        lastError = data.error || `HTTP ${res.status}`
+        if (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 413 || res.status === 429) {
+          return { ok: false, status: res.status, error: lastError }
+        }
+      } catch (err) {
+        lastError = err?.message || String(err)
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    }
+
+    return { ok: false, status: 502, error: lastError }
+  }
+
+  async function deliverToRoomMembers(
+    room,
+    { path, payload, enqueueOnFailure = false, timeoutMs = requestTimeoutMs, targetSlugs = null },
+  ) {
+    const self = store.getSelf()
+    const recipients = (room?.members || []).filter((m) => {
+      if (m.slug === self.slug) return false
+      if (Array.isArray(targetSlugs) && targetSlugs.length > 0) {
+        return targetSlugs.includes(m.slug)
+      }
+      return true
+    })
+    const groupId = room?.type === 'group' ? room.id : ''
+    const outboxEntries = []
+
+    const results = await Promise.all(
       recipients.map(async (member) => {
-        const peer = store.getPeer(member.slug)
-        const secret = room.type === 'group'
-          ? (room.groupSecret || peer?.sharedSecret)
-          : peer?.sharedSecret
-        const endpointUrl = peer?.endpointUrl || member.endpointUrl
-        if (!secret || !endpointUrl) return
+        const { secret, endpointUrl } = resolveMemberTransport(room, member)
+        if (!secret || !endpointUrl) {
+          return { slug: member.slug, ok: false, authRejected: false }
+        }
+        let res
         try {
-          await postToPeer({
-            targetSlug: member.slug,
-            endpointUrl,
-            path: '/mesh/status',
-            payload,
-            secret,
-            groupId: room.type === 'group' ? room.id : '',
-          })
-        } catch {}
+          res = await postToPeer({ targetSlug: member.slug, endpointUrl, path, payload, secret, groupId, timeoutMs })
+        } catch (err) {
+          res = { ok: false, error: err?.message || String(err) }
+        }
+        const authRejected = !res.ok && (res.status === 401 || res.status === 403)
+        if (res.ok && store.getPeer(member.slug)) {
+          store.setPeerStatus(member.slug, 'online')
+        } else if (authRejected && room?.type === 'pair' && store.getPeer(member.slug)) {
+          store.setPeerStatus(member.slug, 'unpaired-by-peer')
+        }
+        if (!res.ok && enqueueOnFailure && (!res.status || res.status >= 500 || res.status === 429)) {
+          outboxEntries.push({ targetSlug: member.slug, endpointUrl, path, payload, groupId })
+        }
+        return { slug: member.slug, ok: Boolean(res.ok), authRejected }
       }),
     )
+
+    if (outboxEntries.length > 0) {
+      store.enqueueOutboxBatch(outboxEntries)
+    }
+
+    return {
+      deliveredTo: results.filter((r) => r.ok).map((r) => r.slug),
+      pendingPeers: results.filter((r) => !r.ok).map((r) => r.slug),
+      authRejectedPeers: results.filter((r) => r.authRejected).map((r) => r.slug),
+    }
+  }
+
+  async function broadcastActivityToRoom(roomId, payload) {
+    const room = store.getRoom(roomId)
+    if (!room || !Array.isArray(room.members)) return
+    await deliverToRoomMembers(room, {
+      path: '/mesh/status',
+      payload,
+      timeoutMs: Math.min(requestTimeoutMs, 5000),
+    })
   }
 
   function setAgentActivity({
@@ -316,6 +375,7 @@ export function createMeshService({
     const nowMs = Date.now()
     const key = `${cleanRoomId}:${cleanSlug}`
     const seq = ++localStatusSeq
+    activityVersion += 1
     const entry = {
       roomId: cleanRoomId,
       slug: cleanSlug,
@@ -347,6 +407,7 @@ export function createMeshService({
     const cleanSlug = sanitizeSlug(slug)
     if (!cleanRoomId || !cleanSlug) return false
     const existed = activityMap.delete(`${cleanRoomId}:${cleanSlug}`)
+    if (existed) activityVersion += 1
     const seq = ++localStatusSeq
     if (broadcast) {
       void broadcastActivityToRoom(cleanRoomId, {
@@ -367,79 +428,41 @@ export function createMeshService({
     catalogChangeHandler = typeof fn === 'function' ? fn : null
   }
 
+  function setHasRuntimeSkillProvider(active) {
+    hasRuntimeSkillProvider = Boolean(active)
+  }
+
   function notifyCatalogChanged() {
-    syncSkillFile({ config, env, snapshot: store.getSnapshot() })
+    if (!hasRuntimeSkillProvider) {
+      syncSkillFile({ config, env, snapshot: store.getSnapshot() })
+    }
     if (typeof catalogChangeHandler === 'function') {
       try { catalogChangeHandler() } catch {}
     }
   }
 
   function maybeDispatchAgentWake(roomId, message, duplicate, wakeInfo) {
-    if (duplicate || !wakeInfo?.wake || typeof agentWakeHandler !== 'function') return
+    if (duplicate || !wakeInfo?.wake || !agentWakeEnabled || typeof agentWakeHandler !== 'function') return
     const room = store.getRoom(roomId)
     if (!room) return
-    store.getAgentInbox({ ack: true, roomId })
-    agentWakeHandler({
-      room,
-      message,
-      nextHop: wakeInfo.nextHop || 1,
-    })
-  }
-
-  function resolveWorkspaceFilePath(rawRef) {
-    const trimmed = String(rawRef || '').trim().replace(/^#/, '')
-    if (!trimmed) return ''
-    if (isAbsolute(trimmed)) return resolve(trimmed)
-    return resolve(homeDir, trimmed)
-  }
-
-  async function postToPeer({
-    targetSlug,
-    endpointUrl,
-    path,
-    payload,
-    secret,
-    groupId = '',
-    signed = true,
-  }) {
-    const body = JSON.stringify(payload)
-    const self = store.getSelf()
-    const headers = signed
-      ? buildSignedHeaders({
-          method: 'POST',
-          path,
-          body,
-          secret,
-          fromSlug: self.slug,
-          groupId,
-        })
-      : { 'content-type': 'application/json; charset=utf-8' }
-
-    const candidates = buildCandidateBaseUrls(endpointUrl, targetSlug, env)
-    let lastError = 'No reachable endpoint'
-
-    for (const baseUrl of candidates) {
-      const fullUrl = `${baseUrl}${path}`
-      try {
-        const res = await fetchImpl(fullUrl, {
-          method: 'POST',
-          headers,
-          body,
-        })
-        const data = await res.json().catch(() => ({}))
-        if (res.ok && data.ok !== false) {
-          return { ok: true, data, usedBaseUrl: baseUrl }
-        }
-        lastError = data.error || `HTTP ${res.status}`
-        if (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 429) {
-          return { ok: false, status: res.status, error: lastError }
-        }
-      } catch (err) {
-        lastError = err?.message || String(err)
-      }
+    const senderSlug = sanitizeSlug(message?.sender?.slug || '') || 'global'
+    if (!wakeLimiter.allow(senderSlug)) {
+      logger?.warn?.(`Rate-limited agent wake from "${senderSlug}" in room "${roomId}"`)
+      return
     }
-
-    return { ok: false, status: 502, error: lastError }
+    // Ack ONLY this message after its wake handler completes successfully.
+    Promise.resolve()
+      .then(() => agentWakeHandler({
+        room,
+        message,
+        nextHop: wakeInfo.nextHop || 1,
+      }))
+      .then(() => {
+        store.ackAgentMessage(roomId, message.id)
+      })
+      .catch((err) => {
+        logger?.warn?.(`Agent wake failed for message ${message.id}: ${err?.message || err}`)
+      })
   }
 
   async function claimPairInvite(rawInvite, headers = null) {
@@ -453,7 +476,7 @@ export function createMeshService({
       return { ok: false, status: 400, error: 'Cannot pair a sandbox with itself' }
     }
 
-    const peerKey = generateRandomHex(32)
+    const ecdhKp = generateEcdhKeyPair()
     const result = await postToPeer({
       targetSlug: parsed.slug,
       endpointUrl: parsed.endpointUrl,
@@ -461,7 +484,7 @@ export function createMeshService({
       signed: false,
       payload: {
         token: parsed.token,
-        peerKey,
+        peerPublicKey: ecdhKp.publicKeyB64,
         peerProfile: {
           slug: self.slug,
           ownerName: self.ownerName,
@@ -482,13 +505,26 @@ export function createMeshService({
     }
 
     const remoteData = result.data
+    let sharedSecret = ''
+    if (typeof remoteData.hostPublicKey === 'string' && remoteData.hostPublicKey) {
+      try {
+        sharedSecret = deriveEcdhSharedSecret(parsed.token, ecdhKp.privateKey, remoteData.hostPublicKey)
+      } catch (err) {
+        return { ok: false, status: 502, error: `ECDH key derivation failed: ${err?.message || err}` }
+      }
+    } else if (typeof remoteData.sharedSecret === 'string' && remoteData.sharedSecret) {
+      sharedSecret = remoteData.sharedSecret
+    } else {
+      return { ok: false, status: 502, error: 'Pair response missing key agreement material' }
+    }
+
     const remotePeerProfile = {
       ...remoteData.peer,
       endpointUrl: remoteData.peer?.endpointUrl || result.usedBaseUrl || parsed.endpointUrl,
     }
     const { peer, room } = store.upsertPairedPeer({
       peerProfile: remotePeerProfile,
-      sharedSecret: remoteData.sharedSecret,
+      sharedSecret,
     })
 
     store.recordMessage({
@@ -502,61 +538,19 @@ export function createMeshService({
     return { ok: true, peer, room, state: getStateSnapshot() }
   }
 
-  async function broadcastGroupSync(room, targetSlugs = null) {
-    const self = store.getSelf()
+  async function broadcastGroupSync(room, targetSlugs = null, { syncRemovals = false } = {}) {
     const fullRoom = store.getRoom(room.id)
     if (!fullRoom || fullRoom.type !== 'group') return { deliveredTo: [], pendingPeers: [] }
-
-    const recipients = fullRoom.members.filter((m) => {
-      if (m.slug === self.slug) return false
-      if (Array.isArray(targetSlugs) && targetSlugs.length > 0) {
-        return targetSlugs.includes(m.slug)
-      }
-      return true
+    return deliverToRoomMembers(fullRoom, {
+      path: '/mesh/group-sync',
+      payload: { group: buildGroupRoomMeta(fullRoom, { syncRemovals }) },
+      enqueueOnFailure: true,
+      targetSlugs,
     })
-
-    const deliveredTo = []
-    const pendingPeers = []
-    const syncPayload = {
-      group: buildGroupRoomMeta(fullRoom),
-    }
-
-    for (const member of recipients) {
-      const peer = store.getPeer(member.slug)
-      const secret = peer?.sharedSecret || fullRoom.groupSecret
-      const endpointUrl = peer?.endpointUrl || member.endpointUrl
-      if (!secret || !endpointUrl) {
-        pendingPeers.push(member.slug)
-        continue
-      }
-      const res = await postToPeer({
-        targetSlug: member.slug,
-        endpointUrl,
-        path: '/mesh/group-sync',
-        payload: syncPayload,
-        secret,
-        groupId: fullRoom.id,
-      })
-      if (res.ok) {
-        deliveredTo.push(member.slug)
-      } else {
-        pendingPeers.push(member.slug)
-        store.enqueueOutbox({
-          targetSlug: member.slug,
-          endpointUrl,
-          path: '/mesh/group-sync',
-          payload: syncPayload,
-          secret,
-          groupId: fullRoom.id,
-        })
-      }
-    }
-
-    return { deliveredTo, pendingPeers }
   }
 
   async function createGroup({
-    name,
+    name: groupName,
     memberSlugs = [],
     moderatorSlug = '',
     headers = null,
@@ -565,7 +559,7 @@ export function createMeshService({
     let room
     try {
       room = store.createGroupRoom({
-        name,
+        name: groupName,
         memberSlugs,
         moderatorSlug,
       })
@@ -605,21 +599,349 @@ export function createMeshService({
     return { ok: true, room, sync: syncResult, state: getStateSnapshot() }
   }
 
-  async function updateGroupModeration({
-    roomId,
-    moderatorSlug,
-    headers = null,
-  }) {
+  async function updateGroupModeration({ roomId, moderatorSlug, headers = null }) {
     store.updateSelf(headers)
     let room
     try {
-      room = store.updateGroupModeration(roomId, {
-        moderatorSlug,
-      })
+      room = store.updateGroupModeration(roomId, { moderatorSlug })
     } catch (err) {
       return { ok: false, status: 400, error: err?.message || String(err) }
     }
     const syncResult = await broadcastGroupSync(room)
+    notifyCatalogChanged()
+    return { ok: true, room, sync: syncResult, state: getStateSnapshot() }
+  }
+
+  function clearPeerRuntimeState({ slug = '', roomIds = [] } = {}) {
+    const cleanSlug = sanitizeSlug(slug)
+    if (cleanSlug) {
+      reachableBaseUrlMap.delete(cleanSlug)
+    }
+    const cleanRooms = new Set((Array.isArray(roomIds) ? roomIds : []).filter(Boolean))
+    let removedActivity = false
+    for (const key of [...activityMap.keys()]) {
+      const colonIdx = key.indexOf(':')
+      const rId = colonIdx >= 0 ? key.slice(0, colonIdx) : ''
+      const s = colonIdx >= 0 ? key.slice(colonIdx + 1) : ''
+      if (cleanRooms.has(rId) || (cleanSlug && s === cleanSlug)) {
+        activityMap.delete(key)
+        removedActivity = true
+      }
+    }
+    for (const key of [...peerStatusSeqMap.keys()]) {
+      const colonIdx = key.indexOf(':')
+      const rId = colonIdx >= 0 ? key.slice(0, colonIdx) : ''
+      const s = colonIdx >= 0 ? key.slice(colonIdx + 1) : ''
+      if (cleanRooms.has(rId) || (cleanSlug && s === cleanSlug)) {
+        peerStatusSeqMap.delete(key)
+      }
+    }
+    if (removedActivity) activityVersion += 1
+  }
+
+  async function unpairPeer({ slug, headers = null } = {}) {
+    store.updateSelf(headers)
+    const self = store.getSelf()
+    const cleanSlug = sanitizeSlug(slug)
+    if (!cleanSlug) {
+      return { ok: false, status: 400, error: 'Peer slug is required' }
+    }
+    const peer = store.getPeer(cleanSlug)
+    const pRoomId = pairRoomId(self.slug, cleanSlug)
+    const existingPairRoom = store.getRoom(pRoomId)
+    if (!peer && !existingPairRoom) {
+      return {
+        ok: true,
+        slug: cleanSlug,
+        alreadyRemoved: true,
+        remoteNotified: false,
+        updatedGroups: [],
+        removedGroups: [],
+        state: getStateSnapshot(),
+      }
+    }
+
+    let remoteNotified = false
+    let remoteError = ''
+    if (peer?.sharedSecret && peer?.endpointUrl) {
+      const notifyRes = await postToPeer({
+        targetSlug: cleanSlug,
+        endpointUrl: peer.endpointUrl,
+        path: '/mesh/unpair',
+        payload: { slug: self.slug, reason: 'unpaired', unpairedAt: Date.now() },
+        secret: peer.sharedSecret,
+        timeoutMs: Math.min(requestTimeoutMs, 4000),
+      }).catch((err) => ({ ok: false, error: err?.message || String(err) }))
+      remoteNotified = Boolean(notifyRes.ok)
+      remoteError = notifyRes.ok ? '' : (notifyRes.error || '')
+    }
+
+    const snapBefore = store.getSnapshot()
+    const ownedGroupIds = []
+    const peerOwnedGroupIds = []
+    for (const grp of snapBefore.rooms || []) {
+      if (grp.type !== 'group') continue
+      if (grp.createdBy === self.slug && Array.isArray(grp.members) && grp.members.some((m) => m.slug === cleanSlug)) {
+        ownedGroupIds.push(grp.id)
+      } else if (grp.createdBy === cleanSlug) {
+        peerOwnedGroupIds.push(grp.id)
+      }
+    }
+
+    store.removePeer(cleanSlug)
+
+    const updatedGroups = []
+    for (const gid of ownedGroupIds) {
+      try {
+        const updatedRoom = store.removeGroupMember(gid, cleanSlug)
+        store.recordMessage({
+          roomId: gid,
+          threadId: updatedRoom.activeThreadId || '',
+          sender: { slug: self.slug, ownerName: self.ownerName, ownerEmail: self.ownerEmail, actor: 'system' },
+          kind: 'system',
+          text: `Removed @${cleanSlug} from group after unpairing (group key rotated).`,
+        })
+        await broadcastGroupSync(updatedRoom, null, { syncRemovals: true })
+        updatedGroups.push(gid)
+      } catch {}
+    }
+
+    const removedGroups = []
+    for (const gid of peerOwnedGroupIds) {
+      const grpRoom = store.getRoom(gid)
+      if (grpRoom && !grpRoom.unpaired && (grpRoom.members || []).some((m) => m.slug !== self.slug && m.slug !== cleanSlug)) {
+        await deliverToRoomMembers(grpRoom, {
+          path: '/mesh/group-leave',
+          payload: { roomId: gid, slug: self.slug },
+          targetSlugs: (grpRoom.members || []).filter((m) => m.slug !== cleanSlug && m.slug !== self.slug).map((m) => m.slug),
+          timeoutMs: Math.min(requestTimeoutMs, 4000),
+        }).catch(() => {})
+      }
+      if (store.removeRoom(gid)) {
+        removedGroups.push(gid)
+      }
+    }
+
+    clearPeerRuntimeState({ slug: cleanSlug, roomIds: [pRoomId, ...peerOwnedGroupIds] })
+    notifyCatalogChanged()
+
+    return {
+      ok: true,
+      slug: cleanSlug,
+      remoteNotified,
+      remoteError,
+      updatedGroups,
+      removedGroups,
+      state: getStateSnapshot(),
+    }
+  }
+
+  async function handleRemoteUnpair(fromSlug) {
+    const cleanFrom = sanitizeSlug(fromSlug)
+    const self = store.getSelf()
+    const info = store.handleRemoteUnpair(cleanFrom)
+
+    if (info.pairRoomId) {
+      const peerLabel = info.prevPeer?.ownerName && info.prevPeer.ownerName !== cleanFrom
+        ? `${info.prevPeer.ownerName} (@${cleanFrom})`
+        : `@${cleanFrom}`
+      store.recordMessage({
+        roomId: info.pairRoomId,
+        sender: { slug: self.slug, ownerName: self.ownerName, ownerEmail: self.ownerEmail, actor: 'system' },
+        kind: 'system',
+        text: `${peerLabel} unpaired from this sandbox.`,
+      })
+    }
+
+    for (const gid of info.ownedGroupIds || []) {
+      try {
+        const updatedRoom = store.removeGroupMember(gid, cleanFrom)
+        store.recordMessage({
+          roomId: gid,
+          threadId: updatedRoom.activeThreadId || '',
+          sender: { slug: self.slug, ownerName: self.ownerName, ownerEmail: self.ownerEmail, actor: 'system' },
+          kind: 'system',
+          text: `@${cleanFrom} unpaired and was removed from the group (group key rotated).`,
+        })
+        await broadcastGroupSync(updatedRoom, null, { syncRemovals: true })
+      } catch {}
+    }
+
+    for (const gid of info.peerOwnedGroupIds || []) {
+      if (store.markRoomUnpaired(gid, { bySlug: cleanFrom })) {
+        store.recordMessage({
+          roomId: gid,
+          sender: { slug: self.slug, ownerName: self.ownerName, ownerEmail: self.ownerEmail, actor: 'system' },
+          kind: 'system',
+          text: `Group creator @${cleanFrom} unpaired; this group is disconnected.`,
+        })
+      }
+    }
+
+    clearPeerRuntimeState({
+      slug: cleanFrom,
+      roomIds: [info.pairRoomId, ...(info.peerOwnedGroupIds || [])].filter(Boolean),
+    })
+    notifyCatalogChanged()
+    return {
+      pairRoomId: info.pairRoomId,
+      updatedGroups: info.ownedGroupIds,
+      disconnectedGroups: info.peerOwnedGroupIds,
+    }
+  }
+
+  async function pingPeer({ slug, headers = null } = {}) {
+    store.updateSelf(headers)
+    const cleanSlug = sanitizeSlug(slug)
+    const peer = store.getPeer(cleanSlug)
+    if (!peer) {
+      return { ok: false, status: 404, error: `Sandbox "${cleanSlug || slug}" is not paired` }
+    }
+    const startedAt = Date.now()
+    const res = await postToPeer({
+      targetSlug: cleanSlug,
+      endpointUrl: peer.endpointUrl,
+      path: '/mesh/ping',
+      payload: {},
+      secret: peer.sharedSecret,
+      timeoutMs: Math.min(requestTimeoutMs, 5000),
+    }).catch((err) => ({ ok: false, status: 502, error: err?.message || String(err) }))
+    const latencyMs = Math.max(0, Date.now() - startedAt)
+
+    if (res.ok) {
+      store.touchPeer(cleanSlug, { status: 'online', peerProfile: res.data?.peer || null })
+      return {
+        ok: true,
+        slug: cleanSlug,
+        reachable: true,
+        status: 'online',
+        latencyMs,
+        state: getStateSnapshot(),
+      }
+    }
+    const isAuthRejected = res.status === 401 || res.status === 403
+    const nextStatus = isAuthRejected ? 'unpaired-by-peer' : 'offline'
+    store.setPeerStatus(cleanSlug, nextStatus)
+    return {
+      ok: true,
+      slug: cleanSlug,
+      reachable: false,
+      status: nextStatus,
+      latencyMs,
+      error: res.error || '',
+      state: getStateSnapshot(),
+    }
+  }
+
+  async function leaveGroup({ roomId, headers = null } = {}) {
+    store.updateSelf(headers)
+    const self = store.getSelf()
+    const room = store.getRoom(roomId)
+    if (!room || room.type !== 'group') {
+      return { ok: false, status: 404, error: `Group room "${roomId}" not found` }
+    }
+    if (!room.unpaired && (room.members || []).some((m) => m.slug !== self.slug)) {
+      await deliverToRoomMembers(room, {
+        path: '/mesh/group-leave',
+        payload: { roomId: room.id, slug: self.slug },
+        timeoutMs: Math.min(requestTimeoutMs, 4000),
+      }).catch(() => {})
+    }
+    store.leaveGroupRoom(room.id, self.slug)
+    clearPeerRuntimeState({ roomIds: [room.id] })
+    notifyCatalogChanged()
+    return { ok: true, roomId: room.id, state: getStateSnapshot() }
+  }
+
+  async function handleRemoteGroupLeave({ roomId, fromSlug }) {
+    const room = store.getRoom(roomId)
+    if (!room || room.type !== 'group') {
+      return { ok: false, status: 404, error: `Group room "${roomId}" not found` }
+    }
+    const self = store.getSelf()
+    const cleanFrom = sanitizeSlug(fromSlug)
+    if (cleanFrom && cleanFrom === room.createdBy) {
+      store.markRoomUnpaired(roomId, { bySlug: cleanFrom })
+      store.recordMessage({
+        roomId,
+        sender: { slug: self.slug, ownerName: self.ownerName, ownerEmail: self.ownerEmail, actor: 'system' },
+        kind: 'system',
+        text: `Group creator @${cleanFrom} dissolved/left the group; this group is disconnected.`,
+      })
+    } else if (self.slug === room.createdBy) {
+      try {
+        const updatedRoom = store.removeGroupMember(roomId, cleanFrom)
+        store.recordMessage({
+          roomId,
+          threadId: updatedRoom.activeThreadId || '',
+          sender: { slug: self.slug, ownerName: self.ownerName, ownerEmail: self.ownerEmail, actor: 'system' },
+          kind: 'system',
+          text: `@${cleanFrom} left the group (group key rotated).`,
+        })
+        await broadcastGroupSync(updatedRoom, null, { syncRemovals: true })
+      } catch (err) {
+        return { ok: false, status: 400, error: err?.message || String(err) }
+      }
+    } else {
+      store.leaveGroupRoom(roomId, cleanFrom)
+      store.recordMessage({
+        roomId,
+        threadId: room.activeThreadId || '',
+        sender: { slug: self.slug, ownerName: self.ownerName, ownerEmail: self.ownerEmail, actor: 'system' },
+        kind: 'system',
+        text: `@${cleanFrom} left the group.`,
+      })
+    }
+    activityMap.delete(`${roomId}:${cleanFrom}`)
+    peerStatusSeqMap.delete(`${roomId}:${cleanFrom}`)
+    activityVersion += 1
+    notifyCatalogChanged()
+    return { ok: true, roomId }
+  }
+
+  async function removeRoom({ roomId, headers = null } = {}) {
+    store.updateSelf(headers)
+    const cleanId = String(roomId || '').trim()
+    const room = store.getRoom(cleanId)
+    if (!room) {
+      return { ok: true, alreadyRemoved: true, roomId: cleanId, state: getStateSnapshot() }
+    }
+    if (room.type === 'pair') {
+      if (!room.unpaired && room.peerSlug && store.getPeer(room.peerSlug)) {
+        return unpairPeer({ slug: room.peerSlug, headers })
+      }
+      store.removeRoom(cleanId)
+      clearPeerRuntimeState({ slug: room.peerSlug || '', roomIds: [cleanId] })
+      notifyCatalogChanged()
+      return { ok: true, roomId: cleanId, state: getStateSnapshot() }
+    }
+    if (!room.unpaired && (room.members || []).length > 1) {
+      return leaveGroup({ roomId: cleanId, headers })
+    }
+    store.removeRoom(cleanId)
+    clearPeerRuntimeState({ roomIds: [cleanId] })
+    notifyCatalogChanged()
+    return { ok: true, roomId: cleanId, state: getStateSnapshot() }
+  }
+
+  async function removeFromGroup({ roomId, slug, headers = null }) {
+    store.updateSelf(headers)
+    const self = store.getSelf()
+    const cleanTarget = sanitizeSlug(slug)
+    let room
+    try {
+      room = store.removeGroupMember(roomId, cleanTarget)
+    } catch (err) {
+      return { ok: false, status: 400, error: err?.message || String(err) }
+    }
+    store.recordMessage({
+      roomId: room.id,
+      threadId: room.activeThreadId || '',
+      sender: { slug: self.slug, ownerName: self.ownerName, ownerEmail: self.ownerEmail, actor: 'system' },
+      kind: 'system',
+      text: `Removed @${cleanTarget} from group (group key rotated).`,
+    })
+    const syncResult = await broadcastGroupSync(room, null, { syncRemovals: true })
     notifyCatalogChanged()
     return { ok: true, room, sync: syncResult, state: getStateSnapshot() }
   }
@@ -643,8 +965,14 @@ export function createMeshService({
     if (!room) {
       return { ok: false, status: 404, error: `Room "${roomId}" does not exist` }
     }
+    if (room.unpaired) {
+      return { ok: false, status: 409, error: `Room "${roomId}" is unpaired; re-pair before sending messages` }
+    }
+    const normalizedActor = ['human', 'agent', 'system'].includes(actor) ? actor : 'human'
     const cleanText = String(text ?? '').trim()
-    const inlineFileRefs = extractFileReferences(cleanText)
+    // Only parse `#filepath` inline references from human messages; Agent prose must never
+    // trigger implicit file exfiltration via prompt injection.
+    const inlineFileRefs = normalizedActor === 'human' ? extractFileReferences(cleanText) : []
     const allFileRefs = [...new Set([
       ...(Array.isArray(files) ? files.map((f) => String(f || '').trim()).filter(Boolean) : []),
       ...inlineFileRefs,
@@ -657,15 +985,19 @@ export function createMeshService({
     if (allFileRefs.length === 1 && cleanText === `#${allFileRefs[0]}`) {
       return sendFile({
         roomId: room.id,
-        filePath: resolveWorkspaceFilePath(allFileRefs[0]),
+        threadId,
+        filePath: allFileRefs[0],
         text: '',
-        actor,
+        actor: normalizedActor,
         headers,
       })
     }
 
-    const numericHop = typeof hop === 'number' && Number.isFinite(hop) ? Math.max(0, Math.trunc(hop)) : 0
-    if (actor === 'agent' && numericHop > store.maxAgentHops) {
+    const rawHop = typeof hop === 'number' && Number.isFinite(hop) ? Math.max(0, Math.trunc(hop)) : 0
+    const numericHop = normalizedActor === 'agent'
+      ? Math.max(rawHop, getActiveAgentHop(room.id))
+      : rawHop
+    if (normalizedActor === 'agent' && numericHop > store.maxAgentHops) {
       return {
         ok: false,
         status: 429,
@@ -675,7 +1007,7 @@ export function createMeshService({
 
     const mentions = Array.isArray(mentionsOverride)
       ? mentionsOverride
-      : (phase === 'turn' && actor === 'agent' ? [] : extractMentions(cleanText))
+      : (phase === 'turn' && normalizedActor === 'agent' ? [] : extractMentions(cleanText))
     const hasAgentMention = mentions.some((m) => m === 'agent' || m.endsWith('-agent'))
     const effectiveKind = ['chat', 'task', 'file', 'system'].includes(kind)
       ? (kind === 'chat' && hasAgentMention ? 'task' : kind)
@@ -689,7 +1021,7 @@ export function createMeshService({
         slug: self.slug,
         ownerName: self.ownerName,
         ownerEmail: self.ownerEmail,
-        actor: ['human', 'agent', 'system'].includes(actor) ? actor : 'human',
+        actor: normalizedActor,
       },
       kind: effectiveKind,
       text: cleanText || `Shared ${allFileRefs.map((f) => `#${f}`).join(' ')}`,
@@ -698,61 +1030,41 @@ export function createMeshService({
     })
     maybeDispatchAgentWake(room.id, message, duplicate, wakeInfo)
 
-    const recipients = (room.members || []).filter((m) => m.slug !== self.slug)
-    const deliveredTo = []
-    const pendingPeers = []
-
-    for (const member of recipients) {
-      const peer = store.getPeer(member.slug)
-      const secret = room.type === 'group'
-        ? (room.groupSecret || peer?.sharedSecret)
-        : peer?.sharedSecret
-      const endpointUrl = peer?.endpointUrl || member.endpointUrl
-      if (!secret || !endpointUrl) {
-        pendingPeers.push(member.slug)
-        continue
-      }
-      const payload = {
+    const { deliveredTo, pendingPeers, authRejectedPeers = [] } = await deliverToRoomMembers(room, {
+      path: '/mesh/message',
+      payload: {
         message,
         newTopic: Boolean(newTopic),
         roomMeta: buildGroupRoomMeta(room),
-      }
-      const res = await postToPeer({
-        targetSlug: member.slug,
-        endpointUrl,
-        path: '/mesh/message',
-        payload,
-        secret,
-        groupId: room.type === 'group' ? room.id : '',
-      })
-      if (res.ok) {
-        deliveredTo.push(member.slug)
-      } else {
-        pendingPeers.push(member.slug)
-        store.enqueueOutbox({
-          targetSlug: member.slug,
-          endpointUrl,
-          path: '/mesh/message',
-          payload,
-          secret,
-          groupId: room.type === 'group' ? room.id : '',
-        })
-      }
-    }
+      },
+      enqueueOnFailure: true,
+    })
 
     const updatedMsg = store.updateMessageDelivery(room.id, message.id, {
       deliveredTo,
       pendingPeers,
     })
 
+    if (room.type === 'pair' && authRejectedPeers.length > 0) {
+      return {
+        ok: false,
+        status: 401,
+        error: `Peer @${authRejectedPeers[0]} rejected authentication (may have unpaired or rotated keys)`,
+        message: updatedMsg || message,
+        delivery: { deliveredTo, pendingPeers, authRejectedPeers },
+        state: getStateSnapshot(),
+      }
+    }
+
     for (const refPath of allFileRefs) {
-      const resolvedFile = resolveWorkspaceFilePath(refPath)
-      if (resolvedFile && existsSync(resolvedFile)) {
+      const resolved = resolveShareableFile(refPath, normalizedActor)
+      if (resolved.ok) {
         await sendFile({
           roomId: room.id,
-          filePath: resolvedFile,
+          threadId: message.threadId,
+          filePath: resolved.path,
           text: `#${refPath}`,
-          actor,
+          actor: normalizedActor,
         })
       }
     }
@@ -770,6 +1082,9 @@ export function createMeshService({
     const room = store.getRoom(roomId)
     if (!room) {
       return { ok: false, status: 404, error: `Room "${roomId}" does not exist` }
+    }
+    if (room.unpaired) {
+      return { ok: false, status: 409, error: `Room "${roomId}" is unpaired; re-pair before sending messages` }
     }
     const msgs = store.getSnapshot().messages?.[room.id] || []
     if (!canStartNewTopic(room, msgs)) {
@@ -808,6 +1123,7 @@ export function createMeshService({
 
   async function sendFile({
     roomId,
+    threadId = '',
     filePath,
     text = '',
     actor = 'human',
@@ -819,32 +1135,34 @@ export function createMeshService({
     if (!room) {
       return { ok: false, status: 404, error: `Room "${roomId}" does not exist` }
     }
-    const cleanPath = String(filePath || '').trim()
-    if (!cleanPath) {
-      return { ok: false, status: 400, error: 'A local file path is required' }
+    if (room.unpaired) {
+      return { ok: false, status: 409, error: `Room "${roomId}" is unpaired; re-pair before sending messages` }
     }
-    const resolvedPath = resolveWorkspaceFilePath(cleanPath)
+    const resolved = resolveShareableFile(filePath, actor)
+    if (!resolved.ok) {
+      return resolved
+    }
     let fileStat
     try {
-      fileStat = statSync(resolvedPath)
+      fileStat = await stat(resolved.path)
     } catch {
-      return { ok: false, status: 404, error: `File not found: ${cleanPath}` }
+      return { ok: false, status: 404, error: `File not found: ${filePath}` }
     }
     if (!fileStat.isFile()) {
-      return { ok: false, status: 400, error: `Not a regular file: ${cleanPath}` }
+      return { ok: false, status: 400, error: `Not a regular file: ${filePath}` }
     }
-    const maxFileBytes = Number(config.maxFileBytes) > 0 ? Number(config.maxFileBytes) : DEFAULT_MAX_FILE_BYTES
     if (fileStat.size > maxFileBytes) {
       return { ok: false, status: 413, error: `File exceeds ${maxFileBytes} byte limit` }
     }
 
-    const rawBytes = readFileSync(resolvedPath)
-    const fileName = safeFileName(basename(resolvedPath))
+    const rawBytes = await readFile(resolved.path)
+    const fileName = safeFileName(basename(resolved.path))
     const sha256 = sha256Hex(rawBytes)
     const contentBase64 = rawBytes.toString('base64')
 
     const { message } = store.recordMessage({
       roomId: room.id,
+      threadId: String(threadId || room.activeThreadId || '').trim(),
       sender: {
         slug: self.slug,
         ownerName: self.ownerName,
@@ -857,44 +1175,31 @@ export function createMeshService({
         name: fileName,
         size: fileStat.size,
         sha256,
-        sourcePath: resolvedPath,
+        sourcePath: resolved.path,
       },
     })
 
-    const recipients = (room.members || []).filter((m) => m.slug !== self.slug)
-    const deliveredTo = []
-    const pendingPeers = []
-
-    for (const member of recipients) {
-      const peer = store.getPeer(member.slug)
-      const secret = room.type === 'group'
-        ? (room.groupSecret || peer?.sharedSecret)
-        : peer?.sharedSecret
-      const endpointUrl = peer?.endpointUrl || member.endpointUrl
-      if (!secret || !endpointUrl) {
-        pendingPeers.push(member.slug)
-        continue
-      }
-      const res = await postToPeer({
-        targetSlug: member.slug,
-        endpointUrl,
-        path: '/mesh/file-offer',
-        payload: {
-          message,
-          fileName,
-          contentBase64,
-          sha256,
-          roomMeta: buildGroupRoomMeta(room),
-        },
-        secret,
-        groupId: room.type === 'group' ? room.id : '',
-      })
-      if (res.ok) {
-        deliveredTo.push(member.slug)
-      } else {
-        pendingPeers.push(member.slug)
-      }
+    // Omit local `sourcePath` from the wire payload so host filesystem paths stay private.
+    const wireMessage = {
+      ...message,
+      attachment: {
+        name: fileName,
+        size: fileStat.size,
+        sha256,
+      },
     }
+
+    const { deliveredTo, pendingPeers } = await deliverToRoomMembers(room, {
+      path: '/mesh/file-offer',
+      payload: {
+        message: wireMessage,
+        fileName,
+        contentBase64,
+        sha256,
+        roomMeta: buildGroupRoomMeta(room),
+      },
+      timeoutMs: fileTimeoutMs,
+    })
 
     const updatedMsg = store.updateMessageDelivery(room.id, message.id, {
       deliveredTo,
@@ -913,331 +1218,115 @@ export function createMeshService({
     store.updateSelf(headers)
     const updatedSelf = store.updateSelfProfile({ ownerName, role, description })
     const snap = store.getSnapshot()
-    const syncedTo = []
-    for (const peerSummary of snap.peers || []) {
-      const peer = store.getPeer(peerSummary.slug)
-      if (!peer?.sharedSecret || !peer?.endpointUrl) continue
-      const res = await postToPeer({
-        targetSlug: peer.slug,
-        endpointUrl: peer.endpointUrl,
-        path: '/mesh/profile-sync',
-        payload: {
-          peerProfile: {
-            slug: updatedSelf.slug,
-            ownerName: updatedSelf.ownerName,
-            ownerEmail: updatedSelf.ownerEmail,
-            role: updatedSelf.role || '',
-            description: updatedSelf.description || '',
-            endpointUrl: updatedSelf.endpointUrl,
+    const peers = (snap.peers || [])
+      .map((p) => store.getPeer(p.slug))
+      .filter((p) => p?.sharedSecret && p?.endpointUrl)
+    const results = await Promise.all(
+      peers.map(async (peer) => {
+        const res = await postToPeer({
+          targetSlug: peer.slug,
+          endpointUrl: peer.endpointUrl,
+          path: '/mesh/profile-sync',
+          payload: {
+            peerProfile: {
+              slug: updatedSelf.slug,
+              ownerName: updatedSelf.ownerName,
+              ownerEmail: updatedSelf.ownerEmail,
+              role: updatedSelf.role || '',
+              description: updatedSelf.description || '',
+              endpointUrl: updatedSelf.endpointUrl,
+            },
           },
-        },
-        secret: peer.sharedSecret,
-      })
-      if (res.ok) syncedTo.push(peer.slug)
-    }
+          secret: peer.sharedSecret,
+        })
+        return res.ok ? peer.slug : null
+      }),
+    )
+    const syncedTo = results.filter(Boolean)
     notifyCatalogChanged()
     return { ok: true, self: updatedSelf, syncedTo, state: getStateSnapshot() }
   }
 
-  async function flushOutbox() {
-    const items = store.listOutbox()
-    if (items.length === 0) return { flushed: 0 }
-    const doneIds = []
-    for (const item of items) {
-      const res = await postToPeer({
-        targetSlug: item.targetSlug,
-        endpointUrl: item.endpointUrl,
-        path: item.path,
-        payload: item.payload,
-        secret: item.secret,
-        groupId: item.groupId || '',
-      })
-      if (res.ok) {
-        doneIds.push(item.id)
-      }
-    }
-    if (doneIds.length > 0) {
-      store.removeOutboxItems(doneIds)
-    }
-    return { flushed: doneIds.length }
-  }
+  async function flushOutbox({ force = false } = {}) {
+    if (outboxFlushPromise) return outboxFlushPromise
+    outboxFlushPromise = (async () => {
+      const items = store.listOutbox()
+      if (items.length === 0) return { flushed: 0 }
+      const nowMs = Date.now()
+      const doneIds = []
+      const retryUpdates = new Map()
 
-  async function handleIncomingMeshHttp(method, urlPath, headers, rawBody) {
-    const cleanPath = String(urlPath || '/').split('?')[0]
-
-    // 1. Local CLI endpoint (strictly local loopback with 0600 bearer token; blocked if proxied via Caddy/Traefik)
-    if (cleanPath === '/local/cli' && method === 'POST') {
-      const forwardedPrefix = headers['x-forwarded-prefix'] || headers['x-forwarded-for']
-      if (forwardedPrefix) {
-        return { status: 403, body: { ok: false, error: 'Local CLI endpoint is not accessible through reverse proxy' } }
-      }
-      const auth = String(headers.authorization || '')
-      const expectedAuth = `Bearer ${localToken}`
-      if (!constantTimeEqualString(auth, expectedAuth)) {
-        return { status: 401, body: { ok: false, error: 'Invalid local CLI token' } }
-      }
-      let body = {}
-      try { body = JSON.parse(rawBody || '{}') } catch {}
-      const action = body.action
-      if (action === 'status') {
-        return { status: 200, body: { ok: true, ...store.getSnapshot() } }
-      }
-      if (action === 'pair-code') {
-        const invite = store.createPairCode()
-        return { status: 200, body: { ok: true, invite } }
-      }
-      if (action === 'pair') {
-        const res = await claimPairInvite(body.invite)
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
-      }
-      if (action === 'group-create') {
-        const res = await createGroup({
-          name: body.name,
-          memberSlugs: body.memberSlugs,
-          moderatorSlug: body.moderatorSlug,
+      for (const item of items) {
+        if (!force && item.nextRetryAt && item.nextRetryAt > nowMs) continue
+        const peer = store.getPeer(item.targetSlug)
+        const room = item.groupId ? store.getRoom(item.groupId) : null
+        const secret = peer?.sharedSecret || room?.groupSecret || ''
+        if (!secret) {
+          doneIds.push(item.id)
+          continue
+        }
+        const endpointUrl = peer?.endpointUrl || item.endpointUrl
+        const res = await postToPeer({
+          targetSlug: item.targetSlug,
+          endpointUrl,
+          path: item.path,
+          payload: item.payload,
+          secret,
+          groupId: item.groupId || '',
         })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
-      }
-      if (action === 'group-invite') {
-        const res = await inviteToGroup({ roomId: body.roomId, memberSlugs: body.memberSlugs })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
-      }
-      if (action === 'group-moderate') {
-        const res = await updateGroupModeration({
-          roomId: body.roomId,
-          moderatorSlug: body.moderatorSlug,
-        })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
-      }
-      if (action === 'new-topic') {
-        const res = await startNewTopic({ roomId: body.roomId })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
-      }
-      if (action === 'rooms') {
-        return { status: 200, body: { ok: true, rooms: store.getSnapshot().rooms } }
-      }
-      if (action === 'messages') {
-        const snap = store.getSnapshot()
-        return { status: 200, body: { ok: true, roomId: body.roomId, messages: snap.messages[body.roomId] || [] } }
-      }
-      if (action === 'inbox') {
-        const inbox = store.getAgentInbox({ ack: Boolean(body.ack), roomId: body.roomId || '' })
-        return { status: 200, body: { ok: true, inbox } }
-      }
-      if (action === 'send') {
-        const res = await sendMessage({
-          roomId: body.roomId,
-          text: body.text,
-          kind: body.kind || 'chat',
-          actor: body.actor || 'agent',
-          hop: Number(body.hop) || 0,
-          threadId: body.threadId || '',
-        })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
-      }
-      if (action === 'send-file') {
-        const res = await sendFile({
-          roomId: body.roomId,
-          filePath: body.filePath,
-          text: body.text || '',
-          actor: body.actor || 'agent',
-        })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
-      }
-      return { status: 400, body: { ok: false, error: `Unknown CLI action: ${action}` } }
-    }
-
-    // 2. One-time pair claim endpoint (protected by rate-limiting + 144-bit single-use token)
-    if (cleanPath === '/pair/claim' && method === 'POST') {
-      const clientKey = String(headers['x-forwarded-for'] || 'global').split(',')[0].trim()
-      if (!pairLimiter.allow(clientKey)) {
-        return { status: 429, body: { ok: false, error: 'Too many pairing attempts; try again later' } }
-      }
-      let body = null
-      try { body = JSON.parse(rawBody || '{}') } catch {}
-      if (!body || typeof body !== 'object') {
-        return { status: 400, body: { ok: false, error: 'Invalid JSON body' } }
-      }
-      const res = store.verifyAndConsumeInvite({
-        token: body.token,
-        peerKey: body.peerKey,
-        peerProfile: body.peerProfile,
-      })
-      if (!res.ok) {
-        return { status: res.status || 401, body: { ok: false, error: res.error } }
-      }
-      const self = store.getSelf()
-      store.recordMessage({
-        roomId: res.room.id,
-        sender: { slug: self.slug, ownerName: self.ownerName, ownerEmail: self.ownerEmail, actor: 'system' },
-        kind: 'system',
-        text: `${res.peer.ownerName} (${res.peer.slug}) paired with this sandbox.`,
-      })
-      notifyCatalogChanged()
-      return {
-        status: 200,
-        body: {
-          ok: true,
-          peer: self,
-          sharedSecret: res.sharedSecret,
-          room: res.room,
-        },
-      }
-    }
-
-    // 3. All other /mesh/* routes require HMAC-SHA256 signature + Timestamp + Nonce replay guard
-    if (cleanPath.startsWith('/mesh/')) {
-      const verified = verifySignedRequest({
-        method,
-        path: cleanPath,
-        headers,
-        body: rawBody,
-        resolveSecret: ({ fromSlug, groupId }) => store.resolveVerificationSecrets({ fromSlug, groupId }),
-        replayGuard,
-      })
-      if (!verified.ok) {
-        return { status: verified.status || 401, body: { ok: false, error: verified.error } }
-      }
-
-      if (cleanPath === '/mesh/ping' && (method === 'GET' || method === 'POST')) {
-        void flushOutbox()
-        return { status: 200, body: { ok: true, peer: store.getSelf() } }
-      }
-
-      let body = null
-      try { body = JSON.parse(rawBody || '{}') } catch {}
-      if (!body || typeof body !== 'object') {
-        return { status: 400, body: { ok: false, error: 'Invalid JSON body' } }
-      }
-
-      if (cleanPath === '/mesh/profile-sync' && method === 'POST') {
-        try {
-          if (body.peerProfile && body.peerProfile.slug === verified.fromSlug) {
-            const { peer } = store.upsertPairedPeer({
-              peerProfile: body.peerProfile,
-            })
-            notifyCatalogChanged()
-            return { status: 200, body: { ok: true, peer } }
-          }
-          return { status: 400, body: { ok: false, error: 'Invalid peerProfile slug' } }
-        } catch (err) {
-          return { status: 400, body: { ok: false, error: err?.message || String(err) } }
-        }
-      }
-
-      if (cleanPath === '/mesh/group-sync' && method === 'POST') {
-        try {
-          const room = store.upsertGroupRoom(body.group)
-          notifyCatalogChanged()
-          return { status: 200, body: { ok: true, room } }
-        } catch (err) {
-          return { status: 400, body: { ok: false, error: err?.message || String(err) } }
-        }
-      }
-
-      if (cleanPath === '/mesh/status' && method === 'POST') {
-        const statusRoomId = String(body.roomId || '').trim()
-        const targetSlug = sanitizeSlug(body.slug || verified.fromSlug)
-        if (!statusRoomId || !targetSlug) {
-          return { status: 400, body: { ok: false, error: 'roomId and slug are required' } }
-        }
-        if (targetSlug !== verified.fromSlug) {
-          return { status: 403, body: { ok: false, error: 'Status slug mismatch' } }
-        }
-        const room = store.getRoom(statusRoomId)
-        if (!room) {
-          return { status: 404, body: { ok: false, error: `Unknown room "${statusRoomId}"` } }
-        }
-        const seqKey = `${statusRoomId}:${targetSlug}`
-        const incomingSeq = Number(body.seq)
-        if (Number.isFinite(incomingSeq)) {
-          const prevSeq = peerStatusSeqMap.get(seqKey) ?? -1
-          if (incomingSeq < prevSeq) {
-            return { status: 200, body: { ok: true, stale: true } }
-          }
-          peerStatusSeqMap.set(seqKey, incomingSeq)
-        }
-        if (body.action === 'clear') {
-          clearAgentActivity({ roomId: statusRoomId, slug: targetSlug, broadcast: false })
+        if (res.ok) {
+          doneIds.push(item.id)
+          if (peer) store.setPeerStatus(item.targetSlug, 'online')
+        } else if (res.status === 401 || res.status === 403) {
+          doneIds.push(item.id)
+          if (peer && !item.groupId) store.setPeerStatus(item.targetSlug, 'unpaired-by-peer')
         } else {
-          setAgentActivity({
-            roomId: statusRoomId,
-            slug: targetSlug,
-            ownerName: String(body.ownerName || targetSlug),
-            stage: String(body.stage || 'preparing'),
-            detail: String(body.detail || ''),
-            isModerator: Boolean(body.isModerator),
-            broadcast: false,
+          const nextAttempts = (Number(item.attempts) || 0) + 1
+          const backoffMs = Math.min(5 * 60 * 1000, 2000 * (2 ** Math.min(nextAttempts, 8)))
+          retryUpdates.set(item.id, {
+            attempts: nextAttempts,
+            nextRetryAt: nowMs + backoffMs,
+            lastError: res.error || `HTTP ${res.status || 502}`,
           })
         }
-        return { status: 200, body: { ok: true } }
       }
 
-      if (cleanPath === '/mesh/message' && method === 'POST') {
-        try {
-          if (body.roomMeta && body.roomMeta.type === 'group') {
-            store.upsertGroupRoom(body.roomMeta)
-          }
-          if (body.newTopic === true && body.message?.roomId && body.message?.threadId) {
-            try {
-              store.rotateRoomThread(body.message.roomId, { nextThreadId: body.message.threadId })
-            } catch {}
-          }
-          const { message, duplicate, wakeInfo } = store.recordMessage(body.message, { isIncoming: true })
-          maybeDispatchAgentWake(message.roomId, message, duplicate, wakeInfo)
-          return { status: 200, body: { ok: true, messageId: message.id, duplicate, wakeInfo } }
-        } catch (err) {
-          return { status: 400, body: { ok: false, error: err?.message || String(err) } }
-        }
-      }
-
-      if (cleanPath === '/mesh/file-offer' && method === 'POST') {
-        try {
-          if (body.roomMeta && body.roomMeta.type === 'group') {
-            store.upsertGroupRoom(body.roomMeta)
-          }
-          const msgInput = body.message
-          const roomId = String(msgInput?.roomId || '').trim()
-          const safeRoomDir = roomId.replace(/[^a-zA-Z0-9_-]/g, '_')
-          const fileName = safeFileName(body.fileName || msgInput?.attachment?.name || 'file.bin')
-          const fileBytes = Buffer.from(String(body.contentBase64 || ''), 'base64')
-          const maxFileBytes = Number(config.maxFileBytes) > 0 ? Number(config.maxFileBytes) : DEFAULT_MAX_FILE_BYTES
-          if (fileBytes.byteLength > maxFileBytes) {
-            return { status: 413, body: { ok: false, error: 'Shared file exceeds size limit' } }
-          }
-          const actualSha = sha256Hex(fileBytes)
-          if (body.sha256 && body.sha256 !== actualSha) {
-            return { status: 400, body: { ok: false, error: 'File SHA-256 integrity mismatch' } }
-          }
-          const targetDir = join(inboxDir, safeRoomDir)
-          mkdirSync(targetDir, { recursive: true })
-          const savedPath = join(targetDir, fileName)
-          writeFileSync(savedPath, fileBytes)
-
-          const { message, duplicate, wakeInfo } = store.recordMessage(
-            {
-              ...msgInput,
-              kind: 'file',
-              attachment: {
-                ...(msgInput?.attachment || {}),
-                name: fileName,
-                size: fileBytes.byteLength,
-                sha256: actualSha,
-                savedPath,
-              },
-            },
-            { isIncoming: true },
-          )
-          maybeDispatchAgentWake(message.roomId, message, duplicate, wakeInfo)
-          return { status: 200, body: { ok: true, messageId: message.id, savedPath, duplicate } }
-        } catch (err) {
-          return { status: 400, body: { ok: false, error: err?.message || String(err) } }
-        }
-      }
-    }
-
-    return { status: 404, body: { ok: false, error: `Unknown mesh route: ${cleanPath}` } }
+      store.updateOutbox(doneIds, retryUpdates, { nowMs })
+      return { flushed: doneIds.length }
+    })().finally(() => {
+      outboxFlushPromise = null
+    })
+    return outboxFlushPromise
   }
+
+  const handleIncomingMeshHttp = createIncomingMeshHandler({
+    store,
+    localToken,
+    replayGuard,
+    pairLimiter,
+    maxFileBytes,
+    inboxDir,
+    peerStatusSeqMap,
+    claimPairInvite,
+    unpairPeer,
+    handleRemoteUnpair,
+    pingPeer,
+    createGroup,
+    inviteToGroup,
+    updateGroupModeration,
+    removeFromGroup,
+    leaveGroup,
+    handleRemoteGroupLeave,
+    startNewTopic,
+    sendMessage,
+    sendFile,
+    flushOutbox: () => flushOutbox({ force: true }),
+    setAgentActivity,
+    clearAgentActivity,
+    maybeDispatchAgentWake,
+    notifyCatalogChanged,
+    getActiveAgentHop,
+  })
 
   function listFiles(query = '', limit = 30) {
     return searchWorkspaceFiles(homeDir, query, limit)
@@ -1247,18 +1336,31 @@ export function createMeshService({
     store,
     localToken,
     homeDir,
+    maxFileBytes,
+    agentTurnTimeoutMs,
+    getRevision,
     getActiveStatuses,
     getStateSnapshot,
     setAgentActivity,
     clearAgentActivity,
     setAgentWakeHandler,
     setCatalogChangeHandler,
+    setHasRuntimeSkillProvider,
+    beginAgentTurn,
+    getActiveAgentHop,
     listFiles,
     updateProfile,
     claimPairInvite,
+    unpairPeer,
+    handleRemoteUnpair,
+    pingPeer,
     createGroup,
     inviteToGroup,
     updateGroupModeration,
+    removeFromGroup,
+    leaveGroup,
+    handleRemoteGroupLeave,
+    removeRoom,
     startNewTopic,
     sendMessage,
     sendFile,
@@ -1267,24 +1369,44 @@ export function createMeshService({
   }
 }
 
-export function startMeshHttpServer(service, { port = DEFAULT_MESH_PORT, host = '127.0.0.1' } = {}) {
+export function startMeshHttpServer(
+  service,
+  { port = DEFAULT_MESH_PORT, host = '127.0.0.1', logger = null } = {},
+) {
+  const cap = maxMeshBodyBytes(service.maxFileBytes)
   const server = createServer((req, res) => {
     const chunks = []
     let total = 0
-    const cap = DEFAULT_MAX_FILE_BYTES + 2 * 1024 * 1024
+    let tooLarge = false
+    req.on('error', (err) => {
+      logger?.warn?.(`Mesh HTTP request error: ${err?.message || err}`)
+    })
     req.on('data', (chunk) => {
+      if (tooLarge) return
       total += chunk.length
       if (total <= cap) {
         chunks.push(chunk)
       } else {
-        req.destroy()
+        tooLarge = true
+        chunks.length = 0
+        if (!res.headersSent) {
+          res.writeHead(413, {
+            'content-type': 'application/json; charset=utf-8',
+            'cache-control': 'no-store',
+          })
+          res.end(JSON.stringify({ ok: false, error: 'Request payload exceeds size limit' }))
+        }
+        req.resume()
       }
     })
     req.on('end', () => {
+      if (tooLarge) return
       const rawBody = Buffer.concat(chunks).toString('utf8')
+      const remoteAddress = req.socket?.remoteAddress || ''
       void service
-        .handleIncomingMeshHttp(req.method || 'GET', req.url || '/', req.headers || {}, rawBody)
+        .handleIncomingMeshHttp(req.method || 'GET', req.url || '/', req.headers || {}, rawBody, { remoteAddress })
         .then((result) => {
+          if (res.writableEnded) return
           res.writeHead(result.status || 200, {
             'content-type': 'application/json; charset=utf-8',
             'cache-control': 'no-store',
@@ -1292,6 +1414,7 @@ export function startMeshHttpServer(service, { port = DEFAULT_MESH_PORT, host = 
           res.end(JSON.stringify(result.body))
         })
         .catch((err) => {
+          if (res.writableEnded) return
           res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
           res.end(JSON.stringify({ ok: false, error: err?.message || 'Internal mesh error' }))
         })
@@ -1299,8 +1422,9 @@ export function startMeshHttpServer(service, { port = DEFAULT_MESH_PORT, host = 
   })
 
   return new Promise((resolveServer) => {
-    server.on('error', () => {
-      resolveServer({ server: null, port: Number(port) || DEFAULT_MESH_PORT, close: () => {} })
+    server.on('error', (err) => {
+      logger?.warn?.(`Mesh HTTP listener failed on ${host}:${port}: ${err?.message || err}`)
+      resolveServer({ server: null, port: Number(port) || DEFAULT_MESH_PORT, error: err, close: () => {} })
     })
     server.listen(port, host, () => {
       const addr = server.address()
@@ -1316,14 +1440,20 @@ export function startMeshHttpServer(service, { port = DEFAULT_MESH_PORT, host = 
 }
 
 export function apply(ctx, config = {}) {
-  const service = createMeshService({ config })
+  const logger = ctx.logger?.('sandbox-mesh') || null
+  const service = createMeshService({ config, logger })
   const desiredPort = config.port !== undefined ? Number(config.port) : DEFAULT_MESH_PORT
 
-  wireHarnessRuntime(ctx, service)
+  wireHarnessRuntime(ctx, service, { logger })
 
+  let disposed = false
   let serverHandle = null
   if (config.disableServer !== true) {
-    void startMeshHttpServer(service, { port: desiredPort }).then((handle) => {
+    void startMeshHttpServer(service, { port: desiredPort, logger }).then((handle) => {
+      if (disposed) {
+        void handle.close?.()
+        return
+      }
       serverHandle = handle
       installAgentBridge({
         config,
@@ -1341,215 +1471,19 @@ export function apply(ctx, config = {}) {
     })
   }
 
+  const outboxTimer = setInterval(() => {
+    if (service.store.listOutbox().length > 0) {
+      void service.flushOutbox()
+    }
+  }, 15 * 1000)
+  outboxTimer.unref?.()
+
   ctx.effect(() => () => {
-    serverHandle?.close?.()
+    disposed = true
+    clearInterval(outboxTimer)
+    void serverHandle?.close?.()
     serverHandle = null
   }, 'sandbox-mesh: p2p http listener')
 
-  ctx.inject(['connection'], ({ connection }) => {
-    const disposers = [
-      connection.fetch.register({
-        path: STATE_ENDPOINT,
-        methods: ['GET'],
-        requestBody: 'buffered',
-        fetch(request) {
-          service.store.updateSelf(request.headers)
-          return jsonResponse({ ok: true, state: service.getStateSnapshot() })
-        },
-      }),
-      connection.fetch.register({
-        path: PROFILE_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        async fetch(request) {
-          const body = await parseJsonRequest(request)
-          if (!body || typeof body !== 'object') {
-            return jsonResponse({ ok: false, error: 'Invalid JSON body' }, 400)
-          }
-          const result = await service.updateProfile({
-            ownerName: body.ownerName,
-            role: body.role,
-            description: body.description,
-            headers: request.headers,
-          })
-          return jsonResponse(result, 200)
-        },
-      }),
-      connection.fetch.register({
-        path: FILES_ENDPOINT,
-        methods: ['GET'],
-        requestBody: 'buffered',
-        fetch(request) {
-          let q = ''
-          try {
-            const u = new URL(request.url, 'http://localhost')
-            q = u.searchParams.get('q') || ''
-          } catch {}
-          const files = service.listFiles(q, 40)
-          return jsonResponse({ ok: true, files })
-        },
-      }),
-      connection.fetch.register({
-        path: PAIR_CODE_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        fetch(request) {
-          service.store.updateSelf(request.headers)
-          const invite = service.store.createPairCode()
-          return jsonResponse({ ok: true, invite, state: service.getStateSnapshot() })
-        },
-      }),
-      connection.fetch.register({
-        path: PAIR_CLAIM_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        async fetch(request) {
-          const body = await parseJsonRequest(request)
-          if (!body || !body.invite) {
-            return jsonResponse({ ok: false, error: 'Pair code or URI is required' }, 400)
-          }
-          const result = await service.claimPairInvite(body.invite, request.headers)
-          return jsonResponse(result, result.ok ? 200 : (result.status || 400))
-        },
-      }),
-      connection.fetch.register({
-        path: GROUP_CREATE_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        async fetch(request) {
-          const body = await parseJsonRequest(request)
-          if (!body || !body.name) {
-            return jsonResponse({ ok: false, error: 'Group name is required' }, 400)
-          }
-          const result = await service.createGroup({
-            name: body.name,
-            memberSlugs: Array.isArray(body.memberSlugs) ? body.memberSlugs : [],
-            moderatorSlug: body.moderatorSlug || '',
-            headers: request.headers,
-          })
-          return jsonResponse(result, result.ok ? 200 : (result.status || 400))
-        },
-      }),
-      connection.fetch.register({
-        path: GROUP_INVITE_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        async fetch(request) {
-          const body = await parseJsonRequest(request)
-          if (!body || !body.roomId || !Array.isArray(body.memberSlugs)) {
-            return jsonResponse({ ok: false, error: 'roomId and memberSlugs are required' }, 400)
-          }
-          const result = await service.inviteToGroup({
-            roomId: body.roomId,
-            memberSlugs: body.memberSlugs,
-            headers: request.headers,
-          })
-          return jsonResponse(result, result.ok ? 200 : (result.status || 400))
-        },
-      }),
-      connection.fetch.register({
-        path: GROUP_MODERATE_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        async fetch(request) {
-          const body = await parseJsonRequest(request)
-          if (!body || !body.roomId) {
-            return jsonResponse({ ok: false, error: 'roomId is required' }, 400)
-          }
-          const result = await service.updateGroupModeration({
-            roomId: body.roomId,
-            moderatorSlug: body.moderatorSlug,
-            headers: request.headers,
-          })
-          return jsonResponse(result, result.ok ? 200 : (result.status || 400))
-        },
-      }),
-      connection.fetch.register({
-        path: NEW_TOPIC_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        async fetch(request) {
-          const body = await parseJsonRequest(request)
-          if (!body || !body.roomId) {
-            return jsonResponse({ ok: false, error: 'roomId is required' }, 400)
-          }
-          const result = await service.startNewTopic({
-            roomId: body.roomId,
-            headers: request.headers,
-          })
-          return jsonResponse(result, result.ok ? 200 : (result.status || 400))
-        },
-      }),
-      connection.fetch.register({
-        path: SEND_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        async fetch(request) {
-          const body = await parseJsonRequest(request)
-          if (!body || !body.roomId) {
-            return jsonResponse({ ok: false, error: 'roomId is required' }, 400)
-          }
-          const result = await service.sendMessage({
-            roomId: body.roomId,
-            text: body.text,
-            files: Array.isArray(body.files) ? body.files : [],
-            kind: body.kind || 'chat',
-            actor: body.actor || 'human',
-            hop: Number(body.hop) || 0,
-            threadId: body.threadId || '',
-            headers: request.headers,
-          })
-          return jsonResponse(result, result.ok ? 200 : (result.status || 400))
-        },
-      }),
-      connection.fetch.register({
-        path: SEND_FILE_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        async fetch(request) {
-          const body = await parseJsonRequest(request)
-          if (!body || !body.roomId || !body.filePath) {
-            return jsonResponse({ ok: false, error: 'roomId and filePath are required' }, 400)
-          }
-          const result = await service.sendFile({
-            roomId: body.roomId,
-            filePath: body.filePath,
-            text: body.text || '',
-            actor: body.actor || 'human',
-            headers: request.headers,
-          })
-          return jsonResponse(result, result.ok ? 200 : (result.status || 400))
-        },
-      }),
-      connection.fetch.register({
-        path: MARK_READ_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        async fetch(request) {
-          const body = await parseJsonRequest(request)
-          if (body?.roomId) {
-            service.store.markRoomRead(body.roomId)
-          }
-          return jsonResponse({ ok: true, state: service.getStateSnapshot() })
-        },
-      }),
-      connection.fetch.register({
-        path: PEER_REMOVE_ENDPOINT,
-        methods: ['POST'],
-        requestBody: 'buffered',
-        async fetch(request) {
-          const body = await parseJsonRequest(request)
-          if (!body?.slug) {
-            return jsonResponse({ ok: false, error: 'Peer slug is required' }, 400)
-          }
-          service.store.removePeer(body.slug)
-          return jsonResponse({ ok: true, state: service.getStateSnapshot() })
-        },
-      }),
-    ]
-
-    ctx.effect(() => () => {
-      for (const dispose of disposers) dispose()
-    }, 'sandbox-mesh: browser api routes')
-  })
+  registerBrowserRoutes(ctx, service)
 }

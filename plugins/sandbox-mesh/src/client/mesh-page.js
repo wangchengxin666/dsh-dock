@@ -26,6 +26,311 @@ function formatClock(ms) {
   }
 }
 
+function formatCountdown(seconds) {
+  const s = Math.max(0, Math.floor(Number(seconds) || 0))
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`
+}
+
+export function legacyCopyText(text, doc = typeof document !== 'undefined' ? document : null, fallbackInput = null) {
+  if (!doc || typeof doc.createElement !== 'function') return false
+  const container = fallbackInput?.parentElement || doc.activeElement?.parentElement || doc.body
+  if (!container || typeof container.appendChild !== 'function') return false
+  const ta = doc.createElement('textarea')
+  ta.value = String(text ?? '')
+  ta.setAttribute?.('readonly', '')
+  ta.setAttribute?.('aria-hidden', 'true')
+  if (ta.style) {
+    ta.style.position = 'fixed'
+    ta.style.top = '-9999px'
+    ta.style.left = '-9999px'
+    ta.style.opacity = '0'
+    ta.style.fontSize = '16px'
+  }
+  const prevFocus = doc.activeElement
+  container.appendChild(ta)
+  let copied = false
+  try {
+    ta.focus?.({ preventScroll: true })
+    ta.select?.()
+    ta.setSelectionRange?.(0, ta.value.length)
+    copied = Boolean(doc.execCommand?.('copy'))
+  } catch {
+    copied = false
+  } finally {
+    ta.remove?.()
+  }
+
+  if (!copied && fallbackInput && typeof fallbackInput.select === 'function') {
+    try {
+      fallbackInput.focus?.({ preventScroll: true })
+      fallbackInput.select()
+      fallbackInput.setSelectionRange?.(0, ta.value.length)
+      copied = Boolean(doc.execCommand?.('copy'))
+    } catch {
+      copied = false
+    }
+  }
+
+  if (prevFocus && prevFocus !== fallbackInput && typeof prevFocus.focus === 'function') {
+    try { prevFocus.focus({ preventScroll: true }) } catch {}
+  }
+  return copied
+}
+
+export async function copyTextToClipboard(
+  text,
+  {
+    fallbackInput = null,
+    nav = typeof navigator !== 'undefined' ? navigator : null,
+    win = typeof window !== 'undefined' ? window : null,
+    doc = typeof document !== 'undefined' ? document : null,
+  } = {},
+) {
+  const value = String(text ?? '')
+  if (!value) return { ok: false, method: 'empty' }
+
+  const isSecure = win ? win.isSecureContext !== false : true
+  if (isSecure && nav?.clipboard?.writeText) {
+    try {
+      await nav.clipboard.writeText(value)
+      return { ok: true, method: 'clipboard' }
+    } catch {
+      // Fall through to execCommand fallback
+    }
+  }
+
+  if (legacyCopyText(value, doc, fallbackInput)) {
+    return { ok: true, method: 'execCommand' }
+  }
+
+  if (fallbackInput && typeof fallbackInput.select === 'function') {
+    try {
+      fallbackInput.focus?.()
+      fallbackInput.select()
+      fallbackInput.setSelectionRange?.(0, value.length)
+    } catch {}
+  }
+  return { ok: false, method: 'manual' }
+}
+
+function selectInputAll(event) {
+  const target = event?.currentTarget || event?.target
+  if (target && typeof target.select === 'function') {
+    target.select()
+  }
+}
+
+function renderPeerStatusBadge(H, t, status) {
+  const s = String(status || 'online')
+  if (s === 'unpaired-by-peer') {
+    return H('span', { className: 'sm-badge sm-badge-err' }, t('peerStatusUnpaired'))
+  }
+  if (s === 'offline') {
+    return H('span', { className: 'sm-badge sm-badge-warn' }, t('peerStatusOffline'))
+  }
+  return H('span', { className: 'sm-badge sm-badge-ok' }, t('peerStatusOnline'))
+}
+
+function PairingSection({
+  React,
+  controller,
+  t,
+  activeInvite,
+  busy,
+  compact = false,
+  onPaired = null,
+}) {
+  const H = React.createElement
+  const { useState, useEffect, useRef } = React
+  const [pairInput, setPairInput] = useState('')
+  const [copiedField, setCopiedField] = useState('')
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  const shortInputRef = useRef ? useRef(null) : { current: null }
+  const uriInputRef = useRef ? useRef(null) : { current: null }
+  const copyTimerRef = useRef ? useRef(null) : { current: null }
+
+  const hasInvite = Boolean(activeInvite && activeInvite.shortCode)
+  const remainingSec = hasInvite && typeof activeInvite.expiresAt === 'number'
+    ? Math.max(0, Math.ceil((activeInvite.expiresAt - nowMs) / 1000))
+    : 0
+  const isExpired = Boolean(hasInvite && typeof activeInvite.expiresAt === 'number' && remainingSec <= 0)
+
+  useEffect(() => {
+    if (!hasInvite) return undefined
+    setNowMs(Date.now())
+    if (typeof setInterval !== 'function') return undefined
+    const clockTimer = setInterval(() => setNowMs(Date.now()), 1000)
+    const pollTimer = setInterval(() => { void controller.syncFromHost() }, 2500)
+    return () => {
+      clearInterval(clockTimer)
+      clearInterval(pollTimer)
+    }
+  }, [hasInvite, activeInvite?.codeId])
+
+  useEffect(() => () => {
+    if (copyTimerRef?.current) {
+      clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = null
+    }
+  }, [])
+
+  const handleCopy = async (key, value, inputRef) => {
+    const res = await copyTextToClipboard(value, { fallbackInput: inputRef?.current || null })
+    if (res.ok) {
+      setCopiedField(key)
+      if (copyTimerRef?.current) clearTimeout(copyTimerRef.current)
+      if (typeof setTimeout === 'function') {
+        copyTimerRef.current = setTimeout(() => {
+          setCopiedField('')
+          if (copyTimerRef) copyTimerRef.current = null
+        }, 1800)
+      }
+    } else {
+      setCopiedField('')
+      controller.setError?.(t('copyManualHint'))
+    }
+  }
+
+  const handlePairSubmit = async () => {
+    const code = pairInput.trim()
+    if (!code) return
+    const res = await controller.claimPairCode(code)
+    if (res) {
+      setPairInput('')
+      onPaired?.(res)
+    }
+  }
+
+  return H(
+    'div',
+    { style: { display: 'flex', flexDirection: 'column', gap: compact ? '10px' : '12px' } },
+    // Option 1: Generate & copy invite
+    H(
+      'div',
+      { className: 'sm-pair-step' },
+      H(
+        'div',
+        { className: 'sm-pair-step-head' },
+        H('span', null, t('inviteStepTitle')),
+        H(
+          'button',
+          {
+            type: 'button',
+            className: 'sm-btn sm-btn-sm',
+            disabled: busy,
+            onClick: () => void controller.generatePairCode(),
+          },
+          hasInvite && !isExpired ? t('regenerateCodeBtn') : t('generateCodeBtn'),
+        ),
+      ),
+      hasInvite
+        ? H(
+            'div',
+            { className: 'sm-invite-box' },
+            H(
+              'div',
+              { className: 'sm-invite-expiry' },
+              isExpired
+                ? H('span', { style: { color: '#dc2626', fontWeight: 600 } }, t('inviteExpired'))
+                : `${t('inviteExpiresIn')}: ${formatCountdown(remainingSec)} · ${t('waitingPeerJoin')}`,
+            ),
+            !isExpired
+              ? H(
+                  React.Fragment || 'div',
+                  null,
+                  H(
+                    'div',
+                    { className: 'sm-invite-item', style: compact ? { flexWrap: 'wrap', gap: '6px' } : undefined },
+                    H('span', { className: 'sm-invite-label', style: compact ? { minWidth: 'auto' } : undefined }, t('shortCodeLabel')),
+                    H('input', {
+                      ref: shortInputRef,
+                      type: 'text',
+                      readOnly: true,
+                      className: 'sm-invite-code',
+                      value: activeInvite.shortCode || '',
+                      title: activeInvite.shortCode || '',
+                      'aria-label': t('shortCodeLabel'),
+                      onFocus: selectInputAll,
+                      onClick: selectInputAll,
+                    }),
+                    H(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'sm-btn sm-btn-sm',
+                        onClick: () => void handleCopy('short', activeInvite.shortCode, shortInputRef),
+                      },
+                      copiedField === 'short' ? t('copiedBtn') : t('copyBtn'),
+                    ),
+                  ),
+                  H(
+                    'div',
+                    { className: 'sm-invite-item', style: compact ? { flexWrap: 'wrap', gap: '6px' } : undefined },
+                    H('span', { className: 'sm-invite-label', style: compact ? { minWidth: 'auto' } : undefined }, t('fullUriLabel')),
+                    H('input', {
+                      ref: uriInputRef,
+                      type: 'text',
+                      readOnly: true,
+                      className: 'sm-invite-code',
+                      value: activeInvite.inviteUri || '',
+                      title: activeInvite.inviteUri || '',
+                      'aria-label': t('fullUriLabel'),
+                      onFocus: selectInputAll,
+                      onClick: selectInputAll,
+                    }),
+                    H(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'sm-btn sm-btn-sm',
+                        onClick: () => void handleCopy('uri', activeInvite.inviteUri, uriInputRef),
+                      },
+                      copiedField === 'uri' ? t('copiedBtn') : t('copyBtn'),
+                    ),
+                  ),
+                )
+              : null,
+          )
+        : null,
+    ),
+
+    // Option 2: Paste peer code / URL
+    H(
+      'div',
+      { className: 'sm-pair-step' },
+      H('div', { className: 'sm-pair-step-head' }, H('span', null, t('joinStepTitle'))),
+      H(
+        'div',
+        { className: 'sm-row', style: compact ? { flexWrap: 'wrap' } : undefined },
+        H('input', {
+          type: 'text',
+          className: 'sm-input',
+          value: pairInput,
+          placeholder: t('pairInputPlaceholder'),
+          onChange: (e) => setPairInput(e.target?.value || ''),
+          onKeyDown: (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault?.()
+              void handlePairSubmit()
+            }
+          },
+        }),
+        H(
+          'button',
+          {
+            type: 'button',
+            className: 'sm-btn sm-btn-primary',
+            disabled: busy || !pairInput.trim(),
+            onClick: handlePairSubmit,
+          },
+          busy ? t('pairingBtn') : t('pairSubmitBtn'),
+        ),
+      ),
+    ),
+  )
+}
+
 export function renderRichMessageText(H, rawText) {
   const text = String(rawText ?? '')
   if (!text) return ''
@@ -84,7 +389,7 @@ export function detectComposerTrigger(text) {
 }
 
 /**
- * Left Sidebar Main Page: Minimalist IM Chat + LLM-Moderated Groups + Context Thread Isolation.
+ * Left Sidebar Main Page: Minimalist IM Chat + Quick Pair + LLM-Moderated Groups + Context Thread Isolation.
  */
 export function createMeshChatPage({
   React,
@@ -98,6 +403,9 @@ export function createMeshChatPage({
   return function SandboxMeshChatPage() {
     const [, setTick] = useState(0)
     const [showNewGroup, setShowNewGroup] = useState(false)
+    const [showPairDrawer, setShowPairDrawer] = useState(false)
+    const [showGroupManage, setShowGroupManage] = useState(false)
+    const [confirmAction, setConfirmAction] = useState(null) // { type: 'unpair'|'leave-group'|'kick', slug?, roomId? }
     const [roomFilter, setRoomFilter] = useState('')
     const [groupName, setGroupName] = useState('')
     const [checkedPeers, setCheckedPeers] = useState({})
@@ -109,6 +417,7 @@ export function createMeshChatPage({
     const [menuIndex, setMenuIndex] = useState(0)
     const popoverRef = useRef ? useRef(null) : { current: null }
     const messagesRef = useRef ? useRef(null) : { current: null }
+    const composerRef = useRef ? useRef(null) : { current: null }
     const nearBottomRef = useRef ? useRef(true) : { current: true }
     const prevRoomIdRef = useRef ? useRef('') : { current: '' }
 
@@ -135,8 +444,9 @@ export function createMeshChatPage({
 
     const t = createTranslator(typeof getLocale === 'function' ? getLocale() : 'en')
     const snap = controller.getSnapshot()
-    const { state, selectedRoomId, workspaceFiles, busy, errorText } = snap
+    const { state, selectedRoomId, workspaceFiles, busy, errorText, statusKey } = snap
     const self = state.self || {}
+    const activeInvite = state.activeInvite
     const peers = state.peers || []
     const rooms = state.rooms || []
     const activeStatusesMap = state.activeStatuses && typeof state.activeStatuses === 'object'
@@ -179,6 +489,8 @@ export function createMeshChatPage({
       if (roomChanged) {
         prevRoomIdRef.current = activeRoomId
         nearBottomRef.current = true
+        setConfirmAction(null)
+        setShowGroupManage(false)
       }
       if ((roomChanged || nearBottomRef.current) && typeof el.scrollHeight === 'number') {
         el.scrollTop = el.scrollHeight
@@ -191,14 +503,17 @@ export function createMeshChatPage({
         }
       }
     }, [activeRoomId, activeMessages.length, lastMsgId, activeStatusesList.length])
+
     const activeModeratorSlug = activeRoom?.type === 'group'
       ? (activeRoom.moderatorSlug || activeRoom.createdBy || self.slug)
       : ''
     const canRotateTopic = canStartNewTopic(activeRoom, activeMessages)
+    const isRoomUnpaired = Boolean(activeRoom?.unpaired)
+    const isGroupCreator = Boolean(activeRoom?.type === 'group' && (!activeRoom.createdBy || activeRoom.createdBy === self.slug))
 
     // Build `@` mention candidates
     const mentionCandidates = []
-    if (activeRoom) {
+    if (activeRoom && !isRoomUnpaired) {
       if (activeRoom.type === 'group' && activeModeratorSlug) {
         mentionCandidates.push({
           token: '@moderator',
@@ -289,6 +604,7 @@ export function createMeshChatPage({
       }
       setActiveTrigger(null)
       setMenuIndex(0)
+      composerRef?.current?.focus?.()
     }
 
     const togglePeerCheck = (slug) => {
@@ -297,6 +613,7 @@ export function createMeshChatPage({
 
     const selectedGroupPeerSlugs = Object.keys(checkedPeers).filter((k) => checkedPeers[k])
     const moderatorCandidateSlugs = [self.slug, ...selectedGroupPeerSlugs].filter(Boolean)
+    const allPeersChecked = peers.length > 0 && peers.every((p) => checkedPeers[p.slug])
 
     const handleCreateGroup = async () => {
       const name = groupName.trim()
@@ -318,7 +635,7 @@ export function createMeshChatPage({
     }
 
     const handleSend = async () => {
-      if (!activeRoom) return
+      if (!activeRoom || isRoomUnpaired) return
       if (!draftText.trim() && attachedFiles.length === 0) return
       nearBottomRef.current = true
       const res = await controller.sendMessage({
@@ -333,14 +650,24 @@ export function createMeshChatPage({
       }
     }
 
-    const uninvitedPeers = activeRoom && activeRoom.type === 'group'
+    const uninvitedPeers = activeRoom && activeRoom.type === 'group' && !isRoomUnpaired
       ? peers.filter((p) => !(activeRoom.members || []).some((m) => m.slug === p.slug))
       : []
+
+    const activePairPeer = activeRoom?.type === 'pair'
+      ? peers.find((p) => p.slug === activeRoom.peerSlug) || null
+      : null
+
+    const ownedGroupsWithTarget = (targetSlug) =>
+      rooms.filter(
+        (r) => r.type === 'group' && !r.unpaired && r.createdBy === self.slug
+          && (r.members || []).some((m) => m.slug === targetSlug),
+      )
 
     return H(
       'div',
       { className: 'sm-chat-shell' },
-      // Left Column: Room List
+      // Left Column: Room List + Quick Pair / New Group Drawers
       H(
         'aside',
         { className: 'sm-conv-sidebar' },
@@ -357,13 +684,32 @@ export function createMeshChatPage({
               t('chatHeaderTitle'),
             ),
             H(
-              'button',
-              {
-                type: 'button',
-                className: 'sm-btn sm-btn-primary',
-                onClick: () => setShowNewGroup((v) => !v),
-              },
-              showNewGroup ? t('cancelBtn') : t('newGroupBtn'),
+              'div',
+              { className: 'sm-row', style: { gap: '5px' } },
+              H(
+                'button',
+                {
+                  type: 'button',
+                  className: `sm-btn sm-btn-sm${showPairDrawer ? ' sm-btn-primary' : ''}`,
+                  onClick: () => {
+                    setShowPairDrawer((v) => !v)
+                    setShowNewGroup(false)
+                  },
+                },
+                showPairDrawer ? t('cancelBtn') : t('newPairBtn'),
+              ),
+              H(
+                'button',
+                {
+                  type: 'button',
+                  className: 'sm-btn sm-btn-sm sm-btn-primary',
+                  onClick: () => {
+                    setShowNewGroup((v) => !v)
+                    setShowPairDrawer(false)
+                  },
+                },
+                showNewGroup ? t('cancelBtn') : t('newGroupBtn'),
+              ),
             ),
           ),
           H('input', {
@@ -373,11 +719,49 @@ export function createMeshChatPage({
             placeholder: t('searchRoomsPlaceholder'),
             onChange: (e) => setRoomFilter(e.target?.value || ''),
           }),
+          showPairDrawer
+            ? H(
+                'div',
+                { className: 'sm-group-drawer' },
+                H(PairingSection, {
+                  React,
+                  controller,
+                  t,
+                  activeInvite,
+                  busy,
+                  compact: true,
+                  onPaired: () => setShowPairDrawer(false),
+                }),
+              )
+            : null,
           showNewGroup
             ? H(
                 'div',
                 { className: 'sm-group-drawer' },
-                H('strong', { style: { fontSize: '12px' } }, t('groupSectionTitle')),
+                H(
+                  'div',
+                  { className: 'sm-row', style: { justifyContent: 'space-between' } },
+                  H('strong', { style: { fontSize: '12px' } }, t('groupSectionTitle')),
+                  peers.length > 1
+                    ? H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn-ghost',
+                          onClick: () => {
+                            if (allPeersChecked) {
+                              setCheckedPeers({})
+                            } else {
+                              const all = {}
+                              for (const p of peers) all[p.slug] = true
+                              setCheckedPeers(all)
+                            }
+                          },
+                        },
+                        allPeersChecked ? t('clearAllBtn') : t('selectAllBtn'),
+                      )
+                    : null,
+                ),
                 H('input', {
                   type: 'text',
                   className: 'sm-input',
@@ -481,10 +865,14 @@ export function createMeshChatPage({
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
+                            opacity: room.unpaired ? 0.65 : 1,
                           },
                         },
                         room.name,
                       ),
+                      room.unpaired
+                        ? H('span', { className: 'sm-badge sm-badge-warn' }, t('unpairedRoomBadge'))
+                        : null,
                     ),
                     H(
                       'span',
@@ -508,16 +896,34 @@ export function createMeshChatPage({
         ),
       ),
 
-      // Right Column: Streamlined Chat View + Unified @ / # Composer
+      // Right Column: Streamlined Chat View or Onboarding Quick-Pair
       H(
         'section',
         { className: 'sm-chat-main' },
-        errorText ? H('div', { className: 'sm-alert', role: 'alert' }, errorText) : null,
+        errorText ? H('div', { className: 'sm-alert', role: 'alert', style: { margin: '10px 16px 0' } }, errorText) : null,
+        statusKey ? H('div', { className: 'sm-toast', style: { margin: '10px 16px 0' } }, t(statusKey)) : null,
         !activeRoom
           ? H(
               'div',
-              { style: { margin: 'auto', padding: '48px 24px', textAlign: 'center', opacity: 0.7, fontSize: '13px' } },
-              t('emptyRoomPrompt'),
+              { style: { display: 'flex', flex: 1, padding: '24px', overflowY: 'auto' } },
+              H(
+                'div',
+                { className: 'sm-onboarding-card' },
+                H(
+                  'div',
+                  null,
+                  H('h3', { className: 'sm-title sm-row', style: { fontSize: '16px' } }, MeshNavIcon({ React, size: 18 }), t('quickStartTitle')),
+                  H('p', { className: 'sm-subtitle' }, t('quickStartDesc')),
+                ),
+                H(PairingSection, {
+                  React,
+                  controller,
+                  t,
+                  activeInvite,
+                  busy,
+                  compact: false,
+                }),
+              ),
             )
           : H(
               React.Fragment || 'div',
@@ -539,6 +945,11 @@ export function createMeshChatPage({
                       activeRoom.type === 'group' ? t('roomTypeGroup') : t('roomTypePair'),
                     ),
                     H('strong', { style: { fontSize: '14px' } }, activeRoom.name),
+                    isRoomUnpaired
+                      ? H('span', { className: 'sm-badge sm-badge-warn' }, t('unpairedRoomBadge'))
+                      : activePairPeer
+                        ? renderPeerStatusBadge(H, t, activePairPeer.status)
+                        : null,
                     activeRoom.type === 'group' && activeModeratorSlug
                       ? H(
                           'span',
@@ -561,10 +972,13 @@ export function createMeshChatPage({
                           type: 'button',
                           className: `sm-member-tag${isMod ? ' moderator' : ''}${isBusy ? ' busy' : ''}`,
                           title: m.description || `@${m.slug}`,
+                          disabled: isRoomUnpaired,
                           onClick: () => {
+                            if (isRoomUnpaired) return
                             const mention = `@${m.slug}`
                             const sep = draftText && !draftText.endsWith(' ') ? ' ' : ''
                             setDraftText(`${draftText}${sep}${mention} `)
+                            composerRef?.current?.focus?.()
                           },
                         },
                         isMod ? ModeratorCrownIcon({ React, size: 12 }) : AgentIcon({ React, size: 12 }),
@@ -577,7 +991,7 @@ export function createMeshChatPage({
                 H(
                   'div',
                   { className: 'sm-row', style: { flexWrap: 'wrap' } },
-                  activeRoom.type === 'group'
+                  activeRoom.type === 'group' && !isRoomUnpaired
                     ? H(
                         'select',
                         {
@@ -601,7 +1015,7 @@ export function createMeshChatPage({
                         ),
                       )
                     : null,
-                  activeRoom.type === 'group' && uninvitedPeers.length > 0
+                  activeRoom.type === 'group' && !isRoomUnpaired && uninvitedPeers.length > 0
                     ? H(
                         'div',
                         { className: 'sm-row' },
@@ -637,21 +1051,74 @@ export function createMeshChatPage({
                         ),
                       )
                     : null,
-                  H(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'sm-btn',
-                      disabled: busy || !canRotateTopic,
-                      title: canRotateTopic ? '' : t('alreadyFreshTopicHint'),
-                      onClick: () => {
-                        if (!canRotateTopic) return
-                        nearBottomRef.current = true
-                        void controller.startNewTopic(activeRoom.id)
-                      },
-                    },
-                    t('newTopicBtn'),
-                  ),
+                  activeRoom.type === 'group' && !isRoomUnpaired
+                    ? H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: `sm-btn${showGroupManage ? ' sm-btn-primary' : ''}`,
+                          disabled: busy,
+                          onClick: () => {
+                            setShowGroupManage((v) => !v)
+                            setConfirmAction(null)
+                          },
+                        },
+                        t('manageGroupBtn'),
+                      )
+                    : null,
+                  activeRoom.type === 'pair' && !isRoomUnpaired && activeRoom.peerSlug
+                    ? H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn',
+                          disabled: busy,
+                          onClick: () => void controller.pingPeer(activeRoom.peerSlug),
+                        },
+                        t('pingBtn'),
+                      )
+                    : null,
+                  !isRoomUnpaired
+                    ? H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn',
+                          disabled: busy || !canRotateTopic,
+                          title: canRotateTopic ? '' : t('alreadyFreshTopicHint'),
+                          onClick: () => {
+                            if (!canRotateTopic) return
+                            nearBottomRef.current = true
+                            void controller.startNewTopic(activeRoom.id)
+                          },
+                        },
+                        t('newTopicBtn'),
+                      )
+                    : null,
+                  activeRoom.type === 'pair' && !isRoomUnpaired && activeRoom.peerSlug
+                    ? H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn',
+                          disabled: busy,
+                          onClick: () => setConfirmAction({ type: 'unpair', slug: activeRoom.peerSlug }),
+                        },
+                        t('unpairBtn'),
+                      )
+                    : null,
+                  isRoomUnpaired
+                    ? H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn sm-btn-danger',
+                          disabled: busy,
+                          onClick: () => void controller.removeRoom(activeRoom.id),
+                        },
+                        t('removeRoomBtn'),
+                      )
+                    : null,
                   H(
                     'button',
                     {
@@ -664,6 +1131,155 @@ export function createMeshChatPage({
                   ),
                 ),
               ),
+
+              // Inline two-step Unpair confirmation inside Chat header
+              confirmAction?.type === 'unpair' && confirmAction.slug === activeRoom.peerSlug
+                ? H(
+                    'div',
+                    { className: 'sm-confirm-bar', style: { margin: '8px 16px 0' } },
+                    H(
+                      'div',
+                      { style: { display: 'flex', flexDirection: 'column', gap: '2px' } },
+                      H('strong', null, `${t('unpairConfirmTitle')} @${confirmAction.slug}`),
+                      ownedGroupsWithTarget(confirmAction.slug).length > 0
+                        ? H('span', { style: { fontSize: '11.5px', opacity: 0.85 } }, t('unpairGroupWarn'))
+                        : null,
+                    ),
+                    H(
+                      'div',
+                      { className: 'sm-row', style: { gap: '6px' } },
+                      H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn sm-btn-sm sm-btn-danger',
+                          disabled: busy,
+                          onClick: async () => {
+                            const slugToRemove = confirmAction.slug
+                            setConfirmAction(null)
+                            await controller.removePeer(slugToRemove)
+                          },
+                        },
+                        t('confirmUnpairBtn'),
+                      ),
+                      H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn sm-btn-sm',
+                          disabled: busy,
+                          onClick: () => setConfirmAction(null),
+                        },
+                        t('cancelBtn'),
+                      ),
+                    ),
+                  )
+                : null,
+
+              // Group Member Management Strip
+              showGroupManage && activeRoom.type === 'group' && !isRoomUnpaired
+                ? H(
+                    'div',
+                    { className: 'sm-manage-strip' },
+                    H(
+                      'div',
+                      { className: 'sm-row', style: { flexWrap: 'wrap', justifyContent: 'space-between' } },
+                      H(
+                        'div',
+                        { className: 'sm-row', style: { flexWrap: 'wrap', gap: '6px' } },
+                        ...(activeRoom.members || []).map((m) =>
+                          H(
+                            'span',
+                            { key: m.slug, className: 'sm-peer-chip', style: { cursor: 'default' } },
+                            H('span', null, `@${m.slug}`),
+                            m.slug === activeRoom.createdBy
+                              ? H('span', { className: 'sm-badge' }, t('creatorBadge'))
+                              : null,
+                            isGroupCreator && m.slug !== self.slug && m.slug !== activeRoom.createdBy
+                              ? (confirmAction?.type === 'kick' && confirmAction.slug === m.slug
+                                ? H(
+                                    'span',
+                                    { className: 'sm-row', style: { gap: '4px' } },
+                                    H(
+                                      'button',
+                                      {
+                                        type: 'button',
+                                        className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                        disabled: busy,
+                                        onClick: async () => {
+                                          setConfirmAction(null)
+                                          await controller.removeFromGroup({ roomId: activeRoom.id, slug: m.slug })
+                                        },
+                                      },
+                                      t('removeMemberBtn'),
+                                    ),
+                                    H(
+                                      'button',
+                                      {
+                                        type: 'button',
+                                        className: 'sm-btn sm-btn-sm',
+                                        onClick: () => setConfirmAction(null),
+                                      },
+                                      t('cancelBtn'),
+                                    ),
+                                  )
+                                : H(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'sm-btn-ghost',
+                                      style: { padding: '0 4px', color: '#dc2626' },
+                                      disabled: busy,
+                                      onClick: () => setConfirmAction({ type: 'kick', slug: m.slug }),
+                                    },
+                                    '×',
+                                  ))
+                              : null,
+                          ),
+                        ),
+                      ),
+                      confirmAction?.type === 'leave-group'
+                        ? H(
+                            'div',
+                            { className: 'sm-row', style: { gap: '6px' } },
+                            H('span', null, t('confirmLeaveGroup')),
+                            H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                disabled: busy,
+                                onClick: async () => {
+                                  setConfirmAction(null)
+                                  setShowGroupManage(false)
+                                  await controller.leaveGroup(activeRoom.id)
+                                },
+                              },
+                              isGroupCreator ? t('dissolveGroupBtn') : t('leaveGroupBtn'),
+                            ),
+                            H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-btn sm-btn-sm',
+                                onClick: () => setConfirmAction(null),
+                              },
+                              t('cancelBtn'),
+                            ),
+                          )
+                        : H(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'sm-btn sm-btn-sm sm-btn-danger',
+                              disabled: busy,
+                              onClick: () => setConfirmAction({ type: 'leave-group', roomId: activeRoom.id }),
+                            },
+                            isGroupCreator ? t('dissolveGroupBtn') : t('leaveGroupBtn'),
+                          ),
+                    ),
+                  )
+                : null,
 
               // Minimalist Message Stream (with automatic thread boundary dividers & default scroll-to-bottom)
               H(
@@ -806,121 +1422,188 @@ export function createMeshChatPage({
                 }),
               ),
 
-              // Unified Single Composer (with @mention & #file Popover)
-              H(
-                'div',
-                { className: 'sm-composer-wrap' },
-                triggerInfo
-                  ? H(
+              // Unified Single Composer or Disconnected Banner
+              isRoomUnpaired
+                ? H(
+                    'div',
+                    { className: 'sm-composer-wrap' },
+                    H(
                       'div',
-                      { ref: popoverRef, className: 'sm-popover', role: 'listbox' },
+                      { className: 'sm-unpaired-banner' },
+                      H('span', null, t('unpairedRoomBanner')),
                       H(
                         'div',
-                        { className: 'sm-popover-header' },
-                        triggerInfo.trigger === '@' ? t('mentionMenuTitle') : t('fileMenuTitle'),
-                      ),
-                      popoverItems.length === 0
-                        ? H(
-                            'div',
-                            { style: { padding: '6px 10px', fontSize: '12px', opacity: 0.7 } },
-                            t('noMatchingFiles'),
-                          )
-                        : popoverItems.map((item, idx) =>
-                            H(
-                              'button',
-                              {
-                                key: item.token,
-                                type: 'button',
-                                className: `sm-popover-item${idx === menuIndex ? ' active' : ''}`,
-                                onClick: () => applyPopoverSelection(item),
-                              },
-                              H(
-                                'strong',
-                                { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } },
-                                renderPopoverIcon(item.iconKind),
-                                item.label,
-                              ),
-                              H('span', { style: { fontSize: '11px', opacity: 0.72 } }, item.desc),
-                            ),
-                          ),
-                    )
-                  : null,
-
-                attachedFiles.length > 0
-                  ? H(
-                      'div',
-                      { className: 'sm-attached-files' },
-                      ...attachedFiles.map((fileRef) =>
+                        { className: 'sm-row', style: { gap: '6px' } },
                         H(
-                          'span',
-                          { key: fileRef, className: 'sm-attached-pill' },
-                          FileDocIcon({ React, size: 12 }),
-                          `#${fileRef}`,
-                          H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'sm-btn-ghost',
-                              style: { padding: '0 4px' },
-                              onClick: () => setAttachedFiles((prev) => prev.filter((f) => f !== fileRef)),
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'sm-btn sm-btn-sm sm-btn-primary',
+                            onClick: () => {
+                              setShowPairDrawer(true)
+                              setShowNewGroup(false)
                             },
-                            '×',
-                          ),
+                          },
+                          t('repairBtn'),
+                        ),
+                        H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'sm-btn sm-btn-sm sm-btn-danger',
+                            disabled: busy,
+                            onClick: () => void controller.removeRoom(activeRoom.id),
+                          },
+                          t('removeRoomBtn'),
                         ),
                       ),
-                    )
-                  : null,
+                    ),
+                  )
+                : H(
+                    'div',
+                    { className: 'sm-composer-wrap' },
+                    triggerInfo
+                      ? H(
+                          'div',
+                          { ref: popoverRef, className: 'sm-popover', role: 'listbox' },
+                          H(
+                            'div',
+                            { className: 'sm-popover-header' },
+                            triggerInfo.trigger === '@' ? t('mentionMenuTitle') : t('fileMenuTitle'),
+                          ),
+                          popoverItems.length === 0
+                            ? H(
+                                'div',
+                                { style: { padding: '6px 10px', fontSize: '12px', opacity: 0.7 } },
+                                t('noMatchingFiles'),
+                              )
+                            : popoverItems.map((item, idx) =>
+                                H(
+                                  'button',
+                                  {
+                                    key: item.token,
+                                    type: 'button',
+                                    className: `sm-popover-item${idx === menuIndex ? ' active' : ''}`,
+                                    onClick: () => applyPopoverSelection(item),
+                                  },
+                                  H(
+                                    'strong',
+                                    { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } },
+                                    renderPopoverIcon(item.iconKind),
+                                    item.label,
+                                  ),
+                                  H('span', { style: { fontSize: '11px', opacity: 0.72 } }, item.desc),
+                                ),
+                              ),
+                        )
+                      : null,
 
-                H(
-                  'div',
-                  { className: 'sm-composer-box' },
-                  H('input', {
-                    type: 'text',
-                    className: 'sm-composer-input',
-                    value: draftText,
-                    placeholder: t('composerPlaceholder'),
-                    onChange: (e) => handleDraftChange(e.target?.value || ''),
-                    onKeyDown: (e) => {
-                      if (triggerInfo && popoverItems.length > 0) {
-                        if (e.key === 'ArrowDown') {
-                          e.preventDefault?.()
-                          setMenuIndex((i) => (i + 1) % popoverItems.length)
-                          return
-                        }
-                        if (e.key === 'ArrowUp') {
-                          e.preventDefault?.()
-                          setMenuIndex((i) => (i - 1 + popoverItems.length) % popoverItems.length)
-                          return
-                        }
-                        if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-                          e.preventDefault?.()
-                          applyPopoverSelection(popoverItems[menuIndex] || popoverItems[0])
-                          return
-                        }
-                        if (e.key === 'Escape') {
-                          e.preventDefault?.()
-                          setActiveTrigger(null)
-                          return
-                        }
-                      }
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault?.()
-                        void handleSend()
-                      }
-                    },
-                  }),
-                  H(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'sm-btn sm-btn-primary',
-                      disabled: busy || (!draftText.trim() && attachedFiles.length === 0),
-                      onClick: handleSend,
-                    },
-                    t('sendBtn'),
+                    attachedFiles.length > 0
+                      ? H(
+                          'div',
+                          { className: 'sm-attached-files' },
+                          ...attachedFiles.map((fileRef) =>
+                            H(
+                              'span',
+                              { key: fileRef, className: 'sm-attached-pill' },
+                              FileDocIcon({ React, size: 12 }),
+                              `#${fileRef}`,
+                              H(
+                                'button',
+                                {
+                                  type: 'button',
+                                  className: 'sm-btn-ghost',
+                                  style: { padding: '0 4px' },
+                                  onClick: () => setAttachedFiles((prev) => prev.filter((f) => f !== fileRef)),
+                                },
+                                '×',
+                              ),
+                            ),
+                          ),
+                        )
+                      : null,
+
+                    H(
+                      'div',
+                      { className: 'sm-composer-box' },
+                      H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: `sm-trigger-btn${triggerInfo?.trigger === '@' ? ' active' : ''}`,
+                          title: t('mentionTriggerTitle'),
+                          onClick: () => {
+                            setMenuIndex(0)
+                            setActiveTrigger((prev) => (prev?.trigger === '@' ? null : { trigger: '@', query: '', replaceStart: draftText.length }))
+                          },
+                        },
+                        '@',
+                      ),
+                      H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: `sm-trigger-btn${triggerInfo?.trigger === '#' ? ' active' : ''}`,
+                          title: t('fileTriggerTitle'),
+                          onClick: () => {
+                            setMenuIndex(0)
+                            setActiveTrigger((prev) => {
+                              if (prev?.trigger === '#') return null
+                              void controller.searchFiles('')
+                              return { trigger: '#', query: '', replaceStart: draftText.length }
+                            })
+                          },
+                        },
+                        '#',
+                      ),
+                      H('textarea', {
+                        ref: composerRef,
+                        rows: 1,
+                        className: 'sm-composer-input',
+                        value: draftText,
+                        placeholder: t('composerPlaceholder'),
+                        onChange: (e) => handleDraftChange(e.target?.value || ''),
+                        onKeyDown: (e) => {
+                          if (triggerInfo && popoverItems.length > 0) {
+                            if (e.key === 'ArrowDown') {
+                              e.preventDefault?.()
+                              setMenuIndex((i) => (i + 1) % popoverItems.length)
+                              return
+                            }
+                            if (e.key === 'ArrowUp') {
+                              e.preventDefault?.()
+                              setMenuIndex((i) => (i - 1 + popoverItems.length) % popoverItems.length)
+                              return
+                            }
+                            if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                              e.preventDefault?.()
+                              applyPopoverSelection(popoverItems[menuIndex] || popoverItems[0])
+                              return
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault?.()
+                              setActiveTrigger(null)
+                              return
+                            }
+                          }
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault?.()
+                            void handleSend()
+                          }
+                        },
+                      }),
+                      H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn sm-btn-primary',
+                          disabled: busy || (!draftText.trim() && attachedFiles.length === 0),
+                          onClick: handleSend,
+                        },
+                        t('sendBtn'),
+                      ),
+                    ),
                   ),
-                ),
-              ),
             ),
       ),
     )
@@ -937,16 +1620,19 @@ export function createMeshSettingsPage({
   subscribeLocale,
 }) {
   const H = React.createElement
-  const { useState, useEffect } = React
+  const { useState, useEffect, useRef } = React
 
   return function SandboxMeshSettingsPage() {
     const [, setTick] = useState(0)
-    const [pairInput, setPairInput] = useState('')
     const [copiedField, setCopiedField] = useState('')
+    const [confirmUnpairSlug, setConfirmUnpairSlug] = useState('')
+    const [pingingSlug, setPingingSlug] = useState('')
     const initialSelf = controller.getSnapshot().state?.self || {}
     const [roleInput, setRoleInput] = useState(initialSelf.role || '')
     const [descInput, setDescInput] = useState(initialSelf.description || '')
     const [profileDirty, setProfileDirty] = useState(false)
+    const endpointInputRef = useRef ? useRef(null) : { current: null }
+    const copyTimerRef = useRef ? useRef(null) : { current: null }
 
     useEffect(() => {
       const offCtrl = controller.subscribe(() => {
@@ -967,20 +1653,35 @@ export function createMeshSettingsPage({
       }
     }, [profileDirty])
 
+    useEffect(() => () => {
+      if (copyTimerRef?.current) {
+        clearTimeout(copyTimerRef.current)
+        copyTimerRef.current = null
+      }
+    }, [])
+
     const t = createTranslator(typeof getLocale === 'function' ? getLocale() : 'en')
     const snap = controller.getSnapshot()
     const { state, busy, errorText, statusKey } = snap
     const self = state.self || {}
     const activeInvite = state.activeInvite
     const peers = state.peers || []
+    const rooms = state.rooms || []
 
-    const copyText = (key, value) => {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        void navigator.clipboard.writeText(value)
-      }
-      setCopiedField(key)
-      if (typeof setTimeout === 'function') {
-        setTimeout(() => setCopiedField(''), 1800)
+    const copyText = async (key, value, inputRef) => {
+      const res = await copyTextToClipboard(value, { fallbackInput: inputRef?.current || null })
+      if (res.ok) {
+        setCopiedField(key)
+        if (copyTimerRef?.current) clearTimeout(copyTimerRef.current)
+        if (typeof setTimeout === 'function') {
+          copyTimerRef.current = setTimeout(() => {
+            setCopiedField('')
+            if (copyTimerRef) copyTimerRef.current = null
+          }, 1800)
+        }
+      } else {
+        setCopiedField('')
+        controller.setError?.(t('copyManualHint'))
       }
     }
 
@@ -994,12 +1695,20 @@ export function createMeshSettingsPage({
       }
     }
 
-    const handlePairSubmit = async () => {
-      const code = pairInput.trim()
-      if (!code) return
-      const res = await controller.claimPairCode(code)
-      if (res) setPairInput('')
+    const handlePing = async (slug) => {
+      setPingingSlug(slug)
+      try {
+        await controller.pingPeer(slug)
+      } finally {
+        setPingingSlug('')
+      }
     }
+
+    const ownedGroupsWithTarget = (targetSlug) =>
+      rooms.filter(
+        (r) => r.type === 'group' && !r.unpaired && r.createdBy === self.slug
+          && (r.members || []).some((m) => m.slug === targetSlug),
+      )
 
     return H(
       'div',
@@ -1056,21 +1765,6 @@ export function createMeshSettingsPage({
         H(
           'div',
           { className: 'sm-invite-item' },
-          H('span', { className: 'sm-invite-label' }, t('endpointLabel')),
-          H('code', { className: 'sm-invite-code', title: self.endpointUrl }, self.endpointUrl || ''),
-          H(
-            'button',
-            {
-              type: 'button',
-              className: 'sm-btn',
-              onClick: () => copyText('endpoint', self.endpointUrl || ''),
-            },
-            copiedField === 'endpoint' ? t('copiedBtn') : t('copyBtn'),
-          ),
-        ),
-        H(
-          'div',
-          { className: 'sm-invite-item' },
           H('span', { className: 'sm-invite-label' }, t('roleLabel')),
           H('input', {
             type: 'text',
@@ -1098,10 +1792,45 @@ export function createMeshSettingsPage({
             },
           }),
         ),
-        H('code', { className: 'sm-code-inline' }, t('cliHint')),
+        H('p', { className: 'sm-subtitle', style: { margin: 0 } }, t('cliHint')),
+        H(
+          'details',
+          { className: 'sm-advanced-details' },
+          H('summary', null, t('advancedInfoToggle')),
+          H(
+            'div',
+            { className: 'sm-advanced-body' },
+            H(
+              'div',
+              { className: 'sm-invite-item' },
+              H('span', { className: 'sm-invite-label' }, t('endpointLabel')),
+              H('input', {
+                ref: endpointInputRef,
+                type: 'text',
+                readOnly: true,
+                className: 'sm-invite-code',
+                value: self.endpointUrl || '',
+                title: self.endpointUrl || '',
+                'aria-label': t('endpointLabel'),
+                onFocus: selectInputAll,
+                onClick: selectInputAll,
+              }),
+              H(
+                'button',
+                {
+                  type: 'button',
+                  className: 'sm-btn sm-btn-sm',
+                  onClick: () => void copyText('endpoint', self.endpointUrl || '', endpointInputRef),
+                },
+                copiedField === 'endpoint' ? t('copiedBtn') : t('copyBtn'),
+              ),
+            ),
+            H('code', { className: 'sm-code-inline' }, 'mesh_list_peers | mesh_ask_peer | mesh_discuss_group | mesh_share_file'),
+          ),
+        ),
       ),
 
-      // 2. 1-on-1 Pairing Card
+      // 2. 1-on-1 Pairing Card (Shared streamlined component with live countdown & reliable copy)
       H(
         'div',
         { className: 'sm-card' },
@@ -1109,81 +1838,16 @@ export function createMeshSettingsPage({
           'div',
           { className: 'sm-card-title' },
           H('span', null, t('pairSectionTitle')),
-          H(
-            'button',
-            {
-              type: 'button',
-              className: 'sm-btn',
-              disabled: busy,
-              onClick: () => void controller.generatePairCode(),
-            },
-            activeInvite ? t('regenerateCodeBtn') : t('generateCodeBtn'),
-          ),
         ),
         H('p', { className: 'sm-subtitle', style: { marginTop: 0 } }, t('pairSectionDesc')),
-        activeInvite
-          ? H(
-              'div',
-              { className: 'sm-invite-box' },
-              H(
-                'div',
-                { className: 'sm-invite-item' },
-                H('span', { className: 'sm-invite-label' }, t('shortCodeLabel')),
-                H('code', { className: 'sm-invite-code', title: activeInvite.shortCode }, activeInvite.shortCode),
-                H(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'sm-btn',
-                    onClick: () => copyText('short', activeInvite.shortCode),
-                  },
-                  copiedField === 'short' ? t('copiedBtn') : t('copyBtn'),
-                ),
-              ),
-              H(
-                'div',
-                { className: 'sm-invite-item' },
-                H('span', { className: 'sm-invite-label' }, t('fullUriLabel')),
-                H('code', { className: 'sm-invite-code', title: activeInvite.inviteUri }, activeInvite.inviteUri),
-                H(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'sm-btn',
-                    onClick: () => copyText('uri', activeInvite.inviteUri),
-                  },
-                  copiedField === 'uri' ? t('copiedBtn') : t('copyBtn'),
-                ),
-              ),
-            )
-          : null,
-        H(
-          'div',
-          { className: 'sm-row' },
-          H('input', {
-            type: 'text',
-            className: 'sm-input',
-            value: pairInput,
-            placeholder: t('pairInputPlaceholder'),
-            onChange: (e) => setPairInput(e.target?.value || ''),
-            onKeyDown: (e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault?.()
-                void handlePairSubmit()
-              }
-            },
-          }),
-          H(
-            'button',
-            {
-              type: 'button',
-              className: 'sm-btn sm-btn-primary',
-              disabled: busy || !pairInput.trim(),
-              onClick: handlePairSubmit,
-            },
-            t('pairSubmitBtn'),
-          ),
-        ),
+        H(PairingSection, {
+          React,
+          controller,
+          t,
+          activeInvite,
+          busy,
+          compact: false,
+        }),
       ),
 
       // 3. Connected Remote Sandbox Agents Card
@@ -1199,48 +1863,107 @@ export function createMeshSettingsPage({
               ...peers.map((peer) =>
                 H(
                   'div',
-                  { key: peer.slug, className: 'sm-peer-row' },
+                  { key: peer.slug, style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
                   H(
                     'div',
-                    { style: { display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 } },
+                    { className: 'sm-peer-row' },
                     H(
                       'div',
-                      { className: 'sm-row', style: { flexWrap: 'wrap' } },
+                      { style: { display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 } },
                       H(
-                        'strong',
-                        { style: { fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '5px' } },
-                        AgentIcon({ React, size: 13 }),
-                        `${peer.ownerName} (@${peer.slug})`,
+                        'div',
+                        { className: 'sm-row', style: { flexWrap: 'wrap' } },
+                        H(
+                          'strong',
+                          { style: { fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '5px' } },
+                          AgentIcon({ React, size: 13 }),
+                          `${peer.ownerName} (@${peer.slug})`,
+                        ),
+                        peer.role
+                          ? H('span', { className: 'sm-badge' }, peer.role)
+                          : null,
+                        renderPeerStatusBadge(H, t, peer.status),
                       ),
-                      peer.role
-                        ? H('span', { className: 'sm-badge' }, peer.role)
-                        : null,
-                      H('span', { className: 'sm-badge' }, peer.status || 'online'),
+                      H(
+                        'div',
+                        { style: { fontSize: '12px', opacity: peer.description ? 0.88 : 0.55 } },
+                        peer.description || t('noSpecialtyYet'),
+                      ),
+                      H(
+                        'code',
+                        {
+                          className: 'sm-code-inline',
+                          style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                        },
+                        peer.endpointUrl || '',
+                      ),
                     ),
                     H(
                       'div',
-                      { style: { fontSize: '12px', opacity: peer.description ? 0.88 : 0.55 } },
-                      peer.description || t('noSpecialtyYet'),
-                    ),
-                    H(
-                      'code',
-                      {
-                        className: 'sm-code-inline',
-                        style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-                      },
-                      peer.endpointUrl || '',
+                      { className: 'sm-row', style: { gap: '6px' } },
+                      H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn sm-btn-sm',
+                          disabled: busy,
+                          onClick: () => void handlePing(peer.slug),
+                        },
+                        pingingSlug === peer.slug ? t('pingingBtn') : t('pingBtn'),
+                      ),
+                      H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn sm-btn-sm',
+                          disabled: busy,
+                          onClick: () => setConfirmUnpairSlug((prev) => (prev === peer.slug ? '' : peer.slug)),
+                        },
+                        t('unpairBtn'),
+                      ),
                     ),
                   ),
-                  H(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'sm-btn',
-                      disabled: busy,
-                      onClick: () => void controller.removePeer(peer.slug),
-                    },
-                    t('unpairBtn'),
-                  ),
+                  confirmUnpairSlug === peer.slug
+                    ? H(
+                        'div',
+                        { className: 'sm-confirm-bar' },
+                        H(
+                          'div',
+                          { style: { display: 'flex', flexDirection: 'column', gap: '2px' } },
+                          H('strong', null, `${t('unpairConfirmTitle')} @${peer.slug}`),
+                          ownedGroupsWithTarget(peer.slug).length > 0
+                            ? H('span', { style: { fontSize: '11.5px', opacity: 0.85 } }, t('unpairGroupWarn'))
+                            : null,
+                        ),
+                        H(
+                          'div',
+                          { className: 'sm-row', style: { gap: '6px' } },
+                          H(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'sm-btn sm-btn-sm sm-btn-danger',
+                              disabled: busy,
+                              onClick: async () => {
+                                setConfirmUnpairSlug('')
+                                await controller.removePeer(peer.slug)
+                              },
+                            },
+                            t('confirmUnpairBtn'),
+                          ),
+                          H(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'sm-btn sm-btn-sm',
+                              disabled: busy,
+                              onClick: () => setConfirmUnpairSlug(''),
+                            },
+                            t('cancelBtn'),
+                          ),
+                        ),
+                      )
+                    : null,
                 ),
               ),
             ),

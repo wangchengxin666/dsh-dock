@@ -1,3 +1,5 @@
+import { resolveBrowserOriginUrl } from '../shared/protocol.js'
+
 const STATE_API = 'api/sandbox-mesh.state'
 const PROFILE_API = 'api/sandbox-mesh.profile'
 const FILES_API = 'api/sandbox-mesh.files'
@@ -6,11 +8,15 @@ const PAIR_CLAIM_API = 'api/sandbox-mesh.pair-claim'
 const GROUP_CREATE_API = 'api/sandbox-mesh.group-create'
 const GROUP_INVITE_API = 'api/sandbox-mesh.group-invite'
 const GROUP_MODERATE_API = 'api/sandbox-mesh.group-moderate'
+const GROUP_REMOVE_API = 'api/sandbox-mesh.group-remove'
+const GROUP_LEAVE_API = 'api/sandbox-mesh.group-leave'
+const ROOM_REMOVE_API = 'api/sandbox-mesh.room-remove'
 const NEW_TOPIC_API = 'api/sandbox-mesh.new-topic'
 const SEND_API = 'api/sandbox-mesh.send'
 const SEND_FILE_API = 'api/sandbox-mesh.send-file'
 const MARK_READ_API = 'api/sandbox-mesh.mark-read'
 const PEER_REMOVE_API = 'api/sandbox-mesh.peer-remove'
+const PEER_PING_API = 'api/sandbox-mesh.peer-ping'
 
 function defaultSnapshotState() {
   return {
@@ -43,8 +49,11 @@ export function createMeshController({
   let errorText = ''
   let statusKey = ''
   let statusSeq = 0
+  let lastRev = ''
+  let syncInFlight = null
   let disposed = false
   let followSyncTimer = null
+  let statusClearTimer = null
   const listeners = new Set()
 
   function notify() {
@@ -54,11 +63,50 @@ export function createMeshController({
     }
   }
 
+  function setTransientStatus(key, durationMs = 3600) {
+    if (statusClearTimer) {
+      clearTimeout(statusClearTimer)
+      statusClearTimer = null
+    }
+    statusKey = key
+    statusSeq += 1
+    if (key && durationMs > 0 && typeof setTimeout === 'function') {
+      const seqSnapshot = statusSeq
+      statusClearTimer = setTimeout(() => {
+        statusClearTimer = null
+        if (!disposed && statusSeq === seqSnapshot && statusKey) {
+          statusKey = ''
+          notify()
+        }
+      }, durationMs)
+      if (typeof statusClearTimer?.unref === 'function') statusClearTimer.unref()
+    }
+  }
+
   function applyServerState(nextState) {
     if (!nextState || typeof nextState !== 'object') return
+    const browserOrigin = typeof window !== 'undefined' ? (window.location?.origin || '') : ''
+    const rawSelf = nextState.self && typeof nextState.self === 'object' ? nextState.self : {}
+    const normalizedSelf = {
+      ...defaultSnapshotState().self,
+      ...rawSelf,
+      endpointUrl: resolveBrowserOriginUrl(rawSelf.endpointUrl || '', browserOrigin),
+    }
+    const rawInvite = nextState.activeInvite && typeof nextState.activeInvite === 'object'
+      ? {
+          ...nextState.activeInvite,
+          inviteUri: resolveBrowserOriginUrl(nextState.activeInvite.inviteUri || '', browserOrigin),
+        }
+      : null
+
+    const prevPeersCount = Array.isArray(state.peers) ? state.peers.length : 0
+    const prevHadInvite = Boolean(state.activeInvite)
+
     state = {
       ...defaultSnapshotState(),
       ...nextState,
+      self: normalizedSelf,
+      activeInvite: rawInvite,
       peers: Array.isArray(nextState.peers) ? nextState.peers : [],
       rooms: Array.isArray(nextState.rooms) ? nextState.rooms : [],
       messages: nextState.messages && typeof nextState.messages === 'object' ? nextState.messages : {},
@@ -68,6 +116,10 @@ export function createMeshController({
       selectedRoomId = state.rooms[0].id
     } else if (selectedRoomId && !state.rooms.some((r) => r.id === selectedRoomId)) {
       selectedRoomId = state.rooms[0]?.id || ''
+    }
+
+    if (prevHadInvite && !rawInvite && state.peers.length > prevPeersCount) {
+      setTransientStatus('statusPaired')
     }
   }
 
@@ -91,19 +143,36 @@ export function createMeshController({
   }
 
   async function syncFromHost() {
-    try {
-      const data = await requestJson(STATE_API, { method: 'GET' })
-      if (data.state) {
-        applyServerState(data.state)
+    if (syncInFlight) return syncInFlight
+    syncInFlight = (async () => {
+      try {
+        const url = lastRev ? `${STATE_API}?rev=${encodeURIComponent(lastRev)}` : STATE_API
+        const data = await requestJson(url, { method: 'GET' })
+        if (data.rev !== undefined && data.rev !== null) {
+          lastRev = String(data.rev)
+        }
+        if (data.unchanged === true) {
+          if (errorText) {
+            errorText = ''
+            notify()
+          }
+          return state
+        }
+        if (data.state) {
+          applyServerState(data.state)
+        }
+        errorText = ''
+        notify()
+        return data.state
+      } catch (err) {
+        errorText = err?.message || String(err)
+        notify()
+        return null
+      } finally {
+        syncInFlight = null
       }
-      errorText = ''
-      notify()
-      return data.state
-    } catch (err) {
-      errorText = err?.message || String(err)
-      notify()
-      return null
-    }
+    })()
+    return syncInFlight
   }
 
   async function searchFiles(query = '') {
@@ -129,8 +198,7 @@ export function createMeshController({
       })
       if (data.state) applyServerState(data.state)
       busy = false
-      statusKey = 'statusProfileSaved'
-      statusSeq += 1
+      setTransientStatus('statusProfileSaved')
       notify()
       return data
     } catch (err) {
@@ -150,7 +218,7 @@ export function createMeshController({
       if (data.state) applyServerState(data.state)
       busy = false
       notify()
-      return data.invite
+      return state.activeInvite || data.invite
     } catch (err) {
       busy = false
       errorText = err?.message || String(err)
@@ -171,8 +239,7 @@ export function createMeshController({
       if (data.state) applyServerState(data.state)
       if (data.room?.id) selectedRoomId = data.room.id
       busy = false
-      statusKey = 'statusPaired'
-      statusSeq += 1
+      setTransientStatus('statusPaired')
       notify()
       return data
     } catch (err) {
@@ -195,8 +262,7 @@ export function createMeshController({
       if (data.state) applyServerState(data.state)
       if (data.room?.id) selectedRoomId = data.room.id
       busy = false
-      statusKey = 'statusGroupCreated'
-      statusSeq += 1
+      setTransientStatus('statusGroupCreated')
       notify()
       return data
     } catch (err) {
@@ -252,6 +318,74 @@ export function createMeshController({
     }
   }
 
+  async function removeFromGroup({ roomId, slug }) {
+    busy = true
+    errorText = ''
+    notify()
+    try {
+      const data = await requestJson(GROUP_REMOVE_API, {
+        method: 'POST',
+        body: JSON.stringify({
+          roomId: roomId || selectedRoomId,
+          slug,
+        }),
+      })
+      if (data.state) applyServerState(data.state)
+      busy = false
+      notify()
+      return data
+    } catch (err) {
+      busy = false
+      errorText = err?.message || String(err)
+      notify()
+      return null
+    }
+  }
+
+  async function leaveGroup(roomId) {
+    busy = true
+    errorText = ''
+    notify()
+    try {
+      const data = await requestJson(GROUP_LEAVE_API, {
+        method: 'POST',
+        body: JSON.stringify({ roomId: roomId || selectedRoomId }),
+      })
+      if (data.state) applyServerState(data.state)
+      busy = false
+      setTransientStatus('statusGroupLeft')
+      notify()
+      return data
+    } catch (err) {
+      busy = false
+      errorText = err?.message || String(err)
+      notify()
+      return null
+    }
+  }
+
+  async function removeRoom(roomId) {
+    busy = true
+    errorText = ''
+    notify()
+    try {
+      const data = await requestJson(ROOM_REMOVE_API, {
+        method: 'POST',
+        body: JSON.stringify({ roomId: roomId || selectedRoomId }),
+      })
+      if (data.state) applyServerState(data.state)
+      busy = false
+      setTransientStatus('statusRoomRemoved')
+      notify()
+      return data
+    } catch (err) {
+      busy = false
+      errorText = err?.message || String(err)
+      notify()
+      return null
+    }
+  }
+
   async function startNewTopic(roomId) {
     busy = true
     errorText = ''
@@ -264,8 +398,7 @@ export function createMeshController({
       if (data.state) applyServerState(data.state)
       busy = false
       if (!data.alreadyFresh) {
-        statusKey = 'statusNewTopic'
-        statusSeq += 1
+        setTransientStatus('statusNewTopic')
       }
       notify()
       return data
@@ -294,8 +427,7 @@ export function createMeshController({
       })
       if (data.state) applyServerState(data.state)
       busy = false
-      statusKey = 'statusSent'
-      statusSeq += 1
+      setTransientStatus('statusSent', 2000)
       notify()
       if (followSyncTimer) clearTimeout(followSyncTimer)
       if (typeof setTimeout === 'function') {
@@ -309,6 +441,7 @@ export function createMeshController({
     } catch (err) {
       busy = false
       errorText = err?.message || String(err)
+      void syncFromHost()
       notify()
       return null
     }
@@ -330,8 +463,7 @@ export function createMeshController({
       })
       if (data.state) applyServerState(data.state)
       busy = false
-      statusKey = 'statusFileSent'
-      statusSeq += 1
+      setTransientStatus('statusFileSent', 2500)
       notify()
       return data
     } catch (err) {
@@ -368,6 +500,7 @@ export function createMeshController({
       })
       if (data.state) applyServerState(data.state)
       busy = false
+      setTransientStatus(data.remoteNotified ? 'statusUnpaired' : 'statusUnpairedOffline', 4500)
       notify()
       return data
     } catch (err) {
@@ -376,6 +509,45 @@ export function createMeshController({
       notify()
       return null
     }
+  }
+
+  async function pingPeer(slug) {
+    busy = true
+    errorText = ''
+    notify()
+    try {
+      const data = await requestJson(PEER_PING_API, {
+        method: 'POST',
+        body: JSON.stringify({ slug }),
+      })
+      if (data.state) applyServerState(data.state)
+      busy = false
+      if (data.reachable) {
+        setTransientStatus('statusPingOnline')
+      } else if (data.status === 'unpaired-by-peer') {
+        setTransientStatus('statusPingUnpaired', 5000)
+      } else {
+        setTransientStatus('statusPingOffline', 4500)
+      }
+      notify()
+      return data
+    } catch (err) {
+      busy = false
+      errorText = err?.message || String(err)
+      notify()
+      return null
+    }
+  }
+
+  function clearNotice() {
+    errorText = ''
+    setTransientStatus('', 0)
+    notify()
+  }
+
+  function setError(msg) {
+    errorText = String(msg || '')
+    notify()
   }
 
   return {
@@ -402,16 +574,26 @@ export function createMeshController({
     createGroup,
     inviteToGroup,
     updateGroupModeration,
+    removeFromGroup,
+    leaveGroup,
+    removeRoom,
     startNewTopic,
     sendMessage,
     sendFile,
     selectRoom,
     removePeer,
+    pingPeer,
+    clearNotice,
+    setError,
     dispose() {
       disposed = true
       if (followSyncTimer) {
         clearTimeout(followSyncTimer)
         followSyncTimer = null
+      }
+      if (statusClearTimer) {
+        clearTimeout(statusClearTimer)
+        statusClearTimer = null
       }
       listeners.clear()
     },

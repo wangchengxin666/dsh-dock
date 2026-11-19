@@ -52,17 +52,24 @@ try {
       hostPlugin.GROUP_CREATE_ENDPOINT,
       hostPlugin.GROUP_INVITE_ENDPOINT,
       hostPlugin.GROUP_MODERATE_ENDPOINT,
+      hostPlugin.GROUP_REMOVE_ENDPOINT,
+      hostPlugin.GROUP_LEAVE_ENDPOINT,
       hostPlugin.NEW_TOPIC_ENDPOINT,
       hostPlugin.SEND_ENDPOINT,
       hostPlugin.SEND_FILE_ENDPOINT,
       hostPlugin.MARK_READ_ENDPOINT,
       hostPlugin.PEER_REMOVE_ENDPOINT,
+      hostPlugin.PEER_PING_ENDPOINT,
+      hostPlugin.ROOM_REMOVE_ENDPOINT,
     ]) {
       assert.ok(routes.has(ep), `Expected route ${ep} to be registered`)
     }
 
-    // Verify Agent CLI & Skill were provisioned automatically
-    assert.ok(existsSync(join(homeDir, '.local', 'bin', 'sandbox-peer')))
+    // Verify Agent CLI & Skill were provisioned automatically (including unpair, ping, group-leave)
+    const cliText = readFileSync(join(homeDir, '.local', 'bin', 'sandbox-peer'), 'utf8')
+    assert.ok(cliText.includes('unpair <slug>'))
+    assert.ok(cliText.includes('ping <slug>'))
+    assert.ok(cliText.includes('group-leave <roomId>'))
     assert.ok(existsSync(join(dshHome, 'skills', 'sandbox-peer', 'SKILL.md')))
 
     // Verify workspace file search endpoint for `#` autocomplete
@@ -790,6 +797,36 @@ try {
       await aliceModCtx.fiber.dispose()
       await bobPeerCtx.fiber.dispose()
       await charliePeerCtx.fiber.dispose()
+    }
+
+    // 12. Peer Ping, Group Leave & Browser-Origin Loopback Upgrade
+    {
+      const pingOnline = await alice.pingPeer({ slug: 'bob' })
+      assert.equal(pingOnline.ok, true)
+      assert.equal(pingOnline.reachable, true)
+      assert.equal(pingOnline.status, 'online')
+
+      // Charlie leaves Core Platform Group -> Alice (creator) rotates groupSecret & removes Charlie
+      const coreGrp = alice.store.getSnapshot().rooms.find((r) => r.name === 'Core Platform Group')
+      assert.ok(coreGrp)
+      const oldSec = alice.store.getRoom(coreGrp.id).groupSecret
+      const leaveRes = await charlie.leaveGroup({ roomId: coreGrp.id })
+      assert.equal(leaveRes.ok, true)
+      assert.equal(charlie.store.getRoom(coreGrp.id), null)
+      assert.equal(alice.store.getRoom(coreGrp.id).members.some((m) => m.slug === 'charlie'), false)
+      assert.notEqual(alice.store.getRoom(coreGrp.id).groupSecret, oldSec)
+
+      // Loopback SANDBOX_PUBLIC_ORIGIN upgrades cleanly from forwarded Host/Origin header and persists across headerless updates
+      const { createMeshStore } = await import('../src/host/store.js')
+      const lanStore = createMeshStore({
+        filePath: join(tempDir, 'lan-store.json'),
+        config: { slug: 'lan1' },
+        env: { SANDBOX_PUBLIC_ORIGIN: 'http://localhost:9000' },
+      })
+      lanStore.updateSelf({ origin: 'http://192.168.1.50:9000' })
+      assert.equal(lanStore.getSelf().endpointUrl, 'http://192.168.1.50:9000/s/lan1/p/4090')
+      lanStore.updateSelf(null, 4090)
+      assert.equal(lanStore.getSelf().endpointUrl, 'http://192.168.1.50:9000/s/lan1/p/4090')
     }
   }
 

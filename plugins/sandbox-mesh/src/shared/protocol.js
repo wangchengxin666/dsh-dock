@@ -49,9 +49,25 @@ export function formatPairInvite({ slug, token, endpointUrl }) {
   }
 }
 
+export function resolveBrowserOriginUrl(rawUrl, browserOrigin = '') {
+  const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
+  const origin = typeof browserOrigin === 'string' ? browserOrigin.trim().replace(/\/+$/, '') : ''
+  if (!url || !origin || !/^https?:\/\//i.test(origin)) return url
+  try {
+    const parsed = new URL(url)
+    const browserParsed = new URL(origin)
+    const isUrlLoopback = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(parsed.hostname)
+    const isBrowserLoopback = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(browserParsed.hostname)
+    if (isUrlLoopback && !isBrowserLoopback) {
+      return `${browserParsed.origin}${parsed.pathname}${parsed.search}${parsed.hash}`
+    }
+  } catch {}
+  return url
+}
+
 export function parsePairInvite(rawInput, defaultOrigin = '', meshPort = DEFAULT_MESH_PORT) {
   if (typeof rawInput !== 'string') return null
-  const trimmed = rawInput.trim()
+  const trimmed = rawInput.trim().replace(/^[`"'<\s]+|[`"'>\s]+$/g, '')
   if (!trimmed) return null
 
   let endpointPart = ''
@@ -62,7 +78,7 @@ export function parsePairInvite(rawInput, defaultOrigin = '', meshPort = DEFAULT
     if (hashIdx >= 0) {
       endpointPart = trimmed.slice(0, hashIdx).trim()
       const hash = trimmed.slice(hashIdx + 1).trim()
-      codePart = hash.startsWith('pair=') ? hash.slice(5).trim() : hash
+      codePart = /^pair=/i.test(hash) ? hash.slice(5).trim() : hash
     } else {
       try {
         const parsed = new URL(trimmed)
@@ -76,6 +92,8 @@ export function parsePairInvite(rawInput, defaultOrigin = '', meshPort = DEFAULT
         return null
       }
     }
+  } else {
+    codePart = codePart.replace(/^#?pair=/i, '').trim()
   }
 
   const sepMatch = codePart.match(/^([a-zA-Z0-9_-]{1,64})[.:]([A-Za-z0-9_-]{12,128})$/)

@@ -4,8 +4,13 @@ import { join } from 'node:path'
 import vm from 'node:vm'
 import { PLUGIN_DIR, importExternal } from './deps.mjs'
 import { createMeshController } from '../src/client/mesh-controller.js'
-import { createMeshChatPage, createMeshSettingsPage, detectComposerTrigger } from '../src/client/mesh-page.js'
-import { canStartNewTopic } from '../src/shared/protocol.js'
+import {
+  copyTextToClipboard,
+  createMeshChatPage,
+  createMeshSettingsPage,
+  detectComposerTrigger,
+} from '../src/client/mesh-page.js'
+import { canStartNewTopic, parsePairInvite, resolveBrowserOriginUrl } from '../src/shared/protocol.js'
 import { MESH_CSS } from '../src/client/styles.js'
 
 const { Context, Service } = await importExternal('@deepseek-ai/cordis')
@@ -251,10 +256,201 @@ const ReactDOMServer = await importExternal('react-dom/server')
   assert.ok(settingsHtml.includes('https://dock.example.com/s/alice/p/4090'))
   assert.ok(settingsHtml.includes('alice.k8F9mP2xQ7vL4nR1wZ3y'))
   assert.ok(settingsHtml.includes('同网关短码'))
+  assert.ok(settingsHtml.includes('测试连接'))
+  assert.match(settingsHtml, /<input[^>]*class="sm-invite-code"/i)
   assert.ok(MESH_CSS.includes('.sm-invite-label'))
   assert.ok(MESH_CSS.includes('white-space: nowrap;'))
 
+  // Empty-state onboarding in ChatPage renders direct Quick-Start Pairing UI
+  const emptyController = createMeshController({
+    fetchImpl: async () => new Response(JSON.stringify({
+      ok: true,
+      state: { ...mockServerState, peers: [], rooms: [], messages: {} },
+    }), { status: 200 }),
+  })
+  await emptyController.syncFromHost()
+  const EmptyChatPage = createMeshChatPage({
+    React,
+    controller: emptyController,
+    getLocale: () => 'zh-CN',
+    subscribeLocale: () => () => {},
+  })
+  const emptyChatHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(EmptyChatPage, {}))
+  assert.ok(emptyChatHtml.includes('开始沙箱互联'))
+  assert.ok(emptyChatHtml.includes('生成配对码'))
+  emptyController.dispose()
+
+  // Unpaired room renders disconnected notice & remove/repair actions instead of composer
+  const unpairedController = createMeshController({
+    fetchImpl: async () => new Response(JSON.stringify({
+      ok: true,
+      state: {
+        ...mockServerState,
+        peers: [],
+        rooms: [{ ...mockServerState.rooms[0], unpaired: true, unpairedBy: 'bob' }],
+      },
+    }), { status: 200 }),
+  })
+  await unpairedController.syncFromHost()
+  const UnpairedChatPage = createMeshChatPage({
+    React,
+    controller: unpairedController,
+    getLocale: () => 'zh-CN',
+    subscribeLocale: () => () => {},
+  })
+  const unpairedHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(UnpairedChatPage, {}))
+  assert.ok(unpairedHtml.includes('已解除配对'))
+  assert.ok(unpairedHtml.includes('移除会话'))
+  assert.ok(unpairedHtml.includes('重新配对'))
+  assert.ok(!unpairedHtml.includes('<textarea'))
+  unpairedController.dispose()
+
   controller.dispose()
+}
+
+// 1b. Clipboard copy fallback (HTTP non-secure context, rejected Clipboard API, manual fallback) & forgiving invite parsing
+{
+  const parsedQuoted = parsePairInvite('  `#pair=alice.k8F9mP2xQ7vL4nR1wZ3y`  ', 'https://dock.example.com')
+  assert.equal(parsedQuoted?.slug, 'alice')
+  assert.equal(parsedQuoted?.shortCode, 'alice.k8F9mP2xQ7vL4nR1wZ3y')
+
+  const parsedSlash = parsePairInvite('http://192.168.1.50:9000/s/bob/p/4090/#pair=bob.abcd1234efgh5678')
+  assert.equal(parsedSlash?.slug, 'bob')
+  assert.equal(parsedSlash?.endpointUrl, 'http://192.168.1.50:9000/s/bob/p/4090')
+
+  assert.equal(
+    resolveBrowserOriginUrl('http://localhost:9000/s/alice/p/4090#pair=alice.123', 'http://192.168.1.50:9000'),
+    'http://192.168.1.50:9000/s/alice/p/4090#pair=alice.123',
+  )
+  assert.equal(
+    resolveBrowserOriginUrl('https://dock.example.com/s/alice/p/4090', 'http://192.168.1.50:9000'),
+    'https://dock.example.com/s/alice/p/4090',
+  )
+
+  // Mock DOM inside a focus-trapped dialog container
+  const createMockDom = ({ execResult = true } = {}) => {
+    const dialogChildren = []
+    const dialogContainer = {
+      appendChild(el) { dialogChildren.push(el); el.parentElement = dialogContainer },
+    }
+    const inputEl = {
+      parentElement: dialogContainer,
+      focused: false,
+      selected: false,
+      focus() { this.focused = true },
+      select() { this.selected = true },
+      setSelectionRange() {},
+    }
+    const doc = {
+      activeElement: inputEl,
+      body: { appendChild(el) { el.parentElement = doc.body } },
+      execCommandCalls: [],
+      createElement(tag) {
+        return {
+          tagName: tag.toUpperCase(),
+          value: '',
+          style: {},
+          setAttribute() {},
+          focus() {},
+          select() {},
+          setSelectionRange() {},
+          remove() {
+            const idx = dialogChildren.indexOf(this)
+            if (idx >= 0) dialogChildren.splice(idx, 1)
+          },
+        }
+      },
+      execCommand(cmd) {
+        this.execCommandCalls.push(cmd)
+        return execResult
+      },
+    }
+    return { doc, inputEl, dialogChildren }
+  }
+
+  // Non-HTTPS context: skips navigator.clipboard and uses synchronous execCommand cleanly
+  {
+    const { doc, inputEl } = createMockDom({ execResult: true })
+    let asyncCalled = false
+    const res = await copyTextToClipboard('alice.k8F9mP2xQ7vL4nR1wZ3y', {
+      fallbackInput: inputEl,
+      win: { isSecureContext: false },
+      nav: { clipboard: { writeText: async () => { asyncCalled = true } } },
+      doc,
+    })
+    assert.equal(res.ok, true)
+    assert.equal(res.method, 'execCommand')
+    assert.equal(asyncCalled, false, 'Non-secure context must use synchronous execCommand immediately')
+    assert.deepEqual(doc.execCommandCalls, ['copy'])
+  }
+
+  // Secure context where Clipboard API throws: falls back to execCommand
+  {
+    const { doc, inputEl } = createMockDom({ execResult: true })
+    const res = await copyTextToClipboard('https://dock.example.com/s/alice/p/4090#pair=alice.xxx', {
+      fallbackInput: inputEl,
+      win: { isSecureContext: true },
+      nav: { clipboard: { writeText: async () => { throw new Error('NotAllowedError') } } },
+      doc,
+    })
+    assert.equal(res.ok, true)
+    assert.equal(res.method, 'execCommand')
+  }
+
+  // Both Clipboard API and execCommand blocked: selects fallbackInput cleanly & reports manual
+  {
+    const { doc, inputEl } = createMockDom({ execResult: false })
+    const res = await copyTextToClipboard('alice.xxx', {
+      fallbackInput: inputEl,
+      win: { isSecureContext: false },
+      nav: null,
+      doc,
+    })
+    assert.equal(res.ok, false)
+    assert.equal(res.method, 'manual')
+    assert.equal(inputEl.selected, true)
+  }
+}
+
+// 1c. Controller actions (pingPeer, removePeer, leaveGroup, removeRoom) status transitions
+{
+  const calls = []
+  const ctrl = createMeshController({
+    fetchImpl: async (url, opts) => {
+      calls.push({ url, body: opts?.body ? JSON.parse(opts.body) : null })
+      if (url.includes('peer-ping')) {
+        return new Response(JSON.stringify({ ok: true, reachable: false, status: 'unpaired-by-peer', state: { peers: [], rooms: [] } }), { status: 200 })
+      }
+      if (url.includes('peer-remove')) {
+        return new Response(JSON.stringify({ ok: true, remoteNotified: false, state: { peers: [], rooms: [] } }), { status: 200 })
+      }
+      if (url.includes('group-leave')) {
+        return new Response(JSON.stringify({ ok: true, state: { peers: [], rooms: [] } }), { status: 200 })
+      }
+      if (url.includes('room-remove')) {
+        return new Response(JSON.stringify({ ok: true, state: { peers: [], rooms: [] } }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ ok: true, state: { peers: [], rooms: [] } }), { status: 200 })
+    },
+  })
+
+  await ctrl.pingPeer('bob')
+  assert.equal(ctrl.getSnapshot().statusKey, 'statusPingUnpaired')
+
+  await ctrl.removePeer('bob')
+  assert.equal(ctrl.getSnapshot().statusKey, 'statusUnpairedOffline')
+
+  await ctrl.leaveGroup('grp_1')
+  assert.equal(ctrl.getSnapshot().statusKey, 'statusGroupLeft')
+
+  await ctrl.removeRoom('pair:alice:bob')
+  assert.equal(ctrl.getSnapshot().statusKey, 'statusRoomRemoved')
+
+  assert.equal(calls.some((c) => c.url.includes('api/sandbox-mesh.peer-ping') && c.body.slug === 'bob'), true)
+  assert.equal(calls.some((c) => c.url.includes('api/sandbox-mesh.peer-remove') && c.body.slug === 'bob'), true)
+  assert.equal(calls.some((c) => c.url.includes('api/sandbox-mesh.group-leave') && c.body.roomId === 'grp_1'), true)
+  assert.equal(calls.some((c) => c.url.includes('api/sandbox-mesh.room-remove') && c.body.roomId === 'pair:alice:bob'), true)
+  ctrl.dispose()
 }
 
 // 2. Full client.js VM load + Cordis slot registrations (sidebar.panellist + main + settings.section)

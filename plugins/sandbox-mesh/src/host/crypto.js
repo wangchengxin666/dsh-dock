@@ -1,4 +1,13 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import {
+  createHash,
+  createHmac,
+  createPublicKey,
+  diffieHellman,
+  generateKeyPairSync,
+  hkdfSync,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto'
 
 export const DEFAULT_SIGNATURE_WINDOW_MS = 60 * 1000
 export const DEFAULT_PAIR_RATE_LIMIT = 5
@@ -16,6 +25,32 @@ export function sha256Hex(input) {
   return createHash('sha256').update(buf).digest('hex')
 }
 
+/** Generate an ephemeral X25519 keypair for one-time pairing key exchange. */
+export function generateEcdhKeyPair() {
+  const { publicKey, privateKey } = generateKeyPairSync('x25519')
+  const publicKeyB64 = publicKey.export({ type: 'spki', format: 'der' }).toString('base64url')
+  return { publicKeyB64, privateKey }
+}
+
+/** Derive a 256-bit pairwise HMAC secret via X25519 ECDH + HKDF-SHA256 bound to the invite token. */
+export function deriveEcdhSharedSecret(inviteToken, privateKey, peerPublicKeyB64) {
+  const peerPub = createPublicKey({
+    key: Buffer.from(String(peerPublicKeyB64 || ''), 'base64url'),
+    format: 'der',
+    type: 'spki',
+  })
+  const shared = diffieHellman({ privateKey, publicKey: peerPub })
+  return Buffer.from(
+    hkdfSync(
+      'sha256',
+      shared,
+      Buffer.from(String(inviteToken || ''), 'utf8'),
+      Buffer.from('dsh-sandbox-mesh-pair-v1', 'utf8'),
+      32,
+    ),
+  ).toString('hex')
+}
+
 export function deriveSharedSecret(inviteToken, initiatorKey, responderKey) {
   return createHmac('sha256', String(inviteToken))
     .update(`${initiatorKey}:${responderKey}`)
@@ -30,11 +65,23 @@ export function constantTimeEqualString(a, b) {
   return timingSafeEqual(bufA, bufB)
 }
 
-export function computeMeshSignature({ method, path, timestamp, nonce, body, secret }) {
+export function computeMeshSignature({
+  method,
+  path,
+  timestamp,
+  nonce,
+  body,
+  secret,
+  fromSlug = '',
+  groupId = '',
+  version = '1',
+}) {
   const cleanMethod = String(method || 'POST').toUpperCase()
   const cleanPath = String(path || '/').split('?')[0]
   const bodyHash = sha256Hex(body ?? '')
-  const canonical = `${cleanMethod}\n${cleanPath}\n${timestamp}\n${nonce}\n${bodyHash}`
+  const canonical = version === '2'
+    ? `${cleanMethod}\n${cleanPath}\n${timestamp}\n${nonce}\n${String(fromSlug || '').trim().toLowerCase()}\n${String(groupId || '').trim()}\n${bodyHash}`
+    : `${cleanMethod}\n${cleanPath}\n${timestamp}\n${nonce}\n${bodyHash}`
   return createHmac('sha256', String(secret)).update(canonical).digest('hex')
 }
 
@@ -47,8 +94,11 @@ export function buildSignedHeaders({
   groupId = '',
   timestamp = Date.now(),
   nonce = randomBytes(12).toString('hex'),
+  version = '2',
 }) {
   const tsStr = String(timestamp)
+  const cleanFrom = String(fromSlug || '').trim().toLowerCase()
+  const cleanGroup = String(groupId || '').trim()
   const signature = computeMeshSignature({
     method,
     path,
@@ -56,16 +106,20 @@ export function buildSignedHeaders({
     nonce,
     body,
     secret,
+    fromSlug: cleanFrom,
+    groupId: cleanGroup,
+    version,
   })
   const headers = {
     'content-type': 'application/json; charset=utf-8',
-    'x-mesh-from': String(fromSlug || ''),
+    'x-mesh-from': cleanFrom,
     'x-mesh-timestamp': tsStr,
     'x-mesh-nonce': nonce,
     'x-mesh-signature': signature,
+    'x-mesh-sig-v': version,
   }
-  if (groupId) {
-    headers['x-mesh-group'] = String(groupId)
+  if (cleanGroup) {
+    headers['x-mesh-group'] = cleanGroup
   }
   return headers
 }
@@ -156,19 +210,26 @@ export function verifySignedRequest({
     return { ok: false, status: 401, error: 'Invalid mesh nonce' }
   }
 
+  // resolveSecret may return plain strings or `{ secret, scope }` descriptors. The scope of the
+  // matching secret is reported back so callers can authorize per route: a pairwise secret
+  // proves the sender identity, while a shared group secret only proves group membership.
   const candidateSecrets = resolveSecret({ fromSlug, groupId })
-  const secrets = Array.isArray(candidateSecrets)
-    ? candidateSecrets.filter(Boolean)
+  const rawList = Array.isArray(candidateSecrets)
+    ? candidateSecrets
     : candidateSecrets
       ? [candidateSecrets]
       : []
+  const secrets = rawList
+    .map((entry) => (typeof entry === 'string' ? { secret: entry, scope: 'pair' } : entry))
+    .filter((entry) => entry && entry.secret)
 
   if (secrets.length === 0) {
     return { ok: false, status: 401, error: `Unknown or unpaired sandbox "${fromSlug}"` }
   }
 
-  let matched = false
-  for (const secret of secrets) {
+  const sigVersion = read('x-mesh-sig-v') === '2' ? '2' : '1'
+  let matchedScope = ''
+  for (const { secret, scope } of secrets) {
     const expected = computeMeshSignature({
       method,
       path,
@@ -176,14 +237,17 @@ export function verifySignedRequest({
       nonce,
       body,
       secret,
+      fromSlug,
+      groupId,
+      version: sigVersion,
     })
     if (constantTimeEqualString(signature, expected)) {
-      matched = true
+      matchedScope = scope || 'pair'
       break
     }
   }
 
-  if (!matched) {
+  if (!matchedScope) {
     return { ok: false, status: 401, error: 'Invalid mesh HMAC signature' }
   }
 
@@ -191,5 +255,5 @@ export function verifySignedRequest({
     return { ok: false, status: 401, error: 'Replayed mesh request nonce rejected' }
   }
 
-  return { ok: true, fromSlug, groupId }
+  return { ok: true, fromSlug, groupId, scope: matchedScope }
 }

@@ -18,8 +18,12 @@ Commands:
   status                                    Show self identity, active pair code, peers, and rooms
   pair-code                                 Generate a new 5-minute one-time pair code & Traefik URI
   pair <invite-code-or-url>                 Pair with another sandbox by short code or Traefik URI
+  unpair <slug>                             Unpair a sandbox (notifies peer & rotates owned group keys)
+  ping <slug>                               Check live reachability & auth status of a paired sandbox
   group-create <name> [slug1,slug2...]      Create a team group room (LLM Moderator controlled)
   group-invite <roomId> <slug1,slug2...>    Invite paired sandboxes into an existing group room
+  group-remove <roomId> <slug>              Remove a member from a group and rotate groupSecret
+  group-leave <roomId>                      Leave a team group room
   new-topic <roomId>                        Rotate active threadId to start a clean context topic
   rooms                                     List all paired 1v1 and group rooms
   messages <roomId>                         Show message history in a room
@@ -48,12 +52,19 @@ async function main() {
   let payload = { action: cmd }
   if (cmd === 'pair') {
     payload.invite = args[1] || ''
+  } else if (cmd === 'unpair' || cmd === 'ping') {
+    payload.slug = args[1] || ''
   } else if (cmd === 'group-create') {
     payload.name = args[1] || ''
     payload.memberSlugs = (args[2] || '').split(',').map((s) => s.trim()).filter(Boolean)
   } else if (cmd === 'group-invite') {
     payload.roomId = args[1] || ''
     payload.memberSlugs = (args[2] || '').split(',').map((s) => s.trim()).filter(Boolean)
+  } else if (cmd === 'group-remove') {
+    payload.roomId = args[1] || ''
+    payload.slug = args[2] || ''
+  } else if (cmd === 'group-leave') {
+    payload.roomId = args[1] || ''
   } else if (cmd === 'new-topic') {
     payload.roomId = args[1] || ''
   } else if (cmd === 'messages') {
@@ -122,7 +133,7 @@ main().catch((err) => {
 
 export function buildSkillSummaryMeta(snapshot = null) {
   const peers = snapshot?.peers || []
-  const groups = (snapshot?.rooms || []).filter((r) => r.type === 'group')
+  const groups = (snapshot?.rooms || []).filter((r) => r.type === 'group' && !r.unpaired)
   const peerBrief = peers.length > 0
     ? `Connected remote sandbox agents: ${peers.map((p) => `@${p.slug}${p.role ? ` (${p.role})` : ''}`).join(', ')}.`
     : 'No remote sandboxes paired yet.'
@@ -143,7 +154,7 @@ export function buildSkillMarkdown(snapshot = null) {
   const meta = buildSkillSummaryMeta(snapshot)
   const self = snapshot?.self || {}
   const peers = snapshot?.peers || []
-  const groups = (snapshot?.rooms || []).filter((r) => r.type === 'group')
+  const groups = (snapshot?.rooms || []).filter((r) => r.type === 'group' && !r.unpaired)
 
   const peerRows = peers.length > 0
     ? peers

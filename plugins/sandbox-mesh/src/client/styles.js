@@ -478,8 +478,131 @@ export const MESH_CSS = `
   background: transparent;
   color: var(--dsw-alias-label-pri, #0f172a);
   font-size: 13px;
+  font-family: inherit;
+  line-height: 1.45;
   padding: 4px 6px;
   outline: none;
+  resize: none;
+  max-height: 120px;
+}
+.sm-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--dsw-alias-label-sec, #475569);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.12s ease;
+}
+.sm-trigger-btn:hover, .sm-trigger-btn.active {
+  background: rgba(14, 165, 233, 0.12);
+  color: var(--dsw-alias-Interactive-pri, #0284c7);
+  border-color: rgba(14, 165, 233, 0.28);
+}
+
+/* --- Action variants, badges & confirmations --- */
+.sm-btn-sm {
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+.sm-btn-danger {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.38);
+  color: #dc2626;
+}
+.sm-btn.sm-btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+.sm-badge-ok {
+  background: rgba(16, 185, 129, 0.14);
+  color: #059669;
+}
+.sm-badge-warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+}
+.sm-badge-err {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+.sm-confirm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  font-size: 12px;
+  color: var(--dsw-alias-label-pri, #0f172a);
+}
+.sm-manage-strip {
+  padding: 10px 16px;
+  background: var(--dsw-alias-bg-elevated, #f1f5f9);
+  border-bottom: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+.sm-unpaired-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-pri, #0f172a);
+}
+.sm-onboarding-card {
+  margin: auto;
+  width: 100%;
+  max-width: 580px;
+  padding: 22px 24px;
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-surface, #ffffff);
+  border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sm-pair-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 9px;
+  background: var(--dsw-alias-bg-elevated, #f1f5f9);
+  border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+}
+.sm-pair-step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.sm-invite-expiry {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-sec, #475569);
 }
 
 /* --- Settings View: Pairing & Node Config (No label wrap!) --- */
@@ -528,11 +651,7 @@ export const MESH_CSS = `
 .sm-invite-box {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-elevated, #f1f5f9);
-  border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+  gap: 8px;
 }
 .sm-invite-item {
   display: flex;
@@ -551,9 +670,8 @@ export const MESH_CSS = `
 .sm-invite-code {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  width: 100%;
+  box-sizing: border-box;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   padding: 5px 9px;
@@ -561,6 +679,11 @@ export const MESH_CSS = `
   background: var(--dsw-alias-bg-surface, #ffffff);
   border: 1px solid var(--dsw-alias-border-def, #cbd5e1);
   color: var(--dsw-alias-label-pri, #0f172a);
+  outline: none;
+  cursor: text;
+}
+.sm-invite-code:focus {
+  border-color: var(--dsw-alias-Interactive-pri, #0284c7);
 }
 .sm-peer-row {
   display: flex;
@@ -571,6 +694,21 @@ export const MESH_CSS = `
   border-radius: 8px;
   background: var(--dsw-alias-bg-elevated, #f1f5f9);
   border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+}
+.sm-advanced-details {
+  font-size: 12px;
+  color: var(--dsw-alias-label-sec, #475569);
+}
+.sm-advanced-details summary {
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+}
+.sm-advanced-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 `
 

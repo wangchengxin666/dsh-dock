@@ -61,7 +61,7 @@ window.__ModuleLoader__.load({
           }
 
           for (const room of rooms) {
-            if (room.type !== 'group') continue
+            if (room.type !== 'group' || room.unpaired) continue
             const match = !q
               || String(room.name || '').toLowerCase().includes(q)
               || String(room.id || '').toLowerCase().includes(q)
