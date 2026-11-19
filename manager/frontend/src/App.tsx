@@ -16,9 +16,7 @@ import {
   Trash2,
   ExternalLink,
   Download,
-  FileCode2,
   Cpu,
-  HardDrive,
   Layers,
   Package,
   KeyRound,
@@ -44,7 +42,6 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  CardDescription,
   CardContent,
   Badge,
   Input,
@@ -250,6 +247,124 @@ function formatDiskSize(mb?: number | null): string {
   return `${mb.toFixed(1)} MB`
 }
 
+function computeDiskPercent(st?: SandboxStats | null, fallbackUsageMb?: number | null): number | null {
+  if (!st) return null
+  if (st.disk_fs_used_percent != null && !Number.isNaN(st.disk_fs_used_percent)) {
+    return Math.max(0, Math.min(100, Math.round(st.disk_fs_used_percent)))
+  }
+  const usage = st.disk_usage_mb ?? fallbackUsageMb
+  if (usage != null && st.disk_fs_total_mb && st.disk_fs_total_mb > 0) {
+    return Math.max(0, Math.min(100, Math.round((usage / st.disk_fs_total_mb) * 100)))
+  }
+  return null
+}
+
+async function fetchRunningStats(
+  items: SandboxItem[],
+  apiPrefix: '/api/sandboxes' | '/api/my/sandboxes',
+): Promise<Record<string, SandboxStats>> {
+  const running = items.filter((s) => s.status === 'running')
+  if (running.length === 0) return {}
+  const entries = await Promise.all(
+    running.map(async (s) => {
+      try {
+        const st = await apiFetch<SandboxStats>(`${apiPrefix}/${s.id}/stats`)
+        return [s.id, st] as const
+      } catch {
+        return null
+      }
+    }),
+  )
+  const map: Record<string, SandboxStats> = {}
+  for (const entry of entries) {
+    if (entry) map[entry[0]] = entry[1]
+  }
+  return map
+}
+
+function ResourceUsageBars({
+  stats,
+  fallbackDiskMb,
+}: {
+  stats: SandboxStats
+  fallbackDiskMb?: number | null
+}) {
+  const memPct =
+    stats.memory_limit_mb > 0
+      ? Math.round((stats.memory_usage_mb / stats.memory_limit_mb) * 100)
+      : 0
+  const diskPct = computeDiskPercent(stats, fallbackDiskMb)
+  const diskTitle =
+    stats.disk_fs_total_mb != null
+      ? `${formatDiskSize(stats.disk_fs_avail_mb)} free / ${formatDiskSize(stats.disk_fs_total_mb)}`
+      : undefined
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex justify-between text-[11px]">
+        <span className="text-zinc-400">CPU</span>
+        <span className="font-mono text-zinc-200">{stats.cpu_percent}%</span>
+      </div>
+      <Progress value={Math.min(100, stats.cpu_percent)} />
+      <div className="flex justify-between text-[11px]">
+        <span className="text-zinc-400">MEM</span>
+        <span className="font-mono text-zinc-200">
+          {stats.memory_usage_mb} / {stats.memory_limit_mb} MB ({memPct}%)
+        </span>
+      </div>
+      <Progress value={memPct} />
+      <div className="flex justify-between text-[11px] pt-0.5" title={diskTitle}>
+        <span className="text-zinc-400">DISK</span>
+        <span className="font-mono text-zinc-200">
+          {formatDiskSize(stats.disk_usage_mb ?? fallbackDiskMb)}
+          {diskPct != null ? ` (${diskPct}%)` : ''}
+        </span>
+      </div>
+      {diskPct != null && <Progress value={diskPct} />}
+    </div>
+  )
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (!text) return false
+  if (typeof window !== 'undefined' && window.isSecureContext !== false && navigator?.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // Fall through to execCommand fallback
+    }
+  }
+  if (typeof document === 'undefined' || !document.createElement) return false
+  const container = document.activeElement?.parentElement || document.body
+  if (!container) return false
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.setAttribute('readonly', '')
+  ta.setAttribute('aria-hidden', 'true')
+  ta.style.position = 'fixed'
+  ta.style.top = '-9999px'
+  ta.style.left = '-9999px'
+  ta.style.opacity = '0'
+  const prevFocus = document.activeElement as HTMLElement | null
+  container.appendChild(ta)
+  let ok = false
+  try {
+    ta.focus({ preventScroll: true })
+    ta.select()
+    ta.setSelectionRange(0, text.length)
+    ok = Boolean(document.execCommand?.('copy'))
+  } catch {
+    ok = false
+  } finally {
+    ta.remove()
+    try {
+      prevFocus?.focus?.({ preventScroll: true })
+    } catch {}
+  }
+  return ok
+}
+
 function BackupRestoreDialog({
   sandbox,
   isAdmin,
@@ -317,9 +432,8 @@ function BackupRestoreDialog({
       open={!!sandbox}
       onOpenChange={(o) => !o && onClose()}
       title={t('dialog.backup.title', { slug: sandbox?.slug ?? '' })}
-      description={t('dialog.backup.desc')}
     >
-      <div className="space-y-5 text-xs">
+      <div className="space-y-4 text-xs">
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 space-y-3">
           <div className="font-medium text-zinc-200">{t('dialog.backup.exportTitle')}</div>
           <label className="flex items-center gap-2 text-zinc-300 cursor-pointer">
@@ -353,7 +467,6 @@ function BackupRestoreDialog({
           className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 space-y-3"
         >
           <div className="font-medium text-zinc-200">{t('dialog.backup.restoreTitle')}</div>
-          <p className="text-zinc-400 leading-relaxed">{t('dialog.backup.restoreHint')}</p>
           <div className="space-y-1.5">
             <Label>{t('dialog.backup.fileLabel')}</Label>
             <Input
@@ -513,21 +626,11 @@ export default function App() {
         {/* Top Header */}
         <header className="sticky top-0 z-30 border-b border-zinc-800/80 bg-zinc-950/85 backdrop-blur-md">
           <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm">
                 <Terminal className="h-4 w-4" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm tracking-tight">DSH Sandbox Cloud</span>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                    Traefik v3.7 · Subpath Gateway
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-zinc-400 hidden sm:block">
-                  {t('app.subtitle')}
-                </p>
-              </div>
+              <span className="font-semibold text-sm tracking-tight">DSH Sandbox Cloud</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -640,14 +743,8 @@ function LoginView({
   return (
     <div className="flex min-h-[72vh] items-center justify-center">
       <Card className="w-full max-w-md border-zinc-800/90 bg-zinc-900/80 shadow-2xl">
-        <CardHeader className="space-y-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">{t('login.title')}</CardTitle>
-            <Badge variant="outline">
-              {auth?.auth_mode === 'oidc' ? t('login.badgeOidc') : t('login.badgeLocal')}
-            </Badge>
-          </div>
-          <CardDescription>{t('login.subtitle')}</CardDescription>
+        <CardHeader>
+          <CardTitle className="text-lg">{t('login.title')}</CardTitle>
         </CardHeader>
         <CardContent>
           {urlError === 'disabled' && (
@@ -891,12 +988,37 @@ function AdminConsoleView({
     return Array.from(bytes, (b) => chars[b % chars.length]).join('')
   }
 
-  const copyText = (key: string, text: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedKey(key)
-    notify(t('common.copied'))
-    setTimeout(() => setCopiedKey(null), 2000)
+  const copyText = async (key: string, text: string) => {
+    const ok = await copyTextToClipboard(text)
+    if (ok) {
+      setCopiedKey(key)
+      notify(t('common.copied'))
+      setTimeout(() => setCopiedKey(null), 2000)
+    } else {
+      notify(t('common.copyFailed'), 'error')
+    }
   }
+
+  const refreshingLiveRef = useRef(false)
+
+  const refreshLiveStatus = useCallback(async () => {
+    if (refreshingLiveRef.current) return
+    refreshingLiveRef.current = true
+    try {
+      const [ov, sbxRes] = await Promise.all([
+        apiFetch<OverviewData>('/api/overview'),
+        apiFetch<{ items: SandboxItem[] }>('/api/sandboxes?refresh=true'),
+      ])
+      setOverview(ov)
+      setSandboxes(sbxRes.items)
+      const nextStats = await fetchRunningStats(sbxRes.items, '/api/sandboxes')
+      setStatsMap(nextStats)
+    } catch {
+      // Background polling errors stay silent to avoid spamming toasts
+    } finally {
+      refreshingLiveRef.current = false
+    }
+  }, [])
 
   const refreshAll = useCallback(async () => {
     try {
@@ -921,22 +1043,7 @@ function AdminConsoleView({
       setUsers(usrRes)
       setAdmins(admRes)
 
-      // Fetch live resource stats for running sandboxes
-      const running = sbxRes.items.filter((s) => s.status === 'running')
-      const statsEntries = await Promise.all(
-        running.map(async (s) => {
-          try {
-            const st = await apiFetch<SandboxStats>(`/api/sandboxes/${s.id}/stats`)
-            return [s.id, st] as const
-          } catch {
-            return null
-          }
-        }),
-      )
-      const nextStats: Record<string, SandboxStats> = {}
-      for (const entry of statsEntries) {
-        if (entry) nextStats[entry[0]] = entry[1]
-      }
+      const nextStats = await fetchRunningStats(sbxRes.items, '/api/sandboxes')
       setStatsMap(nextStats)
     } catch (err: any) {
       notify(err.message || tRef.current('admin.loadFailed'), 'error')
@@ -948,6 +1055,24 @@ function AdminConsoleView({
   useEffect(() => {
     refreshAll()
   }, [refreshAll])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void refreshLiveStatus()
+      }
+    }, 8000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshLiveStatus()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [refreshLiveStatus])
 
   // Apply template defaults when selecting a template in Create Sandbox modal
   const applyTemplateToSandboxForm = (tplKey: string, tplList = templates) => {
@@ -1231,30 +1356,26 @@ function AdminConsoleView({
   return (
     <div className="space-y-6">
       {/* KPI Metrics Row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card>
-          <CardContent className="p-5 flex items-center justify-between">
+          <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-zinc-400">{t('admin.kpi.sandboxesTitle')}</p>
-              <div className="mt-1 flex items-baseline gap-2">
+              <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="text-2xl font-bold text-emerald-400">
                   {overview?.running_sandboxes ?? 0}
                 </span>
                 <span className="text-sm text-zinc-500">/ {overview?.total_sandboxes ?? 0}</span>
               </div>
-              <p className="mt-1 text-[11px] text-zinc-500">
-                {t('admin.kpi.sandboxesSubPrefix')}
-                `/s/&lt;slug&gt;/`
-              </p>
             </div>
-            <div className="rounded-xl bg-emerald-500/10 p-3 text-emerald-400 border border-emerald-500/20">
+            <div className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-400 border border-emerald-500/20">
               <Box className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-5 flex items-center justify-between">
+          <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-zinc-400">{t('admin.kpi.quotaTitle')}</p>
               <div className="mt-1 flex items-baseline gap-1.5">
@@ -1263,14 +1384,8 @@ function AdminConsoleView({
                 </span>
                 <span className="text-xs text-zinc-400">{t('admin.kpi.quotaUnit')}</span>
               </div>
-              <p className="mt-1 text-[11px] text-zinc-500">
-                {t('admin.kpi.quotaSub', {
-                  cpus: overview?.default_cpus ?? 2,
-                  memory: overview?.default_memory ?? '4g',
-                })}
-              </p>
             </div>
-            <div className="rounded-xl bg-indigo-500/10 p-3 text-indigo-400 border border-indigo-500/20">
+            <div className="rounded-xl bg-indigo-500/10 p-2.5 text-indigo-400 border border-indigo-500/20">
               <Cpu className="h-5 w-5" />
             </div>
           </CardContent>
@@ -1280,20 +1395,19 @@ function AdminConsoleView({
           className="cursor-pointer hover:border-zinc-700 transition-colors"
           onClick={() => setActiveTab('templates')}
         >
-          <CardContent className="p-5 flex items-center justify-between">
+          <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-zinc-400">{t('admin.kpi.templatesTitle')}</p>
-              <div className="mt-1 flex items-baseline gap-2">
+              <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="text-2xl font-bold text-zinc-100">
                   {templates.length}
                 </span>
-                <span className="text-xs text-zinc-400">{t('admin.kpi.templatesUnit')}</span>
+                {t('admin.kpi.templatesUnit') && (
+                  <span className="text-xs text-zinc-400">{t('admin.kpi.templatesUnit')}</span>
+                )}
               </div>
-              <p className="mt-1 text-[11px] text-zinc-500">
-                {t('admin.kpi.templatesSub', { count: overview?.local_images.length ?? 0 })}
-              </p>
             </div>
-            <div className="rounded-xl bg-amber-500/10 p-3 text-amber-400 border border-amber-500/20">
+            <div className="rounded-xl bg-amber-500/10 p-2.5 text-amber-400 border border-amber-500/20">
               <Layers className="h-5 w-5" />
             </div>
           </CardContent>
@@ -1303,22 +1417,19 @@ function AdminConsoleView({
           className="cursor-pointer hover:border-zinc-700 transition-colors"
           onClick={() => setActiveTab('plugins')}
         >
-          <CardContent className="p-5 flex items-center justify-between">
+          <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-zinc-400">{t('admin.kpi.pluginsTitle')}</p>
-              <div className="mt-1 flex items-baseline gap-2">
+              <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="text-2xl font-bold text-zinc-100">
                   {pluginsData?.items.length ?? 0}
                 </span>
-                <span className="text-xs text-zinc-400">{t('admin.kpi.pluginsUnit')}</span>
+                {t('admin.kpi.pluginsUnit') && (
+                  <span className="text-xs text-zinc-400">{t('admin.kpi.pluginsUnit')}</span>
+                )}
               </div>
-              <p className="mt-1 text-[11px] text-zinc-500">
-                {t('admin.kpi.pluginsSubBefore')}
-                `.tgz`
-                {t('admin.kpi.pluginsSubAfter')}
-              </p>
             </div>
-            <div className="rounded-xl bg-violet-500/10 p-3 text-violet-400 border border-violet-500/20">
+            <div className="rounded-xl bg-violet-500/10 p-2.5 text-violet-400 border border-violet-500/20">
               <Package className="h-5 w-5" />
             </div>
           </CardContent>
@@ -1400,37 +1511,13 @@ function AdminConsoleView({
       {/* TAB 1: Sandboxes Management */}
       {activeTab === 'sandboxes' && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-xs text-zinc-400">
-            <div className="flex items-center gap-2">
-              <Lock className="h-3.5 w-3.5 text-amber-400" />
-              <span>
-                <strong>{t('admin.sandboxes.bannerStrong')}</strong>{' '}
-                {t('admin.sandboxes.bannerText')}
-              </span>
-            </div>
-            <span>
-              {t('admin.sandboxes.gatewayPrefix')}
-              `/s/&lt;slug&gt;/dsh/`
-              {t('admin.sandboxes.gatewaySuffix')}
-            </span>
-          </div>
-
           <form
             onSubmit={handleSaveSleepPolicy}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-xs"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-2.5 text-xs"
           >
-            <div className="flex items-center gap-2.5 text-zinc-300">
-              <Moon className="h-4 w-4 text-indigo-400 shrink-0" />
-              <div>
-                <span className="font-medium text-zinc-100">
-                  {t('admin.sandboxes.sleepPolicyTitle')}
-                </span>
-                <span className="ml-2 text-zinc-400">
-                  {sleepPolicy.enabled
-                    ? `${t('admin.sandboxes.sleepPolicyOn')} ${sleepPolicy.idle_minutes} ${t('admin.sandboxes.sleepMinutesUnit')}`
-                    : t('admin.sandboxes.sleepPolicyOff')}
-                </span>
-              </div>
+            <div className="flex items-center gap-2 text-zinc-200">
+              <Moon className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+              <span className="font-medium">{t('admin.sandboxes.sleepPolicyTitle')}</span>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer">
@@ -1445,7 +1532,6 @@ function AdminConsoleView({
                 <span>{t('admin.sandboxes.sleepEnableLabel')}</span>
               </label>
               <div className="flex items-center gap-1.5">
-                <span className="text-zinc-400">{t('admin.sandboxes.sleepMinutesLabel')}</span>
                 <Input
                   type="number"
                   min={5}
@@ -1456,6 +1542,7 @@ function AdminConsoleView({
                     setSleepPolicy({ ...sleepPolicy, idle_minutes: e.target.value })
                   }
                 />
+                <span className="text-zinc-400">{t('admin.sandboxes.sleepMinutesUnit')}</span>
               </div>
               <Button type="submit" variant="outline" size="sm" disabled={savingSleepPolicy}>
                 {savingSleepPolicy ? t('common.saving') : t('admin.sandboxes.sleepSaveBtn')}
@@ -1489,10 +1576,6 @@ function AdminConsoleView({
                   ) : (
                     sandboxes.map((sbx) => {
                       const st = statsMap[sbx.id]
-                      const memPct =
-                        st && st.memory_limit_mb > 0
-                          ? Math.round((st.memory_usage_mb / st.memory_limit_mb) * 100)
-                          : 0
                       return (
                         <tr key={sbx.id} className="hover:bg-zinc-800/25 transition-colors">
                           <td className="py-3.5 px-4">
@@ -1519,11 +1602,7 @@ function AdminConsoleView({
                               </span>
                             </div>
                             <div className="mt-1 text-[11px] text-zinc-500">
-                              {t('admin.sandboxes.quotaPrefix', {
-                                cpu: sbx.cpu_limit,
-                                memory: sbx.memory_limit,
-                              })}
-                              <code>{sbx.volume_name}</code>
+                              {sbx.cpu_limit} vCPU · {sbx.memory_limit}
                             </div>
                           </td>
 
@@ -1553,44 +1632,11 @@ function AdminConsoleView({
                                 </Badge>
                               )}
                             </div>
-                            <div className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-indigo-400">
-                              <a
-                                href={`/sandboxes/${sbx.id}/open`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="hover:underline flex items-center gap-1"
-                              >
-                                /s/{sbx.slug}/dsh/
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                            </div>
                           </td>
 
                           <td className="py-3.5 px-4">
                             {sbx.status === 'running' && st ? (
-                              <div className="space-y-1.5">
-                                <div className="flex justify-between text-[11px]">
-                                  <span className="text-zinc-400">CPU</span>
-                                  <span className="font-mono text-zinc-200">{st.cpu_percent}%</span>
-                                </div>
-                                <Progress value={Math.min(100, st.cpu_percent)} />
-                                <div className="flex justify-between text-[11px]">
-                                  <span className="text-zinc-400">MEM</span>
-                                  <span className="font-mono text-zinc-200">
-                                    {st.memory_usage_mb} / {st.memory_limit_mb} MB ({memPct}%)
-                                  </span>
-                                </div>
-                                <Progress value={memPct} />
-                                <div className="flex justify-between text-[11px] pt-0.5">
-                                  <span className="text-zinc-400">DISK</span>
-                                  <span className="font-mono text-zinc-200">
-                                    {formatDiskSize(st.disk_usage_mb ?? sbx.disk_usage_mb)}
-                                    {st.disk_fs_avail_mb != null
-                                      ? ` (${formatDiskSize(st.disk_fs_avail_mb)} free)`
-                                      : ''}
-                                  </span>
-                                </div>
-                              </div>
+                              <ResourceUsageBars stats={st} fallbackDiskMb={sbx.disk_usage_mb} />
                             ) : (
                               <div className="space-y-1">
                                 <span className="text-zinc-500 text-[11px] block">
@@ -1712,37 +1758,19 @@ function AdminConsoleView({
       {/* TAB 2: Image & Environment Templates Management */}
       {activeTab === 'templates' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-xs text-zinc-400">
-            <div>
-              <strong>{t('admin.templates.bannerStrong')}</strong>{' '}
-              {t('admin.templates.bannerText')}
-            </div>
-            <Button size="sm" onClick={openCreateTemplateModal}>
-              <Plus className="h-3.5 w-3.5" />
-              {t('admin.templates.newShortBtn')}
-            </Button>
-          </div>
-
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {templates.map((tpl) => (
               <Card key={tpl.id} className="flex flex-col justify-between">
                 <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <CardTitle>{tpl.name}</CardTitle>
-                        <Badge variant="secondary" className="font-mono">
-                          {tpl.key}
-                        </Badge>
-                        {tpl.is_builtin && (
-                          <Badge variant="outline">{t('admin.templates.builtinBadge')}</Badge>
-                        )}
-                      </div>
-                      <CardDescription className="mt-1.5">
-                        {tpl.description || t('admin.templates.noDescription')}
-                      </CardDescription>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle>{tpl.name}</CardTitle>
+                    <Badge variant="secondary" className="font-mono">
+                      {tpl.key}
+                    </Badge>
                   </div>
+                  {tpl.description && (
+                    <p className="text-xs text-zinc-400 mt-1">{tpl.description}</p>
+                  )}
                 </CardHeader>
 
                 <CardContent className="space-y-3 text-xs">
@@ -1756,7 +1784,7 @@ function AdminConsoleView({
                     <div>
                       <span className="text-zinc-500 block">{t('admin.templates.quotaLabel')}</span>
                       <span className="font-mono text-zinc-200 mt-0.5 block">
-                        {tpl.default_cpu_limit} vCPU · {tpl.default_memory_limit} RAM
+                        {tpl.default_cpu_limit} vCPU · {tpl.default_memory_limit}
                       </span>
                     </div>
                     <div className="col-span-2 pt-1 border-t border-zinc-800/60">
@@ -1768,17 +1796,6 @@ function AdminConsoleView({
                       </span>
                     </div>
                   </div>
-
-                  {tpl.init_script && (
-                    <div>
-                      <span className="text-[11px] text-zinc-500 block mb-1">
-                        {t('admin.templates.initScriptLabel')}
-                      </span>
-                      <pre className="rounded-lg border border-zinc-800/80 bg-zinc-950 p-2.5 font-mono text-[11px] text-zinc-300 overflow-x-auto max-h-24">
-                        {tpl.init_script}
-                      </pre>
-                    </div>
-                  )}
 
                   <div className="flex items-center justify-between pt-2 border-t border-zinc-800/60">
                     <Button
@@ -1815,30 +1832,23 @@ function AdminConsoleView({
             ))}
           </div>
 
-          {/* Local Docker Images Inventory */}
           {overview && overview.local_images.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">{t('admin.templates.localImagesTitle')}</CardTitle>
-                <CardDescription>{t('admin.templates.localImagesDesc')}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {overview.local_images.map((img) => (
-                    <div
-                      key={img.full_name}
-                      className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs"
-                    >
-                      <div>
-                        <div className="font-mono font-medium text-zinc-200">{img.full_name}</div>
-                        <div className="text-[11px] text-zinc-500">ID: {img.id}</div>
-                      </div>
-                      <Badge variant="outline">{img.size_mb} MB</Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <details className="rounded-xl border border-zinc-800/90 bg-zinc-900/50 p-4 text-xs">
+              <summary className="cursor-pointer font-medium text-zinc-300 select-none">
+                {t('admin.templates.localImagesToggle', { count: overview.local_images.length })}
+              </summary>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {overview.local_images.map((img) => (
+                  <div
+                    key={img.full_name}
+                    className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2"
+                  >
+                    <span className="font-mono font-medium text-zinc-200 truncate">{img.full_name}</span>
+                    <Badge variant="outline">{img.size_mb} MB</Badge>
+                  </div>
+                ))}
+              </div>
+            </details>
           )}
         </div>
       )}
@@ -1846,73 +1856,35 @@ function AdminConsoleView({
       {/* TAB 3: Self-Hosted Plugin Registry */}
       {activeTab === 'plugins' && pluginsData && (
         <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3 flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>{t('admin.plugins.title')}</CardTitle>
-                <CardDescription className="mt-1">{t('admin.plugins.desc')}</CardDescription>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={syncingPlugins}
-                  onClick={() => handleSyncPlugins('market_only')}
-                >
-                  <RefreshCw className={cn('h-3.5 w-3.5', syncingPlugins && 'animate-spin')} />
-                  {t('admin.plugins.syncBtn')}
-                </Button>
-                <Button
-                  variant="emerald"
-                  size="sm"
-                  disabled={syncingPlugins}
-                  onClick={() => handleSyncPlugins('reinstall_builtin')}
-                >
-                  <Package className="h-3.5 w-3.5" />
-                  {t('admin.plugins.reinstallAllBtn')}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2 text-xs">
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-center justify-between gap-2">
-                <div>
-                  <span className="text-zinc-500 block">{t('admin.plugins.indexUrlLabel')}</span>
-                  <code className="text-indigo-400 font-mono mt-0.5 block">
-                    {pluginsData.index_url}
-                  </code>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copyText('idx', pluginsData.index_url)}
-                >
-                  {copiedKey === 'idx' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                </Button>
-              </div>
-
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-center justify-between gap-2">
-                <div>
-                  <span className="text-zinc-500 block">{t('admin.plugins.npmUrlLabel')}</span>
-                  <code className="text-emerald-400 font-mono mt-0.5 block">
-                    {pluginsData.npm_registry_url}
-                  </code>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copyText('npm', pluginsData.npm_registry_url)}
-                >
-                  {copiedKey === 'npm' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800/90 bg-zinc-900/65 px-5 py-4">
+            <h3 className="text-sm font-semibold text-zinc-100">{t('admin.plugins.title')}</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={syncingPlugins}
+                onClick={() => handleSyncPlugins('market_only')}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', syncingPlugins && 'animate-spin')} />
+                {t('admin.plugins.syncBtn')}
+              </Button>
+              <Button
+                variant="emerald"
+                size="sm"
+                disabled={syncingPlugins}
+                onClick={() => handleSyncPlugins('reinstall_builtin')}
+              >
+                <Package className="h-3.5 w-3.5" />
+                {t('admin.plugins.reinstallAllBtn')}
+              </Button>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {pluginsData.items.map((plg) => (
               <Card key={plg.slug}>
                 <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       {plg.icon_url ? (
                         <img
@@ -1937,9 +1909,7 @@ function AdminConsoleView({
                           </CardTitle>
                           <Badge variant="success">v{plg.version}</Badge>
                         </div>
-                        <p className="font-mono text-xs text-zinc-400 mt-0.5">
-                          {plg.package_name} · {plg.category}
-                        </p>
+                        <p className="font-mono text-xs text-zinc-400 mt-0.5">{plg.package_name}</p>
                       </div>
                     </div>
                   </div>
@@ -1948,22 +1918,6 @@ function AdminConsoleView({
                   <p className="text-zinc-300 leading-relaxed">
                     {pickLocalizedText(locale, plg.description_zh, plg.description_en)}
                   </p>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 flex items-center justify-between gap-2">
-                    <code className="font-mono text-[11px] text-zinc-300 truncate">
-                      {plg.install_command}
-                    </code>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => copyText(plg.slug, plg.install_command)}
-                    >
-                      {copiedKey === plg.slug ? (
-                        <Check className="h-3.5 w-3.5 text-emerald-400" />
-                      ) : (
-                        <Copy className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  </div>
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <Button
                       variant="outline"
@@ -1975,26 +1929,67 @@ function AdminConsoleView({
                       {t('admin.plugins.reinstallOneBtn')}
                     </Button>
                     <Button
-                      variant="outline"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyText(plg.slug, plg.install_command)}
+                    >
+                      {copiedKey === plg.slug ? (
+                        <Check className="h-3.5 w-3.5 text-emerald-400" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
                       size="sm"
                       onClick={() => window.open(plg.tarball_url, '_blank')}
                     >
                       <Download className="h-3.5 w-3.5" />
                       {t('admin.plugins.downloadTgz')}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => window.open(plg.npm_packument_url, '_blank')}
-                    >
-                      <FileCode2 className="h-3.5 w-3.5" />
-                      {t('admin.plugins.viewPackument')}
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
+
+          <details className="rounded-xl border border-zinc-800/90 bg-zinc-900/50 p-4 text-xs">
+            <summary className="cursor-pointer font-medium text-zinc-300 select-none">
+              {t('admin.plugins.devDetailsToggle')}
+            </summary>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="text-zinc-500 block">{t('admin.plugins.indexUrlLabel')}</span>
+                  <code className="text-indigo-400 font-mono mt-0.5 block truncate">
+                    {pluginsData.index_url}
+                  </code>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copyText('idx', pluginsData.index_url)}
+                >
+                  {copiedKey === 'idx' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="text-zinc-500 block">{t('admin.plugins.npmUrlLabel')}</span>
+                  <code className="text-emerald-400 font-mono mt-0.5 block truncate">
+                    {pluginsData.npm_registry_url}
+                  </code>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copyText('npm', pluginsData.npm_registry_url)}
+                >
+                  {copiedKey === 'npm' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+            </div>
+          </details>
         </div>
       )}
 
@@ -2004,7 +1999,6 @@ function AdminConsoleView({
           <Card className="lg:col-span-1">
             <CardHeader>
               <CardTitle>{t('admin.llm.addTitle')}</CardTitle>
-              <CardDescription>{t('admin.llm.addDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <form
@@ -2075,7 +2069,6 @@ function AdminConsoleView({
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle>{t('admin.llm.listTitle')}</CardTitle>
-              <CardDescription>{t('admin.llm.listDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               {llmProfiles.length === 0 ? (
@@ -2116,15 +2109,8 @@ function AdminConsoleView({
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card className="lg:col-span-2">
             <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <CardTitle>{t('admin.users.title')}</CardTitle>
-                  <CardDescription>
-                    {overview?.manager_auth_mode === 'oidc'
-                      ? t('admin.users.oidcDesc')
-                      : t('admin.users.localDesc')}
-                  </CardDescription>
-                </div>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle>{t('admin.users.title')}</CardTitle>
                 <Badge variant="outline">
                   {overview?.manager_auth_mode === 'oidc'
                     ? t('admin.users.oidcBadge')
@@ -2235,15 +2221,13 @@ function AdminConsoleView({
                           {u.status === 'active' ? t('common.active') : t('common.disabled')}
                         </Badge>
                         {overview?.manager_auth_mode === 'oidc' ? (
-                          <Badge variant="secondary">
-                            {u.has_password
-                              ? t('admin.users.oidcPlusPw')
-                              : t('admin.users.oidcOnly')}
-                          </Badge>
+                          u.has_password ? (
+                            <Badge variant="secondary">{t('admin.users.oidcPlusPw')}</Badge>
+                          ) : null
                         ) : (
-                          <Badge variant={u.has_password ? 'outline' : 'warning'}>
-                            {u.has_password ? t('admin.users.pwSet') : t('admin.users.pwUnset')}
-                          </Badge>
+                          !u.has_password ? (
+                            <Badge variant="warning">{t('admin.users.pwUnset')}</Badge>
+                          ) : null
                         )}
                         <Badge variant="outline">
                           {t('admin.users.sandboxCount', { count: u.sandbox_count })}
@@ -2318,7 +2302,6 @@ function AdminConsoleView({
           <Card>
             <CardHeader>
               <CardTitle>{t('admin.admins.title')}</CardTitle>
-              <CardDescription>{t('admin.admins.desc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <form
@@ -2380,7 +2363,6 @@ function AdminConsoleView({
           <Card>
             <CardHeader>
               <CardTitle>{t('admin.audit.title')}</CardTitle>
-              <CardDescription>{t('admin.audit.desc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="max-h-80 overflow-y-auto divide-y divide-zinc-800/60 text-xs">
@@ -2411,7 +2393,6 @@ function AdminConsoleView({
         open={createSbxOpen}
         onOpenChange={setCreateSbxOpen}
         title={t('dialog.provision.title')}
-        description={t('dialog.provision.desc')}
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleCreateSandbox} className="space-y-4 text-xs">
@@ -2478,55 +2459,10 @@ function AdminConsoleView({
               >
                 {templates.map((tpl) => (
                   <option key={tpl.key} value={tpl.key}>
-                    {tpl.name} ({tpl.key}) — {tpl.image_repo}:{tpl.image_tag}
+                    {tpl.name} ({tpl.key})
                   </option>
                 ))}
               </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>{t('dialog.provision.slugLabel')}</Label>
-              <Input
-                placeholder={t('dialog.provision.slugPlaceholder')}
-                value={sbxForm.slug}
-                onChange={(e) => setSbxForm({ ...sbxForm, slug: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>{t('dialog.provision.repoLabel')}</Label>
-              <Input
-                value={sbxForm.image_repo}
-                onChange={(e) => setSbxForm({ ...sbxForm, image_repo: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>{t('dialog.provision.tagLabel')}</Label>
-              <Input
-                value={sbxForm.image_tag}
-                onChange={(e) => setSbxForm({ ...sbxForm, image_tag: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>{t('dialog.provision.cpuLabel')}</Label>
-              <Input
-                type="number"
-                step="0.5"
-                min="0.5"
-                max="64"
-                value={sbxForm.cpu_limit}
-                onChange={(e) => setSbxForm({ ...sbxForm, cpu_limit: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>{t('dialog.provision.memLabel')}</Label>
-              <Input
-                value={sbxForm.memory_limit}
-                onChange={(e) => setSbxForm({ ...sbxForm, memory_limit: e.target.value })}
-              />
             </div>
 
             <div className="space-y-1.5">
@@ -2544,49 +2480,101 @@ function AdminConsoleView({
               </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>{t('dialog.provision.pluginsLabel')}</Label>
-              <Input
-                placeholder="file-manager"
-                value={sbxForm.auto_install_plugins}
-                onChange={(e) =>
-                  setSbxForm({ ...sbxForm, auto_install_plugins: e.target.value })
-                }
-              />
-            </div>
+            <details className="sm:col-span-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+              <summary className="cursor-pointer font-medium text-zinc-300 select-none">
+                {t('dialog.provision.advancedToggle')}
+              </summary>
+              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>{t('dialog.provision.slugLabel')}</Label>
+                  <Input
+                    placeholder={t('dialog.provision.slugPlaceholder')}
+                    value={sbxForm.slug}
+                    onChange={(e) => setSbxForm({ ...sbxForm, slug: e.target.value })}
+                  />
+                </div>
 
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>{t('dialog.provision.repoUrlLabel')}</Label>
-              <Input
-                placeholder="https://github.com/org/repo.git"
-                value={sbxForm.init_repo_url}
-                onChange={(e) => setSbxForm({ ...sbxForm, init_repo_url: e.target.value })}
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <Label>{t('dialog.provision.pluginsLabel')}</Label>
+                  <Input
+                    placeholder="file-manager"
+                    value={sbxForm.auto_install_plugins}
+                    onChange={(e) =>
+                      setSbxForm({ ...sbxForm, auto_install_plugins: e.target.value })
+                    }
+                  />
+                </div>
 
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>{t('dialog.provision.initScriptLabel')}</Label>
-              <Textarea
-                rows={3}
-                placeholder="#!/usr/bin/env bash"
-                value={sbxForm.init_script}
-                onChange={(e) => setSbxForm({ ...sbxForm, init_script: e.target.value })}
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <Label>{t('dialog.provision.repoLabel')}</Label>
+                  <Input
+                    value={sbxForm.image_repo}
+                    onChange={(e) => setSbxForm({ ...sbxForm, image_repo: e.target.value })}
+                  />
+                </div>
 
-            <div className="sm:col-span-2">
-              <label className="flex items-center gap-2 text-zinc-300 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={sbxForm.auto_sleep_exempt}
-                  onChange={(e) =>
-                    setSbxForm({ ...sbxForm, auto_sleep_exempt: e.target.checked })
-                  }
-                  className="rounded border-zinc-700 bg-zinc-900 accent-indigo-500"
-                />
-                <span>{t('dialog.provision.autoSleepExemptLabel')}</span>
-              </label>
-            </div>
+                <div className="space-y-1.5">
+                  <Label>{t('dialog.provision.tagLabel')}</Label>
+                  <Input
+                    value={sbxForm.image_tag}
+                    onChange={(e) => setSbxForm({ ...sbxForm, image_tag: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>{t('dialog.provision.cpuLabel')}</Label>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    max="64"
+                    value={sbxForm.cpu_limit}
+                    onChange={(e) => setSbxForm({ ...sbxForm, cpu_limit: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>{t('dialog.provision.memLabel')}</Label>
+                  <Input
+                    value={sbxForm.memory_limit}
+                    onChange={(e) => setSbxForm({ ...sbxForm, memory_limit: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>{t('dialog.provision.repoUrlLabel')}</Label>
+                  <Input
+                    placeholder="https://github.com/org/repo.git"
+                    value={sbxForm.init_repo_url}
+                    onChange={(e) => setSbxForm({ ...sbxForm, init_repo_url: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>{t('dialog.provision.initScriptLabel')}</Label>
+                  <Textarea
+                    rows={3}
+                    placeholder="#!/usr/bin/env bash"
+                    value={sbxForm.init_script}
+                    onChange={(e) => setSbxForm({ ...sbxForm, init_script: e.target.value })}
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="flex items-center gap-2 text-zinc-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sbxForm.auto_sleep_exempt}
+                      onChange={(e) =>
+                        setSbxForm({ ...sbxForm, auto_sleep_exempt: e.target.checked })
+                      }
+                      className="rounded border-zinc-700 bg-zinc-900 accent-indigo-500"
+                    />
+                    <span>{t('dialog.provision.autoSleepExemptLabel')}</span>
+                  </label>
+                </div>
+              </div>
+            </details>
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
@@ -2609,7 +2597,6 @@ function AdminConsoleView({
             ? t('dialog.template.editTitle', { name: editingTpl.name })
             : t('dialog.template.createTitle')
         }
-        description={t('dialog.template.desc')}
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleSaveTemplate} className="space-y-4 text-xs">
@@ -2749,7 +2736,6 @@ function AdminConsoleView({
         open={!!editSbx}
         onOpenChange={(o) => !o && setEditSbx(null)}
         title={t('dialog.editSandbox.title', { slug: editSbx?.slug ?? '' })}
-        description={t('dialog.editSandbox.desc')}
       >
         <form onSubmit={handleSaveSandboxSpec} className="space-y-4 text-xs">
           <div className="grid grid-cols-2 gap-3">
@@ -2845,14 +2831,10 @@ function AdminConsoleView({
         open={!!logsTarget}
         onOpenChange={(o) => !o && setLogsTarget(null)}
         title={t('dialog.logs.title', { slug: logsTarget?.slug ?? '' })}
-        description={t('dialog.logs.desc')}
         maxWidth="max-w-4xl"
       >
         <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-zinc-400 font-mono">
-              Volume: {logsTarget?.volume_name}
-            </span>
+          <div className="flex justify-end items-center">
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -2915,7 +2897,6 @@ function AdminConsoleView({
         open={!!resetPwTarget}
         onOpenChange={(o) => !o && setResetPwTarget(null)}
         title={t('dialog.resetPw.title', { email: resetPwTarget?.email ?? '' })}
-        description={t('dialog.resetPw.desc')}
       >
         <form
           onSubmit={async (e) => {
@@ -2990,7 +2971,9 @@ function UserPortalView({
   tRef.current = t
 
   const [sandboxes, setSandboxes] = useState<SandboxItem[]>([])
+  const [statsMap, setStatsMap] = useState<Record<string, SandboxStats>>({})
   const [loading, setLoading] = useState(true)
+  const refreshingRef = useRef(false)
   const [logsTarget, setLogsTarget] = useState<SandboxItem | null>(null)
   const [logsText, setLogsText] = useState('')
   const [loadingLogs, setLoadingLogs] = useState(false)
@@ -3020,48 +3003,59 @@ function UserPortalView({
     }
   }
 
-  const loadMySandboxes = useCallback(async () => {
-    setLoading(true)
+  const loadMySandboxes = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = Boolean(opts?.silent)
+    if (silent && refreshingRef.current) return
+    refreshingRef.current = true
+    if (!silent) setLoading(true)
     try {
       const params = new URLSearchParams(window.location.search)
       const qEmail = params.get('email') || auth?.email || ''
       const res = await apiFetch<{ items: SandboxItem[] }>(
-        `/api/my/sandboxes${qEmail ? `?email=${encodeURIComponent(qEmail)}` : ''}`,
+        `/api/my/sandboxes?refresh=true${qEmail ? `&email=${encodeURIComponent(qEmail)}` : ''}`,
       )
       setSandboxes(res.items)
-      const running = res.items.filter((s) => s.status === 'running')
-      if (running.length > 0) {
-        const statsEntries = await Promise.all(
-          running.map(async (s) => {
-            try {
-              const st = await apiFetch<SandboxStats>(`/api/my/sandboxes/${s.id}/stats`)
-              return [s.id, st.disk_usage_mb] as const
-            } catch {
-              return null
-            }
-          }),
+      const nextStats = await fetchRunningStats(res.items, '/api/my/sandboxes')
+      setStatsMap(nextStats)
+      if (Object.keys(nextStats).length > 0) {
+        setSandboxes((prev) =>
+          prev.map((item) =>
+            nextStats[item.id]?.disk_usage_mb != null
+              ? { ...item, disk_usage_mb: nextStats[item.id].disk_usage_mb }
+              : item,
+          ),
         )
-        const diskById: Record<string, number> = {}
-        for (const entry of statsEntries) {
-          if (entry && entry[1] != null) diskById[entry[0]] = entry[1]
-        }
-        if (Object.keys(diskById).length > 0) {
-          setSandboxes((prev) =>
-            prev.map((item) =>
-              item.id in diskById ? { ...item, disk_usage_mb: diskById[item.id] } : item,
-            ),
-          )
-        }
       }
     } catch (err: any) {
-      notify(err.message || tRef.current('portal.loadFailed'), 'error')
+      if (!silent) {
+        notify(err.message || tRef.current('portal.loadFailed'), 'error')
+      }
     } finally {
-      setLoading(false)
+      refreshingRef.current = false
+      if (!silent) setLoading(false)
     }
   }, [auth, notify])
 
   useEffect(() => {
-    loadMySandboxes()
+    void loadMySandboxes()
+  }, [loadMySandboxes])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void loadMySandboxes({ silent: true })
+      }
+    }, 8000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void loadMySandboxes({ silent: true })
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [loadMySandboxes])
 
   const handleAction = async (sbx: SandboxItem, action: 'start' | 'stop' | 'restart') => {
@@ -3083,7 +3077,6 @@ function UserPortalView({
           <p className="text-xs text-zinc-400 mt-1">
             {t('portal.accountPrefix')}
             <span className="text-zinc-200 font-mono">{auth?.email}</span>
-            {t('portal.accountSuffix')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -3093,7 +3086,7 @@ function UserPortalView({
               {t('portal.changePwBtn')}
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={loadMySandboxes}>
+          <Button variant="outline" size="sm" onClick={() => void loadMySandboxes()}>
             <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             {t('portal.refreshBtn')}
           </Button>
@@ -3131,14 +3124,7 @@ function UserPortalView({
                     </Badge>
                     <Badge variant="secondary">{sbx.template}</Badge>
                   </div>
-                  <div className="text-xs text-zinc-400 space-x-3 font-mono">
-                    <span>{t('portal.entryLabel', { slug: sbx.slug })}</span>
-                    <span>·</span>
-                    <span>
-                      {t('portal.appsPrefix', { slug: sbx.slug })}
-                      &lt;name&gt;/
-                    </span>
-                    <span>·</span>
+                  <div className="text-xs text-zinc-400 font-mono">
                     <span>
                       {t('portal.specLabel', {
                         cpu: sbx.cpu_limit,
@@ -3149,6 +3135,11 @@ function UserPortalView({
                         : ''}
                     </span>
                   </div>
+                  {sbx.status === 'running' && statsMap[sbx.id] && (
+                    <div className="pt-1 max-w-xs">
+                      <ResourceUsageBars stats={statsMap[sbx.id]} fallbackDiskMb={sbx.disk_usage_mb} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -3210,14 +3201,10 @@ function UserPortalView({
         open={!!logsTarget}
         onOpenChange={(o) => !o && setLogsTarget(null)}
         title={t('portal.logsTitle', { slug: logsTarget?.slug ?? '' })}
-        description={t('portal.logsDesc')}
         maxWidth="max-w-4xl"
       >
         <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-zinc-400 font-mono">
-              Volume: {logsTarget?.volume_name}
-            </span>
+          <div className="flex justify-end items-center">
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -3231,8 +3218,9 @@ function UserPortalView({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  navigator.clipboard.writeText(logsText)
-                  notify(t('portal.logsCopied'))
+                  void copyTextToClipboard(logsText).then((ok) =>
+                    notify(ok ? t('portal.logsCopied') : t('common.copyFailed'), ok ? 'success' : 'error')
+                  )
                 }}
               >
                 <Copy className="h-3.5 w-3.5" />

@@ -1108,6 +1108,7 @@ def restore_sandbox_workspace(
 def api_my_sandboxes(
     request: Request,
     email: str | None = Query(default=None),
+    refresh: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
     sess_email = session_email(request)
@@ -1129,6 +1130,10 @@ def api_my_sandboxes(
             .order_by(Sandbox.created_at)
         ).all()
     )
+    if refresh:
+        docker = get_docker()
+        for sandbox in sandboxes:
+            refresh_status(db, docker, sandbox)
     return SandboxList(items=[sandbox_out(s) for s in sandboxes])
 
 
