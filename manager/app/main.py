@@ -56,6 +56,7 @@ from .schemas import (
     IdleSleepPolicyUpdate,
     LlmProfileCreate,
     LlmProfileOut,
+    LlmProfilePushRequest,
     LlmProfileUpdate,
     PluginSyncRequest,
     SandboxCreate,
@@ -1664,6 +1665,74 @@ def delete_profile(
     return {"ok": True}
 
 
+@app.post("/api/llm-profiles/{profile_id}/push")
+def push_llm_profile_to_sandboxes(
+    profile_id: str,
+    request: Request,
+    payload: LlmProfilePushRequest | None = Body(default=None),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_api),
+):
+    profile = db.get(LlmProfile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="LLM 配置不存在")
+
+    req = payload or LlmProfilePushRequest()
+    query = select(Sandbox).where(Sandbox.deleted_at.is_(None)).order_by(Sandbox.created_at.asc())
+    if req.sandbox_ids:
+        query = query.where(Sandbox.id.in_(req.sandbox_ids))
+    sandboxes = list(db.scalars(query).all())
+
+    docker_svc = get_docker()
+    results = []
+    for sbx in sandboxes:
+        try:
+            res = docker_svc.sync_llm_profile(
+                sbx,
+                profile,
+                set_as_default=req.set_as_default,
+                replace_managed=req.replace_managed,
+            )
+            if res.get("ok") and req.set_as_default:
+                sbx.llm_profile_id = profile.id
+            results.append(res)
+        except Exception as exc:
+            results.append(
+                {
+                    "slug": sbx.slug,
+                    "sandbox_id": sbx.id,
+                    "ok": False,
+                    "skipped": False,
+                    "detail": str(exc),
+                }
+            )
+
+    synced = len([r for r in results if r.get("ok")])
+    skipped = len([r for r in results if r.get("skipped")])
+    failed = len(results) - synced - skipped
+    actor = session_email(request) if request is not None else None
+    audit(
+        db,
+        "llm.push",
+        target=profile.name,
+        actor=actor,
+        detail=(
+            f"profile={profile.id},model={profile.model},"
+            f"synced={synced}/{len(results)},skipped={skipped},default={req.set_as_default}"
+        ),
+    )
+    db.commit()
+    return {
+        "profile_id": profile.id,
+        "profile_name": profile.name,
+        "synced": synced,
+        "skipped": skipped,
+        "failed": failed,
+        "total": len(results),
+        "results": results,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Sandboxes API (Admin-Only Creation & Lifecycle Management)
 # ---------------------------------------------------------------------------
@@ -1825,15 +1894,17 @@ def patch_sandbox(
                 detail=f"slug={sandbox.slug},auto_sleep_exempt={payload.auto_sleep_exempt}",
             )
             db.commit()
+        llm_to_sync: LlmProfile | None = None
         if payload.llm_profile_id is not None:
             if payload.llm_profile_id == "":
                 sandbox.llm_profile_id = None
             else:
-                if not db.get(LlmProfile, payload.llm_profile_id):
+                prof = db.get(LlmProfile, payload.llm_profile_id)
+                if not prof:
                     raise HTTPException(status_code=404, detail="llm profile not found")
-                sandbox.llm_profile_id = payload.llm_profile_id
+                sandbox.llm_profile_id = prof.id
+                llm_to_sync = prof
             db.commit()
-            need_recreate = True
         if payload.image_repo is not None and payload.image_repo != sandbox.image_repo:
             sandbox.image_repo = payload.image_repo.strip()
             db.commit()
@@ -1858,6 +1929,24 @@ def patch_sandbox(
         if need_recreate:
             get_docker().recreate(sandbox)
             sandbox.status = "running"
+            db.commit()
+            db.refresh(sandbox)
+        if llm_to_sync is not None:
+            # Hot-push updated LLM profile directly into the sandbox's cordis.patch.yml + .credentials.yaml
+            # without destroying the container (and after recreate if the image also changed).
+            sync_res = get_docker().sync_llm_profile(
+                sandbox, llm_to_sync, set_as_default=True
+            )
+            if not sync_res.get("ok") and not sync_res.get("skipped"):
+                raise SandboxRuntimeError(
+                    f"LLM 配置下发失败: {sync_res.get('detail') or 'unknown error'}"
+                )
+            audit(
+                db,
+                "sandbox.llm_sync",
+                target=sandbox.id,
+                detail=f"slug={sandbox.slug},profile={llm_to_sync.name},synced={sync_res.get('ok')}",
+            )
             db.commit()
             db.refresh(sandbox)
     except HTTPException:

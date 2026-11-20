@@ -219,6 +219,33 @@ def test_token_auth_admin_crud_backup_and_user_portal(api_env):
     assert synced.status_code == 200
     assert synced.json()["synced"] == 2
 
+    # 1-click push LLM profile to selected / all sandboxes
+    push_res = client.post(
+        f"/api/llm-profiles/{llm_id}/push",
+        headers=admin_headers,
+        json={"sandbox_ids": [bob_sbx_id], "set_as_default": True, "replace_managed": False},
+    )
+    assert push_res.status_code == 200
+    push_body = push_res.json()
+    assert push_body["synced"] == 1
+    assert push_body["skipped"] == 0
+    assert push_body["results"][0]["slug"] == "bob"
+    # Pushing with set_as_default=True binds sandbox.llm_profile_id in DB
+    bob_detail = client.get(f"/api/sandboxes/{bob_sbx_id}", headers=admin_headers)
+    assert bob_detail.status_code == 200
+    assert bob_detail.json()["llm_profile_id"] == llm_id
+
+    # Patching llm_profile_id on a running sandbox hot-syncs instead of recreating container
+    recreate_count_before = len([c for c in _fake_docker.calls if c[0] == "recreate"])
+    llm_patch_sbx = client.patch(
+        f"/api/sandboxes/{alice_sbx_id}",
+        headers=admin_headers,
+        json={"llm_profile_id": llm_id},
+    )
+    assert llm_patch_sbx.status_code == 200
+    assert len([c for c in _fake_docker.calls if c[0] == "recreate"]) == recreate_count_before
+    assert any(c[0] == "sync_llm_profile" and c[1][0] == "alice" for c in _fake_docker.calls)
+
     overview = client.get("/api/overview", headers=admin_headers)
     assert overview.status_code == 200
     assert overview.json()["total_sandboxes"] == 2

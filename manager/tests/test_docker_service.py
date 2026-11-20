@@ -340,3 +340,67 @@ def test_disk_usage_active_work_lite_backup_and_restore(tmp_path):
     sym_buf.seek(0)
     with pytest.raises(SandboxRuntimeError, match="escapes workspace root"):
         svc.restore_workspace_tar(sbx, sym_buf)
+
+
+def test_sync_llm_profile_exec_payload_and_stopped_skip():
+    import json
+    from app.docker_service import llm_provider_identifiers
+
+    settings = Settings(_env_file=None)
+    svc = DockerService(settings)
+    profile = LlmProfile(
+        id="abcdef12-3456-7890-abcd-ef1234567890",
+        name="Local Qwen",
+        base_url="http://192.168.1.3:47832/v1",
+        model="iq3_xxs",
+        api_protocol="openai-completions",
+        context_window=256000,
+        max_tokens=32000,
+        supports_image=True,
+        reasoning_effort="medium",
+        thinking_format="qwen",
+        api_key_ciphertext="",
+    )
+    sbx = _make_sandbox(slug="lead")
+
+    # 1. Stopped container is cleanly skipped
+    stopped_container = MagicMock()
+    stopped_container.status = "exited"
+    svc.get = MagicMock(return_value=stopped_container)
+    skipped = svc.sync_llm_profile(sbx, profile)
+    assert skipped["ok"] is False
+    assert skipped["skipped"] is True
+    assert "exited" in skipped["detail"]
+
+    # 2. Running container executes node config sync (passing secret via env) and restarts dsh
+    running_container = MagicMock()
+    running_container.status = "running"
+    running_container.exec_run.side_effect = [
+        (0, b"LLM_SYNC_OK:mgr-abcdef123456:iq3_xxs\n"),
+        (0, b"dsh: stopped\ndsh: started\n"),
+    ]
+    svc.get = MagicMock(return_value=running_container)
+    res = svc.sync_llm_profile(sbx, profile, set_as_default=True, replace_managed=True)
+    assert res["ok"] is True
+    assert res["skipped"] is False
+    prov_key, cred_ref = llm_provider_identifiers(profile)
+    assert res["provider"] == prov_key
+    assert running_container.exec_run.call_count == 2
+
+    first_call = running_container.exec_run.call_args_list[0]
+    assert first_call.kwargs["user"] == "workspace"
+    payload = json.loads(first_call.kwargs["environment"]["LLM_PUSH_PAYLOAD"])
+    assert payload["providerKey"] == prov_key
+    assert payload["credRef"] == cred_ref
+    assert payload["apiKey"] == "local-no-key"
+    assert payload["contextWindow"] == 256000
+    assert payload["maxTokens"] == 32000
+    assert payload["supportsImage"] is True
+    assert payload["reasoningEffort"] == "medium"
+    assert payload["thinkingFormat"] == "qwen"
+    assert payload["setAsDefault"] is True
+    assert payload["replaceManaged"] is True
+
+    second_call = running_container.exec_run.call_args_list[1]
+    assert second_call.args[0] == ["supervisorctl", "restart", "dsh"]
+    assert second_call.kwargs["user"] == "root"

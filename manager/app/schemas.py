@@ -308,3 +308,9 @@ class LlmProfileOut(BaseModel):
     reasoning_effort: str | None = None
     thinking_format: str | None = None
     has_api_key: bool = False
+
+
+class LlmProfilePushRequest(BaseModel):
+    sandbox_ids: list[str] | None = None
+    set_as_default: bool = True
+    replace_managed: bool = False

@@ -36,6 +36,7 @@ import {
   Globe,
   Upload,
   Moon,
+  Send,
 } from 'lucide-react'
 import {
   Button,
@@ -982,6 +983,14 @@ function AdminConsoleView({
   }
   const [editingLlmId, setEditingLlmId] = useState<string | null>(null)
   const [llmForm, setLlmForm] = useState(EMPTY_LLM_FORM)
+  const [pushLlmTarget, setPushLlmTarget] = useState<LlmProfileItem | null>(null)
+  const [pushLlmSelectedIds, setPushLlmSelectedIds] = useState<string[]>([])
+  const [pushLlmSetDefault, setPushLlmSetDefault] = useState(true)
+  const [pushLlmReplaceManaged, setPushLlmReplaceManaged] = useState(false)
+  const [pushingLlm, setPushingLlm] = useState(false)
+  const [pushLlmResults, setPushLlmResults] = useState<
+    Array<{ slug: string; ok: boolean; skipped?: boolean; detail?: string }> | null
+  >(null)
 
   // Admin / User Form
   const [newAdminEmail, setNewAdminEmail] = useState('')
@@ -1212,6 +1221,58 @@ function AdminConsoleView({
       notify(err.message, 'error')
     } finally {
       setSavingSleepPolicy(false)
+    }
+  }
+
+  const openPushLlmDialog = (profile: LlmProfileItem) => {
+    setPushLlmTarget(profile)
+    setPushLlmSelectedIds(
+      sandboxes.filter((s) => s.status === 'running').map((s) => s.id),
+    )
+    setPushLlmSetDefault(true)
+    setPushLlmReplaceManaged(false)
+    setPushLlmResults(null)
+  }
+
+  const handlePushLlm = async () => {
+    if (!pushLlmTarget || pushLlmSelectedIds.length === 0) return
+    setPushingLlm(true)
+    setPushLlmResults(null)
+    try {
+      notify(
+        t('admin.llmPushing', {
+          name: pushLlmTarget.name,
+          count: pushLlmSelectedIds.length,
+        }),
+      )
+      const res = await apiFetch<{
+        synced: number
+        skipped: number
+        failed: number
+        total: number
+        results: Array<{ slug: string; ok: boolean; skipped?: boolean; detail?: string }>
+      }>(`/api/llm-profiles/${pushLlmTarget.id}/push`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sandbox_ids: pushLlmSelectedIds,
+          set_as_default: pushLlmSetDefault,
+          replace_managed: pushLlmReplaceManaged,
+        }),
+      })
+      setPushLlmResults(res.results || [])
+      notify(
+        t('admin.llmPushed', {
+          name: pushLlmTarget.name,
+          synced: res.synced,
+          total: res.total,
+        }),
+        res.failed > 0 ? 'error' : 'success',
+      )
+      await refreshAll()
+    } catch (err: any) {
+      notify(err.message || t('admin.llmPushFailed'), 'error')
+    } finally {
+      setPushingLlm(false)
     }
   }
 
@@ -2235,11 +2296,18 @@ function AdminConsoleView({
                 <p className="text-xs text-zinc-500 py-8 text-center">{t('admin.llm.empty')}</p>
               ) : (
                 <div className="divide-y divide-zinc-800/70">
-                  {llmProfiles.map((p) => (
+                  {llmProfiles.map((p) => {
+                    const boundCount = sandboxes.filter((s) => s.llm_profile_id === p.id).length
+                    return (
                     <div key={p.id} className="flex items-start justify-between gap-3 py-3 text-xs">
                       <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-medium text-zinc-100">{p.name}</span>
+                          {boundCount > 0 ? (
+                            <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-300">
+                              {t('admin.llm.boundCount', { count: boundCount })}
+                            </Badge>
+                          ) : null}
                           <Badge variant="outline" className="text-[10px]">
                             {p.api_protocol || 'openai-completions'}
                           </Badge>
@@ -2274,6 +2342,15 @@ function AdminConsoleView({
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={sandboxes.length === 0}
+                          onClick={() => openPushLlmDialog(p)}
+                        >
+                          <Send className="h-3 w-3" />
+                          {t('admin.llm.pushBtn')}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -2313,7 +2390,8 @@ function AdminConsoleView({
                         </Button>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </CardContent>
@@ -2946,6 +3024,202 @@ function AdminConsoleView({
             </Button>
           </div>
         </form>
+      </Dialog>
+
+      {/* DIALOG 3.5: Push LLM Profile to Sandboxes */}
+      <Dialog
+        open={!!pushLlmTarget}
+        onOpenChange={(o) => !o && !pushingLlm && setPushLlmTarget(null)}
+        title={t('dialog.pushLlm.title', { name: pushLlmTarget?.name ?? '' })}
+        description={t('dialog.pushLlm.desc')}
+      >
+        {pushLlmTarget && (
+          <div className="space-y-4 text-xs">
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 space-y-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-medium text-zinc-100">{pushLlmTarget.name}</span>
+                <Badge variant="outline" className="text-[10px]">
+                  {pushLlmTarget.api_protocol || 'openai-completions'}
+                </Badge>
+                <Badge variant="outline" className="text-[10px] text-zinc-400">
+                  {pushLlmTarget.has_api_key ? t('admin.llm.badgeKeySet') : t('admin.llm.badgeNoKey')}
+                </Badge>
+              </div>
+              <div className="font-mono text-[11px] text-zinc-400 truncate">
+                {pushLlmTarget.model} · {pushLlmTarget.base_url}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label>{t('dialog.pushLlm.targetsLabel')}</Label>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    className="rounded border border-zinc-700/80 px-2 py-0.5 text-[10px] text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+                    onClick={() =>
+                      setPushLlmSelectedIds(
+                        sandboxes.filter((s) => s.status === 'running').map((s) => s.id),
+                      )
+                    }
+                  >
+                    {t('dialog.pushLlm.selectRunning', {
+                      count: sandboxes.filter((s) => s.status === 'running').length,
+                    })}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-zinc-700/80 px-2 py-0.5 text-[10px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                    onClick={() => setPushLlmSelectedIds([])}
+                  >
+                    {t('dialog.pushLlm.clearAll')}
+                  </button>
+                </div>
+              </div>
+
+              {sandboxes.length === 0 ? (
+                <p className="text-zinc-500 py-4 text-center">{t('dialog.pushLlm.noSandboxes')}</p>
+              ) : (
+                <div className="max-h-56 overflow-y-auto divide-y divide-zinc-800/70 rounded-md border border-zinc-800 bg-zinc-950/60">
+                  {sandboxes.map((sbx) => {
+                    const isRunning = sbx.status === 'running'
+                    const checked = pushLlmSelectedIds.includes(sbx.id)
+                    return (
+                      <label
+                        key={sbx.id}
+                        className={cn(
+                          'flex items-center justify-between gap-3 px-3 py-2',
+                          isRunning ? 'cursor-pointer hover:bg-zinc-900/70' : 'opacity-55 cursor-not-allowed',
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <input
+                            type="checkbox"
+                            disabled={!isRunning || pushingLlm}
+                            checked={checked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setPushLlmSelectedIds((prev) =>
+                                  prev.includes(sbx.id) ? prev : [...prev, sbx.id],
+                                )
+                              } else {
+                                setPushLlmSelectedIds((prev) => prev.filter((id) => id !== sbx.id))
+                              }
+                            }}
+                            className="h-3.5 w-3.5 rounded border-zinc-600 accent-indigo-500"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={cn(
+                                  'h-1.5 w-1.5 rounded-full shrink-0',
+                                  isRunning ? 'bg-emerald-400' : 'bg-zinc-500',
+                                )}
+                              />
+                              <span className="font-mono font-medium text-zinc-100">{sbx.slug}</span>
+                              {sbx.display_name ? (
+                                <span className="text-zinc-400 truncate">({sbx.display_name})</span>
+                              ) : null}
+                            </div>
+                            <div className="text-[11px] text-zinc-500 truncate">
+                              {isRunning
+                                ? sbx.llm_profile_name
+                                  ? t('dialog.pushLlm.currentModel', { name: sbx.llm_profile_name })
+                                  : sbx.email
+                                : t('dialog.pushLlm.stoppedSkip')}
+                            </div>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-[10px] shrink-0',
+                            isRunning
+                              ? 'border-emerald-500/40 text-emerald-300'
+                              : 'border-zinc-700 text-zinc-500',
+                          )}
+                        >
+                          {localizeStatus(locale, sbx.status)}
+                        </Badge>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <label className="flex items-center gap-2 text-zinc-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  disabled={pushingLlm}
+                  checked={pushLlmSetDefault}
+                  onChange={(e) => setPushLlmSetDefault(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-zinc-600 accent-indigo-500"
+                />
+                <span>{t('dialog.pushLlm.setDefaultLabel')}</span>
+              </label>
+              <label className="flex items-center gap-2 text-zinc-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  disabled={pushingLlm}
+                  checked={pushLlmReplaceManaged}
+                  onChange={(e) => setPushLlmReplaceManaged(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-zinc-600 accent-indigo-500"
+                />
+                <span>{t('dialog.pushLlm.replaceManagedLabel')}</span>
+              </label>
+            </div>
+
+            {pushLlmResults && pushLlmResults.length > 0 && (
+              <div className="space-y-1.5 rounded-md border border-zinc-800 bg-zinc-900/50 p-2.5">
+                <div className="text-[11px] font-medium text-zinc-300">
+                  {t('dialog.pushLlm.resultTitle')}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {pushLlmResults.map((r) => (
+                    <Badge
+                      key={r.slug}
+                      variant="outline"
+                      className={cn(
+                        'text-[10px] font-mono',
+                        r.ok
+                          ? 'border-emerald-500/40 text-emerald-300'
+                          : r.skipped
+                            ? 'border-amber-500/40 text-amber-300'
+                            : 'border-rose-500/40 text-rose-300',
+                      )}
+                      title={r.detail || ''}
+                    >
+                      {r.slug} {r.ok ? '✓' : r.skipped ? '—' : '✕'}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={pushingLlm}
+                onClick={() => setPushLlmTarget(null)}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button
+                type="button"
+                disabled={pushingLlm || pushLlmSelectedIds.length === 0}
+                onClick={handlePushLlm}
+              >
+                <Send className="h-3.5 w-3.5" />
+                {pushingLlm
+                  ? t('dialog.pushLlm.submitting')
+                  : t('dialog.pushLlm.submit', { count: pushLlmSelectedIds.length })}
+              </Button>
+            </div>
+          </div>
+        )}
       </Dialog>
 
       {/* DIALOG 3: Edit Sandbox Spec / Image / LLM */}

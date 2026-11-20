@@ -19,9 +19,16 @@ from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 
 from .config import Settings
-from .models import Sandbox
+from .models import LlmProfile, Sandbox
 from .plugin_registry import PluginRegistryService
 from .security import decrypt_secret
+
+
+def llm_provider_identifiers(profile: LlmProfile) -> tuple[str, str]:
+    """Derive stable (provider_key, credential_ref) identifiers for a Manager LLM profile."""
+    raw_id = re.sub(r"[^a-z0-9]", "", (profile.id or "").lower())
+    suffix = raw_id[:12] if raw_id else "default"
+    return f"mgr-{suffix}", f"DSH_LLM_MGR_{suffix.upper()}_KEY"
 
 
 class SandboxRuntimeError(RuntimeError):
@@ -826,6 +833,232 @@ console.log('INSTALLED_DEPS=' + JSON.stringify(installedDeps));
             "ok": ec2 == 0,
             "reinstalled": reinstalled,
             "detail": text[-300:] if text else "synced",
+        }
+
+    def sync_llm_profile(
+        self,
+        sandbox: Sandbox,
+        profile: LlmProfile,
+        *,
+        set_as_default: bool = True,
+        replace_managed: bool = False,
+    ) -> dict[str, Any]:
+        """Hot-push an LLM profile into a running sandbox's DSH config and restart dsh."""
+        container = self.get(sandbox)
+        container.reload()
+        if container.status != "running":
+            return {
+                "slug": sandbox.slug,
+                "sandbox_id": sandbox.id,
+                "ok": False,
+                "skipped": True,
+                "detail": f"status={container.status}",
+            }
+
+        provider_key, cred_ref = llm_provider_identifiers(profile)
+        api_key = ""
+        if profile.api_key_ciphertext:
+            try:
+                api_key = decrypt_secret(profile.api_key_ciphertext)
+            except ValueError:
+                api_key = ""
+
+        payload = {
+            "providerKey": provider_key,
+            "credRef": cred_ref,
+            "displayName": profile.name,
+            "apiProtocol": profile.api_protocol or "openai-completions",
+            "baseUrl": profile.base_url,
+            "model": profile.model,
+            "apiKey": api_key or "local-no-key",
+            "contextWindow": profile.context_window,
+            "maxTokens": profile.max_tokens,
+            "supportsImage": bool(profile.supports_image),
+            "reasoningEffort": (profile.reasoning_effort or "").strip().lower(),
+            "thinkingFormat": (profile.thinking_format or "").strip(),
+            "setAsDefault": bool(set_as_default),
+            "replaceManaged": bool(replace_managed),
+        }
+
+        node_script = """
+const fs = require('fs');
+const path = require('path');
+const yaml = require('/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/yaml');
+
+const cfg = JSON.parse(process.env.LLM_PUSH_PAYLOAD || '{}');
+const validEfforts = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+
+const dshHome = '/home/workspace/.dsh';
+const profileDir = path.join(dshHome, 'profiles', 'web');
+const patchPath = path.join(profileDir, 'cordis.patch.yml');
+const credPath = path.join(dshHome, '.credentials.yaml');
+
+fs.mkdirSync(profileDir, { recursive: true });
+
+let entries = [];
+if (fs.existsSync(patchPath)) {
+  const raw = fs.readFileSync(patchPath, 'utf8');
+  const parsed = yaml.parse(raw);
+  if (Array.isArray(parsed)) entries = parsed;
+}
+
+let piAiEntry = entries.find((e) => e && typeof e === 'object' && e.id === 'llm-pi-ai');
+if (!piAiEntry) {
+  piAiEntry = { id: 'llm-pi-ai', name: '@deepseek-ai/dsh-llm-pi-ai', config: { providers: {} } };
+  entries.push(piAiEntry);
+}
+if (!piAiEntry.name) piAiEntry.name = '@deepseek-ai/dsh-llm-pi-ai';
+if (!piAiEntry.config || typeof piAiEntry.config !== 'object') piAiEntry.config = {};
+if (!piAiEntry.config.providers || typeof piAiEntry.config.providers !== 'object') {
+  piAiEntry.config.providers = {};
+}
+const providers = piAiEntry.config.providers;
+
+let removedLegacyDefault = false;
+const removedRefs = [];
+const legacyBoot = providers['openai-compatible'];
+if (legacyBoot && typeof legacyBoot === 'object' && legacyBoot.apiKeyEnv === 'DSH_DEFAULT_LLM_API_KEY') {
+  if (
+    cfg.replaceManaged
+    || legacyBoot.displayName === cfg.displayName
+    || legacyBoot.baseURL === cfg.baseUrl
+  ) {
+    delete providers['openai-compatible'];
+    removedLegacyDefault = true;
+  }
+}
+if (cfg.replaceManaged) {
+  for (const key of Object.keys(providers)) {
+    if (key.startsWith('mgr-') && key !== cfg.providerKey) {
+      const ref = providers[key] && providers[key].apiKeyEnv;
+      if (typeof ref === 'string' && ref.startsWith('DSH_LLM_MGR_')) {
+        removedRefs.push(ref);
+      }
+      delete providers[key];
+    }
+  }
+}
+
+const modelEntry = {
+  id: cfg.model,
+  name: cfg.model,
+  input: cfg.supportsImage ? ['text', 'image'] : ['text'],
+};
+if (Number.isFinite(cfg.contextWindow) && cfg.contextWindow >= 1024) {
+  modelEntry.contextWindow = Math.floor(cfg.contextWindow);
+}
+if (Number.isFinite(cfg.maxTokens) && cfg.maxTokens >= 128) {
+  modelEntry.maxTokens = Math.floor(cfg.maxTokens);
+}
+if (cfg.reasoningEffort === 'off') {
+  modelEntry.reasoningEfforts = false;
+} else if (validEfforts.has(cfg.reasoningEffort)) {
+  modelEntry.reasoningEfforts = {
+    off: null,
+    minimal: 'minimal',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
+    max: 'max',
+  };
+}
+
+const providerObj = {
+  api: cfg.apiProtocol || 'openai-completions',
+  baseURL: cfg.baseUrl,
+  displayName: cfg.displayName,
+  apiKeyEnv: cfg.credRef,
+};
+if (validEfforts.has(cfg.reasoningEffort)) {
+  providerObj.reasoning = cfg.reasoningEffort;
+}
+if (cfg.thinkingFormat) {
+  providerObj.compat = { thinkingFormat: cfg.thinkingFormat };
+}
+providerObj.models = [modelEntry];
+providers[cfg.providerKey] = providerObj;
+
+let defaultEntry = entries.find((e) => e && typeof e === 'object' && e.id === 'agent-default-model');
+const shouldUpdateDefault = Boolean(cfg.setAsDefault)
+  || (removedLegacyDefault && defaultEntry && defaultEntry.config && defaultEntry.config.provider === 'openai-compatible');
+if (shouldUpdateDefault) {
+  const defaultConfig = {
+    provider: cfg.providerKey,
+    model: cfg.model,
+  };
+  if (validEfforts.has(cfg.reasoningEffort) && cfg.reasoningEffort !== 'off') {
+    defaultConfig.reasoningEffort = cfg.reasoningEffort;
+  }
+  if (!defaultEntry) {
+    defaultEntry = { id: 'agent-default-model', config: defaultConfig };
+    entries.unshift(defaultEntry);
+  } else {
+    defaultEntry.config = defaultConfig;
+  }
+}
+
+const patchTmp = patchPath + '.tmp.' + process.pid;
+fs.writeFileSync(patchTmp, yaml.stringify(entries), 'utf8');
+fs.renameSync(patchTmp, patchPath);
+
+let credDoc = { version: 1, refs: {} };
+if (fs.existsSync(credPath)) {
+  const rawCred = fs.readFileSync(credPath, 'utf8');
+  const parsedCred = yaml.parse(rawCred);
+  if (parsedCred && typeof parsedCred === 'object' && !Array.isArray(parsedCred)) {
+    credDoc = parsedCred;
+  }
+}
+credDoc.version = 1;
+if (!credDoc.refs || typeof credDoc.refs !== 'object' || Array.isArray(credDoc.refs)) {
+  credDoc.refs = {};
+}
+for (const oldRef of removedRefs) {
+  delete credDoc.refs[oldRef];
+}
+credDoc.refs[cfg.credRef] = cfg.apiKey || 'local-no-key';
+
+const credTmp = credPath + '.tmp.' + process.pid;
+fs.writeFileSync(credTmp, yaml.stringify(credDoc), { encoding: 'utf8', mode: 0o600 });
+fs.chmodSync(credTmp, 0o600);
+fs.renameSync(credTmp, credPath);
+fs.chmodSync(credPath, 0o600);
+console.log('LLM_SYNC_OK:' + cfg.providerKey + ':' + cfg.model);
+"""
+        ec1, out1 = container.exec_run(
+            ["node", "-e", node_script],
+            user="workspace",
+            environment={
+                "HOME": "/home/workspace",
+                "DSH_HOME": "/home/workspace/.dsh",
+                "LLM_PUSH_PAYLOAD": json.dumps(payload),
+            },
+        )
+        text1 = out1.decode("utf-8", errors="replace").strip() if out1 else ""
+        if ec1 != 0:
+            return {
+                "slug": sandbox.slug,
+                "sandbox_id": sandbox.id,
+                "ok": False,
+                "skipped": False,
+                "detail": text1[-300:] or f"node exit {ec1}",
+            }
+
+        ec2, out2 = container.exec_run(
+            ["supervisorctl", "restart", "dsh"],
+            user="root",
+        )
+        text2 = out2.decode("utf-8", errors="replace").strip() if out2 else ""
+        return {
+            "slug": sandbox.slug,
+            "sandbox_id": sandbox.id,
+            "ok": ec2 == 0,
+            "skipped": False,
+            "provider": provider_key,
+            "model": profile.model,
+            "set_as_default": bool(set_as_default),
+            "detail": text2[-300:] if text2 else "synced",
         }
 
     def remove(self, sandbox: Sandbox, purge_volume: bool = False) -> None:

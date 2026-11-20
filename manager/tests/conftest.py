@@ -246,6 +246,40 @@ class FakeDockerService:
             "detail": "synced",
         }
 
+    def sync_llm_profile(
+        self,
+        sandbox: Sandbox,
+        profile: LlmProfile,
+        *,
+        set_as_default: bool = True,
+        replace_managed: bool = False,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            (
+                "sync_llm_profile",
+                (sandbox.slug, profile.id, set_as_default, replace_managed),
+            )
+        )
+        item = self.containers.get(sandbox.slug)
+        if not item or item.get("status") != "running":
+            return {
+                "slug": sandbox.slug,
+                "sandbox_id": sandbox.id,
+                "ok": False,
+                "skipped": True,
+                "detail": f"status={item.get('status') if item else 'missing'}",
+            }
+        return {
+            "slug": sandbox.slug,
+            "sandbox_id": sandbox.id,
+            "ok": True,
+            "skipped": False,
+            "provider": f"mgr-{profile.id[:8]}",
+            "model": profile.model,
+            "set_as_default": set_as_default,
+            "detail": "dsh: stopped\ndsh: started",
+        }
+
     def remove(self, sandbox: Sandbox, purge_volume: bool = False) -> None:
         self.calls.append(("remove", (sandbox.slug, purge_volume)))
         self.containers.pop(sandbox.slug, None)
