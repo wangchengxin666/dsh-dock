@@ -218,6 +218,7 @@ export function buildAgentWakePrompt({
       'Other group members stay quiet unless you explicitly call or assign tasks to them. Decide naturally:',
       `- If a task needs another member’s specialty OR needs actions/config/checks executed inside another sandbox container: use \`mesh_ask_peer\` (roomId="${room.id}", threadId="${effectiveThreadId}", targetSlug="<slug>") for quick single-member calls, OR \`mesh_dispatch_tasks\` to create tracked tasks on the shared Task Board and wake multiple members in parallel (\`mode="async"\` for long coding/testing/deploy work, or \`mode="wait"\` for quick parallel design reviews; chain stages with \`dependsOn\` / \`dependsOnIndices\`).`,
       `- Before high-risk or milestone gates (e.g., PRD sign-off, production deploy, destructive migration), call \`mesh_request_approval\` to pause cleanly for human approval instead of calling \`ask_user_question\`.`,
+      '- IMPORTANT: Remote sandboxes are NOT local subagents. After calling `mesh_dispatch_tasks(mode="async")` or `mesh_request_approval`, NEVER call `wait_agent`, `sleep`, or polling loops — post a brief status summary and END YOUR TURN immediately. You will be woken automatically in a fresh turn when remote sandboxes finish or a human approves/rejects (and downstream DAG tasks with met dependencies auto-dispatch automatically).',
       '- You may also handle tasks in your own sandbox (using any local MCP tools & Skills) and update task status via `mesh_task_update`.',
       '- Once resolved, write a concise, well-formatted Markdown conclusion directly as your reply (no robotic templates, no raw internal IDs, and never prefix with your own @slug).',
     ].join('\n')
@@ -270,7 +271,7 @@ export function buildAgentWakePrompt({
     `3. If you need human sign-off on a milestone or risky action (e.g., PRD approval, production deploy), call \`mesh_request_approval\` with roomId="${room.id}" instead of \`ask_user_question\`.`,
     `4. If you produce a file for peers, call \`mesh_share_file\` with roomId="${room.id}". Never exfiltrate .env, private keys, tokens, or ~/.dsh config.`,
     `5. Write your concise response directly in clean Markdown (automatically posted to room "${room.id}" — no need to call \`mesh_send_message\` redundantly, and never start your reply with @${self.slug}).`,
-    '6. NEVER call `ask_user_question` in this autonomous mesh session (no human prompt UI is attached here, and waiting on it stalls the session queue). Use `mesh_request_approval` for sign-off gates or ask clarifying questions directly in your text reply.',
+    '6. NEVER call `ask_user_question`, `wait_agent`, or sleep/poll loops in this autonomous collaboration session (no human prompt UI is attached and remote sandboxes are NOT local subagents — waiting stalls the room queue). Use `mesh_request_approval` for sign-off gates, and end your turn immediately after `mesh_dispatch_tasks(mode="async")` or `mesh_request_approval` so the system wakes you automatically on remote updates.',
   ].filter((line) => line !== '').join('\n')
 }
 
@@ -1295,6 +1296,11 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
                   for (const r of val.results) {
                     lines.push(`- @${r.assigneeSlug} [${r.taskId} · ${r.ok ? r.status : 'timeout'}]: ${r.reply || '(no reply)'}`)
                   }
+                } else if ((val.mode || 'async') === 'async') {
+                  lines.push(
+                    '',
+                    'NEXT STEP: Post a brief status update and END YOUR TURN now. Do NOT call `wait_agent`, `sleep`, or poll — remote sandboxes are not local subagents; downstream DAG tasks auto-dispatch on completion and you will be woken automatically in a fresh turn when peers report via `mesh_task_update`.',
+                  )
                 }
                 return [{ type: 'text', text: lines.join('\n') }]
               },
@@ -1614,7 +1620,7 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
                 {
                   type: 'text',
                   text: val.ok
-                    ? `Human approval gate posted for task [${val.task?.id}] "${val.task?.title}". Waiting for human Approve/Reject in the Sandbox Mesh UI.`
+                    ? `Human approval gate posted for task [${val.task?.id}] "${val.task?.title}". Waiting for human Approve/Reject in Collab Space. Post a brief summary and END YOUR TURN now (do NOT call wait_agent or poll; the assigned sandbox/Moderator will wake automatically once decided).`
                     : `Approval request failed: ${val.error || ''}`,
                 },
               ],

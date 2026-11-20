@@ -186,8 +186,12 @@ export function createFileShareGuard({ homeDir, shareRoots, protectedFiles }) {
     if (!trimmed) return { ok: false, status: 400, error: 'A local file path is required' }
     let candidate = isAbsolute(trimmed) ? resolve(trimmed) : resolve(homeDir, trimmed)
     if (!isAbsolute(trimmed) && !existsSync(candidate)) {
-      const collabCandidate = resolve(homeDir, 'collab-space', trimmed)
-      if (existsSync(collabCandidate)) candidate = collabCandidate
+      const collabCandidates = [
+        resolve(homeDir, 'deepseek-harness', 'collab-space', trimmed),
+        resolve(homeDir, 'collab-space', trimmed),
+      ]
+      const found = collabCandidates.find((p) => existsSync(p))
+      if (found) candidate = found
     }
     if (!existsSync(candidate)) return { ok: false, status: 404, error: `File not found: ${trimmed}` }
 

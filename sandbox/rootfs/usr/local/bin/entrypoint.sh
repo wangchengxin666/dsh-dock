@@ -64,7 +64,7 @@ export DSH_TRUSTED_HOSTS DSH_PUBLIC_URL
 # Home volume and directories
 # ---------------------------------------------------------------------------
 install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 /home/workspace /home/workspace/.dsh
-install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 /home/workspace/deepseek-harness
+install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 /home/workspace/default-workspace
 install -d -o "${WORKSPACE_USER}" -g "${WORKSPACE_USER}" -m 0755 /home/workspace/.dsh/skills
 # Existing volumes may contain root-owned skill dirs from older images.
 chown -R "${WORKSPACE_USER}:${WORKSPACE_USER}" /home/workspace/.dsh/skills 2>/dev/null || true

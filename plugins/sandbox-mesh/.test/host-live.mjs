@@ -1293,6 +1293,7 @@ try {
       assert.deepEqual(charlie.store.getTask(projRoomId, tBe.id).artifacts, ['branch:feat/oauth', 'https://preview.local/auth'])
       await new Promise((r) => setTimeout(r, 30))
       assert.equal(wokeNodes.some((w) => w.node === 'alice' && w.text.includes('DONE')), true, 'Moderator Alice must be notified when Bob completes task')
+      assert.equal(wokeNodes.some((w) => w.node === 'charlie' && w.taskId === tQa.id && w.text.includes('UNBLOCKED')), true, 'Completing upstream DAG task must automatically wake newly unblocked downstream assignee Charlie')
 
       // mesh_task_board summarizes progress accurately
       const boardSnap = await boardTool.execute({ roomId: projRoomId, threadId: projThreadId })
@@ -1482,8 +1483,9 @@ try {
 
       // 14g. Dedicated collab-space workspace hygiene, auto-archive of idle session-mesh-*, and collab-space relative file sharing
       {
-        const collabFile = join(aliceDir, 'collab-space', 'demo-note.txt')
-        mkdirSync(join(aliceDir, 'collab-space'), { recursive: true })
+        const collabDirPath = join(aliceDir, 'collab-space')
+        const collabFile = join(collabDirPath, 'demo-note.txt')
+        mkdirSync(collabDirPath, { recursive: true })
         writeFileSync(collabFile, 'hello from collab-space', 'utf8')
         const sharedCollab = await alice.sendFile({
           roomId: starRoomId,
@@ -1551,7 +1553,7 @@ try {
         wireHarnessRuntime(wsCtx, alice, { logger: console })
         await new Promise((r) => setTimeout(r, 80))
         assert.notEqual(wsHome.title, '沙箱互联 (Sandbox Mesh)', 'Legacy home workspace title must be restored')
-        const collabWs = wsList.find((w) => w.path === join(aliceDir, 'collab-space'))
+        const collabWs = wsList.find((w) => w.path === collabDirPath)
         assert.ok(collabWs, 'Dedicated collab-space workspace must be created')
         assert.equal(collabWs.title, '协同空间')
         assert.equal(wsList[wsList.length - 1].id, 'ws_collab', 'Collab Space workspace must be placed after normal workspaces')

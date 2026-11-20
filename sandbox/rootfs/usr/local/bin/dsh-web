@@ -15,6 +15,55 @@ fi
 # Settings -> Models (or via injected DSH_DEFAULT_LLM_* defaults).
 args=(--profile web --patch /etc/dsh/sandbox.patch.yml --patch /etc/dsh/no-default-model.patch.yml)
 
+# First run: pre-seed DSH's default workspace directly under the user home
+# directory (/home/workspace/default-workspace) instead of nesting under
+# /home/workspace/deepseek-harness/default-workspace, while keeping
+# /home/workspace itself as the user's home directory rather than a workspace.
+workspace_store="${DSH_HOME}/storages/workspace.json"
+if [ ! -f "${workspace_store}" ]; then
+  WORKSPACE_STORE="${workspace_store}" DEFAULT_WS_DIR="${HOME:-/home/workspace}/default-workspace" node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const { randomUUID } = require("crypto");
+    const storePath = process.env.WORKSPACE_STORE;
+    const wsDir = process.env.DEFAULT_WS_DIR;
+    fs.mkdirSync(wsDir, { recursive: true });
+    fs.mkdirSync(path.dirname(storePath), { recursive: true });
+    const realWsDir = fs.realpathSync(wsDir);
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const data = {
+      unit: { name: "workspace", version: 2 },
+      global: {
+        initialized: true,
+        defaultWorkspaceId: id,
+        workspaceIds: [id],
+        archivedSessionIds: [],
+        pinnedSessionIds: [],
+      },
+      tables: {
+        workspaces: {
+          [id]: {
+            path: realWsDir,
+            title: "default-workspace",
+            sessionIds: [],
+            createdAt: now,
+            updatedAt: now,
+          },
+        },
+      },
+    };
+    fs.writeFileSync(storePath, JSON.stringify(data, null, 2) + "\n", "utf8");
+  ' || true
+fi
+
+# pi-ai requires a non-empty API key even for keyless local OpenAI-compatible
+# endpoints (Ollama / vLLM / LM Studio / Strata). Provide a benign placeholder
+# when a custom base URL is configured without an explicit API key.
+if [ -n "${DSH_DEFAULT_LLM_BASE_URL:-}" ] && [ -z "${DSH_DEFAULT_LLM_API_KEY:-}" ]; then
+  export DSH_DEFAULT_LLM_API_KEY="local-no-key"
+fi
+
 # First run: write default model + provider config into the profile patch when
 # not yet configured. Settings -> Models later edits these rows, and this check
 # skips them so user selections always survive restarts.
@@ -68,9 +117,7 @@ if [ -f "${profile_patch}" ]; then
       if (displayName) {
         lines.push("        displayName: " + JSON.stringify(displayName));
       }
-      if (apiKey) {
-        lines.push("        apiKeyEnv: DSH_DEFAULT_LLM_API_KEY");
-      }
+      lines.push("        apiKeyEnv: DSH_DEFAULT_LLM_API_KEY");
       if (validEfforts.has(reasoningEffort)) {
         lines.push("        reasoning: " + JSON.stringify(reasoningEffort));
       }

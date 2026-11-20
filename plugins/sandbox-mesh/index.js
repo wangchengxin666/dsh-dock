@@ -1579,6 +1579,31 @@ export function createMeshService({
         )
       : []
 
+    // Automatically wake newly unblocked downstream DAG tasks in parallel
+    const autoDispatchedIds = []
+    if (updated.status === 'done' && prevStatus !== 'done' && unblockedDependents.length > 0) {
+      const dispatchable = unblockedDependents.filter(
+        (d) => d.assigneeSlug && (!d.approvalRequired || d.approvalStatus === 'approved'),
+      )
+      await Promise.all(
+        dispatchable.map(async (d) => {
+          autoDispatchedIds.push(d.id)
+          const descBlock = d.description ? `\n\n${d.description}` : ''
+          await sendMessage({
+            roomId: cleanRoomId,
+            threadId: d.threadId || updated.threadId || room.activeThreadId || '',
+            phase: 'turn',
+            kind: 'task',
+            taskId: d.id,
+            actor: 'agent',
+            hop: 1,
+            mentionsOverride: [d.assigneeSlug],
+            text: `@${d.assigneeSlug} **[Task \`${d.id}\` · UNBLOCKED]** ${d.title}\nUpstream dependency \`${updated.id}\` (${updated.title}) is now DONE — please begin executing this task now.${descBlock}`,
+          })
+        }),
+      )
+    }
+
     // Notify group Moderator when a non-moderator Agent marks a task done / in_review / blocked
     const shouldNotifyMod = (
       actor === 'agent'
@@ -1594,7 +1619,7 @@ export function createMeshService({
           ? `\nArtifacts: ${updated.artifacts.map((a) => `\`${a}\``).join(', ')}`
           : ''
         const unlockLine = unblockedDependents.length > 0
-          ? `\nUnblocked downstream tasks ready to dispatch: ${unblockedDependents.map((d) => `\`${d.id}\` (${d.title}${d.assigneeSlug ? ` -> @${d.assigneeSlug}` : ''})`).join(', ')}`
+          ? `\nUnblocked downstream tasks (${autoDispatchedIds.length > 0 ? 'auto-dispatched to assignees' : 'ready to dispatch'}): ${unblockedDependents.map((d) => `\`${d.id}\` (${d.title}${d.assigneeSlug ? ` -> @${d.assigneeSlug}` : ''})`).join(', ')}`
           : ''
         const statusLabel = updated.status === 'done'
           ? 'DONE'
