@@ -1,6 +1,6 @@
 {
   "name": "@dsh-dock/sandbox-mesh",
-  "version": "0.2.0",
+  "version": "0.3.2",
   "description": "Cross-sandbox pairing, group chat, file transfer, and Human + Agent collaborative mesh over Traefik with HMAC-SHA256 authentication.",
   "type": "module",
   "main": "./index.js",

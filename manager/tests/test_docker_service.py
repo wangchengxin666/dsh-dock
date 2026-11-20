@@ -48,6 +48,12 @@ def test_environment_generation_and_plugin_resolution(tmp_path):
         name="DeepSeek",
         base_url="https://api.deepseek.com/v1",
         model="deepseek-chat",
+        api_protocol="openai-completions",
+        context_window=256000,
+        max_tokens=32000,
+        supports_image=True,
+        reasoning_effort="high",
+        thinking_format="deepseek",
         api_key_ciphertext=encrypt_secret("sk-secret-key"),
     )
     sbx = _make_sandbox(
@@ -68,8 +74,14 @@ def test_environment_generation_and_plugin_resolution(tmp_path):
     assert env["DSH_PLUGIN_INDEX_URL"] == "http://dsh-manager:9000/plugins/index.json"
     assert env["DSH_PLUGIN_NPM_REGISTRY"] == "http://dsh-manager:9000/plugins/npm"
     assert env["DSH_DEFAULT_LLM_PROVIDER"] == "openai-compatible"
+    assert env["DSH_DEFAULT_LLM_API"] == "openai-completions"
     assert env["DSH_DEFAULT_LLM_BASE_URL"] == "https://api.deepseek.com/v1"
     assert env["DSH_DEFAULT_LLM_MODEL"] == "deepseek-chat"
+    assert env["DSH_DEFAULT_LLM_CONTEXT_WINDOW"] == "256000"
+    assert env["DSH_DEFAULT_LLM_MAX_TOKENS"] == "32000"
+    assert env["DSH_DEFAULT_LLM_SUPPORTS_IMAGE"] == "true"
+    assert env["DSH_DEFAULT_LLM_REASONING_EFFORT"] == "high"
+    assert env["DSH_DEFAULT_LLM_THINKING_FORMAT"] == "deepseek"
     assert env["DSH_DEFAULT_LLM_API_KEY"] == "sk-secret-key"
     assert env["CUSTOM_FOO"] == "bar"
     assert env["SANDBOX_INIT_REPO_URL"] == "https://git.example.com/starter.git"

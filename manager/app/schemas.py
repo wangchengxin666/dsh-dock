@@ -235,11 +235,63 @@ class HealthOut(BaseModel):
     docker: str
 
 
+LLM_API_PROTOCOLS = Literal[
+    "openai-completions",
+    "openai-responses",
+    "anthropic-messages",
+    "google-generative-ai",
+]
+LLM_REASONING_EFFORTS = Literal[
+    "",
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+]
+LLM_THINKING_FORMATS = Literal[
+    "",
+    "openai",
+    "deepseek",
+    "openrouter",
+    "together",
+    "baseten",
+    "zai",
+    "qwen",
+    "chat-template",
+    "qwen-chat-template",
+    "string-thinking",
+    "ant-ling",
+]
+
+
 class LlmProfileCreate(BaseModel):
-    name: str
-    base_url: str
-    model: str
-    api_key: str
+    name: str = Field(min_length=1, max_length=128)
+    base_url: str = Field(min_length=1, max_length=512)
+    model: str = Field(min_length=1, max_length=128)
+    api_key: str = ""
+    api_protocol: LLM_API_PROTOCOLS = "openai-completions"
+    context_window: int | None = Field(default=None, ge=1024, le=10_000_000)
+    max_tokens: int | None = Field(default=None, ge=128, le=1_000_000)
+    supports_image: bool = False
+    reasoning_effort: LLM_REASONING_EFFORTS | None = None
+    thinking_format: LLM_THINKING_FORMATS | None = None
+
+
+class LlmProfileUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    base_url: str | None = Field(default=None, min_length=1, max_length=512)
+    model: str | None = Field(default=None, min_length=1, max_length=128)
+    api_key: str | None = None
+    clear_api_key: bool = False
+    api_protocol: LLM_API_PROTOCOLS | None = None
+    context_window: int | None = Field(default=None, ge=1024, le=10_000_000)
+    max_tokens: int | None = Field(default=None, ge=128, le=1_000_000)
+    supports_image: bool | None = None
+    reasoning_effort: LLM_REASONING_EFFORTS | None = None
+    thinking_format: LLM_THINKING_FORMATS | None = None
 
 
 class LlmProfileOut(BaseModel):
@@ -249,3 +301,10 @@ class LlmProfileOut(BaseModel):
     name: str
     base_url: str
     model: str
+    api_protocol: str = "openai-completions"
+    context_window: int | None = None
+    max_tokens: int | None = None
+    supports_image: bool = False
+    reasoning_effort: str | None = None
+    thinking_format: str | None = None
+    has_api_key: bool = False

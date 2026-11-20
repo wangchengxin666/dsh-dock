@@ -188,6 +188,13 @@ interface LlmProfileItem {
   name: string
   base_url: string
   model: string
+  api_protocol?: string
+  context_window?: number | null
+  max_tokens?: number | null
+  supports_image?: boolean
+  reasoning_effort?: string | null
+  thinking_format?: string | null
+  has_api_key?: boolean
 }
 
 interface PluginItem {
@@ -960,13 +967,21 @@ function AdminConsoleView({
   })
   const [savingTpl, setSavingTpl] = useState(false)
 
-  // LLM Profile Form
-  const [llmForm, setLlmForm] = useState({
+  // LLM Profile Form (Create / Edit)
+  const EMPTY_LLM_FORM = {
     name: '',
+    api_protocol: 'openai-completions',
     base_url: 'https://api.deepseek.com/v1',
     model: 'deepseek-chat',
     api_key: '',
-  })
+    context_window: '128000',
+    max_tokens: '8192',
+    supports_image: false,
+    reasoning_effort: '',
+    thinking_format: '',
+  }
+  const [editingLlmId, setEditingLlmId] = useState<string | null>(null)
+  const [llmForm, setLlmForm] = useState(EMPTY_LLM_FORM)
 
   // Admin / User Form
   const [newAdminEmail, setNewAdminEmail] = useState('')
@@ -1998,24 +2013,64 @@ function AdminConsoleView({
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-1">
             <CardHeader>
-              <CardTitle>{t('admin.llm.addTitle')}</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle>
+                  {editingLlmId ? t('admin.llm.editTitle') : t('admin.llm.addTitle')}
+                </CardTitle>
+                {editingLlmId && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingLlmId(null)
+                      setLlmForm(EMPTY_LLM_FORM)
+                    }}
+                  >
+                    {t('admin.llm.cancelEditBtn')}
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               <form
                 onSubmit={async (e) => {
                   e.preventDefault()
                   try {
-                    await apiFetch('/api/llm-profiles', {
-                      method: 'POST',
-                      body: JSON.stringify(llmForm),
-                    })
+                    const ctxNum = llmForm.context_window.trim()
+                      ? Number.parseInt(llmForm.context_window.trim(), 10)
+                      : null
+                    const maxNum = llmForm.max_tokens.trim()
+                      ? Number.parseInt(llmForm.max_tokens.trim(), 10)
+                      : null
+                    const body: Record<string, unknown> = {
+                      name: llmForm.name.trim(),
+                      api_protocol: llmForm.api_protocol || 'openai-completions',
+                      base_url: llmForm.base_url.trim(),
+                      model: llmForm.model.trim(),
+                      context_window: Number.isFinite(ctxNum as number) ? ctxNum : null,
+                      max_tokens: Number.isFinite(maxNum as number) ? maxNum : null,
+                      supports_image: Boolean(llmForm.supports_image),
+                      reasoning_effort: llmForm.reasoning_effort || null,
+                      thinking_format: llmForm.thinking_format || null,
+                    }
+                    if (!editingLlmId || llmForm.api_key.trim()) {
+                      body.api_key = llmForm.api_key.trim()
+                    }
+                    if (editingLlmId) {
+                      await apiFetch(`/api/llm-profiles/${editingLlmId}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify(body),
+                      })
+                    } else {
+                      await apiFetch('/api/llm-profiles', {
+                        method: 'POST',
+                        body: JSON.stringify(body),
+                      })
+                    }
                     notify(t('admin.llmSaved'))
-                    setLlmForm({
-                      name: '',
-                      base_url: 'https://api.deepseek.com/v1',
-                      model: 'deepseek-chat',
-                      api_key: '',
-                    })
+                    setEditingLlmId(null)
+                    setLlmForm(EMPTY_LLM_FORM)
                     await refreshAll()
                   } catch (err: any) {
                     notify(err.message, 'error')
@@ -2031,6 +2086,18 @@ function AdminConsoleView({
                     value={llmForm.name}
                     onChange={(e) => setLlmForm({ ...llmForm, name: e.target.value })}
                   />
+                </div>
+                <div className="space-y-1">
+                  <Label>{t('admin.llm.apiProtocolLabel')}</Label>
+                  <Select
+                    value={llmForm.api_protocol}
+                    onChange={(e) => setLlmForm({ ...llmForm, api_protocol: e.target.value })}
+                  >
+                    <option value="openai-completions">OpenAI Completions (v1/chat/completions)</option>
+                    <option value="openai-responses">OpenAI Responses (v1/responses)</option>
+                    <option value="anthropic-messages">Anthropic Messages (v1/messages)</option>
+                    <option value="google-generative-ai">Google Generative AI (Gemini)</option>
+                  </Select>
                 </div>
                 <div className="space-y-1">
                   <Label>{t('admin.llm.baseUrlLabel')}</Label>
@@ -2052,15 +2119,108 @@ function AdminConsoleView({
                   <Label>{t('admin.llm.apiKeyLabel')}</Label>
                   <Input
                     type="password"
-                    required
-                    placeholder="sk-..."
+                    placeholder={editingLlmId ? t('admin.llm.apiKeyEditHint') : 'sk-...'}
                     value={llmForm.api_key}
                     onChange={(e) => setLlmForm({ ...llmForm, api_key: e.target.value })}
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label>{t('admin.llm.contextWindowLabel')}</Label>
+                    <Input
+                      type="number"
+                      min={1024}
+                      max={10000000}
+                      step={1024}
+                      placeholder="128000"
+                      value={llmForm.context_window}
+                      onChange={(e) => setLlmForm({ ...llmForm, context_window: e.target.value })}
+                    />
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {['128000', '256000', '1000000'].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          className="rounded border border-zinc-700/80 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                          onClick={() => setLlmForm({ ...llmForm, context_window: v })}
+                        >
+                          {v === '1000000' ? '1M' : `${Number(v) / 1000}K`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>{t('admin.llm.maxTokensLabel')}</Label>
+                    <Input
+                      type="number"
+                      min={128}
+                      max={1000000}
+                      step={256}
+                      placeholder="8192"
+                      value={llmForm.max_tokens}
+                      onChange={(e) => setLlmForm({ ...llmForm, max_tokens: e.target.value })}
+                    />
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {['8192', '16384', '32000', '64000'].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          className="rounded border border-zinc-700/80 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                          onClick={() => setLlmForm({ ...llmForm, max_tokens: v })}
+                        >
+                          {`${Math.round(Number(v) / 1000)}K`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label>{t('admin.llm.reasoningEffortLabel')}</Label>
+                    <Select
+                      value={llmForm.reasoning_effort}
+                      onChange={(e) => setLlmForm({ ...llmForm, reasoning_effort: e.target.value })}
+                    >
+                      <option value="">{t('admin.llm.reasoningAuto')}</option>
+                      <option value="off">{t('admin.llm.reasoningOff')}</option>
+                      <option value="minimal">{t('admin.llm.reasoningMinimal')}</option>
+                      <option value="low">{t('admin.llm.reasoningLow')}</option>
+                      <option value="medium">{t('admin.llm.reasoningMedium')}</option>
+                      <option value="high">{t('admin.llm.reasoningHigh')}</option>
+                      <option value="xhigh">{t('admin.llm.reasoningXhigh')}</option>
+                      <option value="max">{t('admin.llm.reasoningMax')}</option>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>{t('admin.llm.thinkingFormatLabel')}</Label>
+                    <Select
+                      value={llmForm.thinking_format}
+                      onChange={(e) => setLlmForm({ ...llmForm, thinking_format: e.target.value })}
+                    >
+                      <option value="">{t('admin.llm.thinkingFormatAuto')}</option>
+                      <option value="openai">openai (reasoning_effort)</option>
+                      <option value="deepseek">deepseek (thinking)</option>
+                      <option value="qwen">qwen (enable_thinking)</option>
+                      <option value="openrouter">openrouter</option>
+                      <option value="zai">zai</option>
+                      <option value="together">together</option>
+                      <option value="chat-template">chat-template</option>
+                      <option value="qwen-chat-template">qwen-chat-template</option>
+                    </Select>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={llmForm.supports_image}
+                    onChange={(e) => setLlmForm({ ...llmForm, supports_image: e.target.checked })}
+                    className="h-3.5 w-3.5 rounded border-zinc-600"
+                  />
+                  <span>{t('admin.llm.supportsImageLabel')}</span>
+                </label>
                 <Button type="submit" className="w-full">
                   <Plus className="h-3.5 w-3.5" />
-                  {t('admin.llm.saveBtn')}
+                  {editingLlmId ? t('admin.llm.updateBtn') : t('admin.llm.saveBtn')}
                 </Button>
               </form>
             </CardContent>
@@ -2076,25 +2236,82 @@ function AdminConsoleView({
               ) : (
                 <div className="divide-y divide-zinc-800/70">
                   {llmProfiles.map((p) => (
-                    <div key={p.id} className="flex items-center justify-between py-3 text-xs">
-                      <div>
-                        <div className="font-medium text-zinc-100">{p.name}</div>
-                        <div className="font-mono text-zinc-400 mt-0.5">
+                    <div key={p.id} className="flex items-start justify-between gap-3 py-3 text-xs">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-medium text-zinc-100">{p.name}</span>
+                          <Badge variant="outline" className="text-[10px]">
+                            {p.api_protocol || 'openai-completions'}
+                          </Badge>
+                          {p.context_window ? (
+                            <Badge variant="outline" className="text-[10px]">
+                              {p.context_window >= 1000000
+                                ? `${(p.context_window / 1000000).toFixed(p.context_window % 1000000 === 0 ? 0 : 1)}M ctx`
+                                : `${Math.round(p.context_window / 1000)}K ctx`}
+                            </Badge>
+                          ) : null}
+                          {p.max_tokens ? (
+                            <Badge variant="outline" className="text-[10px]">
+                              {`${Math.round(p.max_tokens / 1000)}K out`}
+                            </Badge>
+                          ) : null}
+                          {p.supports_image ? (
+                            <Badge variant="outline" className="text-[10px] border-sky-500/40 text-sky-300">
+                              {t('admin.llm.badgeVision')}
+                            </Badge>
+                          ) : null}
+                          {p.reasoning_effort ? (
+                            <Badge variant="outline" className="text-[10px] border-violet-500/40 text-violet-300">
+                              {`${t('admin.llm.badgeThinking')}: ${p.reasoning_effort}`}
+                            </Badge>
+                          ) : null}
+                          <Badge variant="outline" className="text-[10px] text-zinc-400">
+                            {p.has_api_key ? t('admin.llm.badgeKeySet') : t('admin.llm.badgeNoKey')}
+                          </Badge>
+                        </div>
+                        <div className="font-mono text-zinc-400 truncate">
                           {p.model} · {p.base_url}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-rose-400 hover:text-rose-300"
-                        onClick={async () => {
-                          await apiFetch(`/api/llm-profiles/${p.id}`, { method: 'DELETE' })
-                          notify(t('admin.llmDeleted'))
-                          await refreshAll()
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingLlmId(p.id)
+                            setLlmForm({
+                              name: p.name,
+                              api_protocol: p.api_protocol || 'openai-completions',
+                              base_url: p.base_url,
+                              model: p.model,
+                              api_key: '',
+                              context_window: p.context_window ? String(p.context_window) : '',
+                              max_tokens: p.max_tokens ? String(p.max_tokens) : '',
+                              supports_image: Boolean(p.supports_image),
+                              reasoning_effort: p.reasoning_effort || '',
+                              thinking_format: p.thinking_format || '',
+                            })
+                          }}
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-rose-400 hover:text-rose-300"
+                          onClick={async () => {
+                            await apiFetch(`/api/llm-profiles/${p.id}`, { method: 'DELETE' })
+                            if (editingLlmId === p.id) {
+                              setEditingLlmId(null)
+                              setLlmForm(EMPTY_LLM_FORM)
+                            }
+                            notify(t('admin.llmDeleted'))
+                            await refreshAll()
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

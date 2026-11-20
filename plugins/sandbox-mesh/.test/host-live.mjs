@@ -64,15 +64,20 @@ try {
       hostPlugin.PEER_REMOVE_ENDPOINT,
       hostPlugin.PEER_PING_ENDPOINT,
       hostPlugin.ROOM_REMOVE_ENDPOINT,
+      hostPlugin.TASK_CREATE_ENDPOINT,
+      hostPlugin.TASK_UPDATE_ENDPOINT,
+      hostPlugin.APPROVAL_DECIDE_ENDPOINT,
     ]) {
       assert.ok(routes.has(ep), `Expected route ${ep} to be registered`)
     }
 
-    // Verify Agent CLI & Skill were provisioned automatically (including unpair, ping, group-leave)
+    // Verify Agent CLI & Skill were provisioned automatically (including unpair, ping, group-leave, tasks)
     const cliText = readFileSync(join(homeDir, '.local', 'bin', 'sandbox-peer'), 'utf8')
     assert.ok(cliText.includes('unpair <slug>'))
     assert.ok(cliText.includes('ping <slug>'))
     assert.ok(cliText.includes('group-leave <roomId>'))
+    assert.ok(cliText.includes('tasks <roomId>'))
+    assert.ok(cliText.includes('task-update <roomId>'))
     assert.ok(existsSync(join(dshHome, 'skills', 'sandbox-peer', 'SKILL.md')))
 
     // Verify workspace file search endpoint for `#` autocomplete
@@ -1175,6 +1180,258 @@ try {
       assert.equal(bob.store.getRoomThreadCursor('pair:alice:bob', deltaTid), t4.message.id)
 
       await deltaCtx.fiber.dispose()
+    }
+
+    // 14. Shared Task Board, Parallel Fan-Out Dispatch, Dependency DAG, Local Role SOP & Human Approval Gates
+    {
+      const { buildAgentWakePrompt, wireHarnessRuntime } = await import('../src/host/harness-bridge.js')
+
+      // 14a. Local-only Role SOP (`instructions`) stays strictly private to local wake prompt (never leaked over /mesh/profile-sync)
+      await bob.updateProfile({
+        role: 'Backend Lead',
+        description: 'Owns API & DB',
+        instructions: 'PRIVATE_LOCAL_SOP_USE_GIT_MCP_BEFORE_MERGE',
+      })
+      assert.equal(bob.store.getSelf().instructions, 'PRIVATE_LOCAL_SOP_USE_GIT_MCP_BEFORE_MERGE')
+      assert.equal(alice.store.getPeer('bob').instructions, undefined, 'Local Role SOP must never leak to remote peers')
+
+      // 14b. Create 3-sandbox project group (Alice Moderator, Bob Backend, Charlie QA)
+      const projGrp = await alice.createGroup({
+        name: 'Release v2 Launch',
+        memberSlugs: ['bob', 'charlie'],
+        moderatorSlug: 'alice',
+      })
+      assert.equal(projGrp.ok, true)
+      const projRoomId = projGrp.room.id
+      const projThreadId = projGrp.room.activeThreadId
+
+      const aliceCtx = new Context()
+      const aliceTools = new Map()
+      aliceCtx.provide('tools', {
+        register(def) {
+          aliceTools.set(def.name, def)
+          return () => { aliceTools.delete(def.name) }
+        },
+      })
+      const bobCtx = new Context()
+      const bobTools = new Map()
+      bobCtx.provide('tools', {
+        register(def) {
+          bobTools.set(def.name, def)
+          return () => { bobTools.delete(def.name) }
+        },
+      })
+      wireHarnessRuntime(aliceCtx, alice)
+      wireHarnessRuntime(bobCtx, bob)
+      await new Promise((r) => setTimeout(r, 30))
+
+      const dispatchTool = aliceTools.get('mesh_dispatch_tasks')
+      const boardTool = aliceTools.get('mesh_task_board')
+      const aliceUpdateTool = aliceTools.get('mesh_task_update')
+      const approvalTool = aliceTools.get('mesh_request_approval')
+      const bobUpdateTool = bobTools.get('mesh_task_update')
+      assert.ok(dispatchTool && boardTool && aliceUpdateTool && approvalTool && bobUpdateTool)
+
+      const wokeNodes = []
+      alice.setAgentWakeHandler(({ message }) => { wokeNodes.push({ node: 'alice', taskId: message.taskId, text: message.text }) })
+      bob.setAgentWakeHandler(({ message }) => { wokeNodes.push({ node: 'bob', taskId: message.taskId, text: message.text }) })
+      charlie.setAgentWakeHandler(({ message }) => { wokeNodes.push({ node: 'charlie', taskId: message.taskId, text: message.text }) })
+
+      // 14c. Async fan-out with staged DAG dependencies: Task 0 (@bob) runnable, Task 1 (@alice) local, Task 2 (@charlie) depends on Task 0
+      const asyncDisp = await dispatchTool.execute({
+        roomId: projRoomId,
+        threadId: projThreadId,
+        mode: 'async',
+        tasks: [
+          { title: 'Build OAuth API', description: 'Add /auth/callback endpoint', assigneeSlug: 'bob', priority: 'high' },
+          { title: 'Review API Spec', assigneeSlug: 'alice', priority: 'medium' },
+          { title: 'Run E2E QA', description: 'Verify OAuth flow end-to-end', assigneeSlug: 'charlie', priority: 'high', dependsOnIndices: [0] },
+        ],
+      })
+      assert.equal(asyncDisp.ok, true)
+      assert.equal(asyncDisp.mode, 'async')
+      assert.equal(asyncDisp.tasks.length, 3)
+      const [tBe, , tQa] = asyncDisp.tasks
+      assert.deepEqual(tQa.dependsOn, [tBe.id], 'dependsOnIndices must resolve to created task IDs')
+      assert.ok(asyncDisp.dispatchedIds.includes(tBe.id))
+      assert.ok(asyncDisp.blockedByDependencyIds.includes(tQa.id), 'Dependent QA task must stay blocked until BE task completes')
+
+      // Verify task board replicated over HMAC /mesh/task-sync to Bob and Charlie
+      assert.equal(bob.store.listRoomTasks(projRoomId).length, 3)
+      assert.equal(charlie.store.listRoomTasks(projRoomId).length, 3)
+      await new Promise((r) => setTimeout(r, 30))
+      assert.equal(wokeNodes.some((w) => w.node === 'bob' && w.taskId === tBe.id), true, 'Bob must be woken immediately for runnable task')
+      assert.equal(wokeNodes.some((w) => w.node === 'charlie'), false, 'Charlie must NOT be woken while dependency is unfinished')
+
+      // Verify buildAgentWakePrompt injects both local Role SOP AND live <room-task-board>
+      const bobPromptWithBoard = buildAgentWakePrompt({
+        self: bob.store.getSelf(),
+        room: bob.store.getRoom(projRoomId),
+        message: { id: 'm_board_probe', threadId: projThreadId, taskId: tBe.id, sender: { slug: 'alice', ownerName: 'Alice', actor: 'agent' }, text: 'Start BE' },
+        recentMessages: [],
+        roomTasks: bob.store.listRoomTasks(projRoomId, { threadId: projThreadId }),
+      })
+      assert.ok(bobPromptWithBoard.includes('PRIVATE_LOCAL_SOP_USE_GIT_MCP_BEFORE_MERGE'))
+      assert.ok(bobPromptWithBoard.includes('<room-task-board>'))
+      assert.ok(bobPromptWithBoard.includes('Build OAuth API'))
+      assert.ok(bobPromptWithBoard.includes('Run E2E QA'))
+
+      // Bob finishes Task 0 via mesh_task_update -> syncs artifacts across all nodes, unlocks Task 2, and notifies Moderator Alice
+      wokeNodes.length = 0
+      const bobDone = await bobUpdateTool.execute({
+        roomId: projRoomId,
+        taskId: tBe.id,
+        status: 'done',
+        summary: 'Implemented /auth/callback and passed 18 unit tests',
+        artifacts: ['branch:feat/oauth', 'https://preview.local/auth'],
+      })
+      assert.equal(bobDone.ok, true)
+      assert.equal(bobDone.task.status, 'done')
+      assert.deepEqual(bobDone.task.artifacts, ['branch:feat/oauth', 'https://preview.local/auth'])
+      assert.ok(bobDone.unblockedDependents.some((d) => d.id === tQa.id), 'Completing BE task must report QA task as unblocked')
+      assert.equal(alice.store.getTask(projRoomId, tBe.id).status, 'done')
+      assert.deepEqual(charlie.store.getTask(projRoomId, tBe.id).artifacts, ['branch:feat/oauth', 'https://preview.local/auth'])
+      await new Promise((r) => setTimeout(r, 30))
+      assert.equal(wokeNodes.some((w) => w.node === 'alice' && w.text.includes('DONE')), true, 'Moderator Alice must be notified when Bob completes task')
+
+      // mesh_task_board summarizes progress accurately
+      const boardSnap = await boardTool.execute({ roomId: projRoomId, threadId: projThreadId })
+      assert.equal(boardSnap.ok, true)
+      assert.equal(boardSnap.summary.total, 3)
+      assert.equal(boardSnap.summary.done, 1)
+      assert.equal(boardSnap.tasks.find((t) => t.id === tQa.id)?.dependenciesMet, true)
+
+      // 14d. Parallel `mode: 'wait'` fan-out across Bob & Charlie concurrently
+      bob.setAgentWakeHandler(({ room, message }) => {
+        setTimeout(() => {
+          void bob.updateTask({
+            roomId: room.id,
+            taskId: message.taskId,
+            status: 'done',
+            summary: 'Backend review approved',
+            artifacts: ['doc:be-review.md'],
+            actor: 'agent',
+            notifyModerator: false,
+          })
+        }, 25)
+      })
+      charlie.setAgentWakeHandler(({ room, message }) => {
+        setTimeout(() => {
+          void charlie.updateTask({
+            roomId: room.id,
+            taskId: message.taskId,
+            status: 'done',
+            summary: 'QA test plan ready',
+            artifacts: ['doc:qa-plan.md'],
+            actor: 'agent',
+            notifyModerator: false,
+          })
+        }, 25)
+      })
+      const waitDisp = await dispatchTool.execute({
+        roomId: projRoomId,
+        threadId: projThreadId,
+        mode: 'wait',
+        timeoutSeconds: 5,
+        tasks: [
+          { title: 'Backend Arch Review', assigneeSlug: 'bob' },
+          { title: 'QA Plan Review', assigneeSlug: 'charlie' },
+        ],
+      })
+      assert.equal(waitDisp.ok, true)
+      assert.equal(waitDisp.mode, 'wait')
+      assert.equal(waitDisp.results.length, 2)
+      assert.equal(waitDisp.results.every((r) => r.ok && r.status === 'done'), true)
+      assert.ok(waitDisp.results.some((r) => r.assigneeSlug === 'bob' && r.reply.includes('Backend review approved')))
+      assert.ok(waitDisp.results.some((r) => r.assigneeSlug === 'charlie' && r.reply.includes('QA test plan ready')))
+
+      // 14e. Human Approval Gate: Agent request -> self-approval blocked -> human approve auto-wakes assignee -> human reject moves back to in_progress
+      wokeNodes.length = 0
+      bob.setAgentWakeHandler(({ message }) => { wokeNodes.push({ node: 'bob', taskId: message.taskId, text: message.text }) })
+      const apprReq = await approvalTool.execute({
+        roomId: projRoomId,
+        threadId: projThreadId,
+        title: 'Approve Production Release v2.0',
+        prompt: 'All 18 unit tests and E2E checks passed. Approve deploy to production?',
+        assigneeSlug: 'bob',
+      })
+      assert.equal(apprReq.ok, true)
+      assert.equal(apprReq.task.approvalRequired, true)
+      assert.equal(apprReq.task.approvalStatus, 'pending')
+      const gateTaskId = apprReq.task.id
+      assert.equal(bob.store.getTask(projRoomId, gateTaskId)?.approvalStatus, 'pending')
+      await new Promise((r) => setTimeout(r, 30))
+      assert.equal(wokeNodes.length, 0, 'Posting an approval gate must NOT wake agents prematurely')
+
+      // Security check: Agent MUST NOT be allowed to self-approve a human approval gate
+      const selfApproveAttempt = await bobUpdateTool.execute({
+        roomId: projRoomId,
+        taskId: gateTaskId,
+        approvalStatus: 'approved',
+      })
+      assert.equal(selfApproveAttempt.ok, false)
+      assert.match(selfApproveAttempt.error, /Only human approval/i)
+      assert.equal(bob.store.getTask(projRoomId, gateTaskId)?.approvalStatus, 'pending')
+
+      // Security check: Unauthorized / forged /mesh/task-sync is rejected with 401
+      const forgedTaskSync = await alice.handleIncomingMeshHttp(
+        'POST',
+        '/mesh/task-sync',
+        { 'content-type': 'application/json' },
+        JSON.stringify({ roomId: projRoomId, tasks: [{ id: gateTaskId, title: 'Hacked', approvalStatus: 'approved', version: 99 }] }),
+      )
+      assert.equal(forgedTaskSync.status, 401)
+
+      // Human clicks Approve -> task updates, syncs to Bob & Charlie, and automatically wakes Bob!
+      const approvedRes = await alice.decideApproval({
+        roomId: projRoomId,
+        taskId: gateTaskId,
+        decision: 'approved',
+        comment: 'Looks solid, proceed with rollout',
+      })
+      assert.equal(approvedRes.ok, true)
+      assert.equal(approvedRes.task.approvalStatus, 'approved')
+      assert.equal(approvedRes.task.approvalComment, 'Looks solid, proceed with rollout')
+      assert.equal(bob.store.getTask(projRoomId, gateTaskId)?.approvalStatus, 'approved')
+      assert.equal(charlie.store.getTask(projRoomId, gateTaskId)?.approvalStatus, 'approved')
+      await new Promise((r) => setTimeout(r, 30))
+      assert.equal(
+        wokeNodes.some((w) => w.node === 'bob' && w.taskId === gateTaskId && w.text.includes('APPROVED')),
+        true,
+        'Human approval must automatically wake assigned sandbox agent',
+      )
+
+      // Human clicks Reject on another gate -> moves status back to in_progress and wakes assignee
+      const apprReq2 = await approvalTool.execute({
+        roomId: projRoomId,
+        threadId: projThreadId,
+        title: 'Approve Schema Drop',
+        prompt: 'Drop legacy_sessions table?',
+        assigneeSlug: 'bob',
+      })
+      const rejectedRes = await alice.decideApproval({
+        roomId: projRoomId,
+        taskId: apprReq2.task.id,
+        decision: 'rejected',
+        comment: 'Archive table first before dropping',
+      })
+      assert.equal(rejectedRes.ok, true)
+      assert.equal(rejectedRes.task.approvalStatus, 'rejected')
+      assert.equal(rejectedRes.task.status, 'in_progress')
+
+      // Regression check: /local/cli ping must return numeric HTTP 200 even though payload.status === 'online'
+      const cliPingRes = await alice.handleIncomingMeshHttp(
+        'POST',
+        '/local/cli',
+        { authorization: `Bearer ${alice.localToken}`, 'content-type': 'application/json' },
+        JSON.stringify({ action: 'ping', slug: 'bob' }),
+      )
+      assert.equal(cliPingRes.status, 200)
+      assert.equal(cliPingRes.body.ok, true)
+      assert.equal(cliPingRes.body.status, 'online')
+
+      await aliceCtx.fiber.dispose()
+      await bobCtx.fiber.dispose()
     }
   }
 

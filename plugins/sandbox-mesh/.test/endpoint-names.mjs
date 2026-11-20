@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {
+  APPROVAL_DECIDE_ENDPOINT,
   FILE_DOWNLOAD_ENDPOINT,
   FILE_UPLOAD_ENDPOINT,
   FILES_ENDPOINT,
@@ -20,6 +21,8 @@ import {
   SEND_ENDPOINT,
   SEND_FILE_ENDPOINT,
   STATE_ENDPOINT,
+  TASK_CREATE_ENDPOINT,
+  TASK_UPDATE_ENDPOINT,
 } from '../index.js'
 
 const ENDPOINT_RE = /^\/api\/[a-z0-9-]+(?:\.[a-z0-9-]+)+$/
@@ -45,6 +48,9 @@ for (const ep of [
   PEER_REMOVE_ENDPOINT,
   PEER_PING_ENDPOINT,
   ROOM_REMOVE_ENDPOINT,
+  TASK_CREATE_ENDPOINT,
+  TASK_UPDATE_ENDPOINT,
+  APPROVAL_DECIDE_ENDPOINT,
 ]) {
   assert.match(ep, ENDPOINT_RE, `Endpoint ${ep} must follow /api/<plugin>.<action> convention`)
 }

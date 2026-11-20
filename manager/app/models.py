@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, Unicode
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, Unicode
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .config import DEFAULT_AUTO_INSTALL_PLUGINS
@@ -48,8 +48,18 @@ class LlmProfile(Base):
     name: Mapped[str] = mapped_column(Unicode(128))
     base_url: Mapped[str] = mapped_column(Unicode(512))
     model: Mapped[str] = mapped_column(Unicode(128))
-    api_key_ciphertext: Mapped[str] = mapped_column(Text)
+    api_protocol: Mapped[str] = mapped_column(String(64), default="openai-completions")
+    context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    supports_image: Mapped[bool] = mapped_column(Boolean, default=False)
+    reasoning_effort: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    thinking_format: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    api_key_ciphertext: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    @property
+    def has_api_key(self) -> bool:
+        return bool(self.api_key_ciphertext)
 
 
 class SandboxTemplate(Base):

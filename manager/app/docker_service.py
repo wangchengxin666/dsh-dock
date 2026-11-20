@@ -200,14 +200,28 @@ class DockerService:
                 pass
 
         if sandbox.llm_profile is not None:
+            prof = sandbox.llm_profile
             env["DSH_DEFAULT_LLM_PROVIDER"] = "openai-compatible"
-            env["DSH_DEFAULT_LLM_BASE_URL"] = sandbox.llm_profile.base_url
-            env["DSH_DEFAULT_LLM_MODEL"] = sandbox.llm_profile.model
-            try:
-                api_key = decrypt_secret(sandbox.llm_profile.api_key_ciphertext)
-                env["DSH_DEFAULT_LLM_API_KEY"] = api_key
-            except ValueError:
-                pass
+            env["DSH_DEFAULT_LLM_DISPLAY_NAME"] = prof.name
+            env["DSH_DEFAULT_LLM_API"] = prof.api_protocol or "openai-completions"
+            env["DSH_DEFAULT_LLM_BASE_URL"] = prof.base_url
+            env["DSH_DEFAULT_LLM_MODEL"] = prof.model
+            if prof.context_window:
+                env["DSH_DEFAULT_LLM_CONTEXT_WINDOW"] = str(prof.context_window)
+            if prof.max_tokens:
+                env["DSH_DEFAULT_LLM_MAX_TOKENS"] = str(prof.max_tokens)
+            env["DSH_DEFAULT_LLM_SUPPORTS_IMAGE"] = "true" if prof.supports_image else "false"
+            if prof.reasoning_effort:
+                env["DSH_DEFAULT_LLM_REASONING_EFFORT"] = prof.reasoning_effort
+            if prof.thinking_format:
+                env["DSH_DEFAULT_LLM_THINKING_FORMAT"] = prof.thinking_format
+            if prof.api_key_ciphertext:
+                try:
+                    api_key = decrypt_secret(prof.api_key_ciphertext)
+                    if api_key:
+                        env["DSH_DEFAULT_LLM_API_KEY"] = api_key
+                except ValueError:
+                    pass
 
         return env
 

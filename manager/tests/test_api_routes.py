@@ -99,6 +99,29 @@ def test_token_auth_admin_crud_backup_and_user_portal(api_env):
     assert llm_res.status_code == 201
     assert "api_key" not in llm_res.json()
     llm_id = llm_res.json()["id"]
+    assert llm_res.json()["has_api_key"] is True
+
+    # PATCH LLM profile with full model capability parameters (context, max output, vision, reasoning)
+    llm_patch = client.patch(
+        f"/api/llm-profiles/{llm_id}",
+        headers=admin_headers,
+        json={
+            "api_protocol": "openai-completions",
+            "context_window": 256000,
+            "max_tokens": 32000,
+            "supports_image": True,
+            "reasoning_effort": "high",
+            "thinking_format": "deepseek",
+        },
+    )
+    assert llm_patch.status_code == 200
+    lp = llm_patch.json()
+    assert lp["context_window"] == 256000
+    assert lp["max_tokens"] == 32000
+    assert lp["supports_image"] is True
+    assert lp["reasoning_effort"] == "high"
+    assert lp["thinking_format"] == "deepseek"
+    assert lp["has_api_key"] is True
 
     tpl_res = client.post(
         "/api/templates",

@@ -297,6 +297,10 @@ window.__ModuleLoader__.load({
         'mesh_list_peers',
         'mesh_send_message',
         'mesh_share_file',
+        'mesh_dispatch_tasks',
+        'mesh_task_board',
+        'mesh_task_update',
+        'mesh_request_approval',
       ]
       ctx.slots.inject('tool.call.toolview', () => {
         const disposers = MESH_TOOL_NAMES.map((toolKey) =>
@@ -342,15 +346,15 @@ window.__ModuleLoader__.load({
             if (bgTimer) clearInterval(bgTimer)
           }
         }, [])
-        const summary = controller.getUnreadSummary ? controller.getUnreadSummary() : { totalUnread: 0, activeCount: 0 }
-        const showDot = summary.activeCount > 0 || summary.totalUnread > 0
+        const summary = controller.getUnreadSummary ? controller.getUnreadSummary() : { totalUnread: 0, activeCount: 0, pendingApprovals: 0 }
+        const showDot = summary.activeCount > 0 || summary.totalUnread > 0 || (summary.pendingApprovals || 0) > 0
         return React.createElement(
           'span',
           { className: 'sm-nav-icon-wrap' },
           MeshNavIcon({ React, size }),
           showDot
             ? React.createElement('span', {
-                className: `sm-nav-badge-dot${summary.activeCount > 0 ? ' live' : ''}`,
+                className: `sm-nav-badge-dot${summary.pendingApprovals > 0 ? ' warn' : summary.activeCount > 0 ? ' live' : ''}`,
               })
             : null,
         )

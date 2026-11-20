@@ -1,8 +1,77 @@
 export const DEFAULT_MESH_PORT = 4090
 export const DEFAULT_PAIR_TTL_MS = 5 * 60 * 1000
-export const DEFAULT_MAX_AGENT_HOPS = 4
+export const DEFAULT_MAX_AGENT_HOPS = 8
 export const DEFAULT_MAX_MESSAGES_PER_ROOM = 300
+export const DEFAULT_MAX_TASKS_PER_ROOM = 200
 export const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024
+
+export const TASK_STATUSES = ['todo', 'in_progress', 'in_review', 'blocked', 'done', 'cancelled']
+export const TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent']
+export const APPROVAL_STATUSES = ['', 'pending', 'approved', 'rejected']
+
+export function normalizeTaskStatus(raw, fallback = 'todo') {
+  const s = String(raw || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (TASK_STATUSES.includes(s)) return s
+  if (s === 'doing' || s === 'working' || s === 'running' || s === 'active') return 'in_progress'
+  if (s === 'review' || s === 'reviewing' || s === 'qa') return 'in_review'
+  if (s === 'completed' || s === 'finished' || s === 'resolved') return 'done'
+  if (s === 'canceled') return 'cancelled'
+  return TASK_STATUSES.includes(fallback) ? fallback : 'todo'
+}
+
+export function normalizeTaskPriority(raw, fallback = 'medium') {
+  const p = String(raw || '').trim().toLowerCase()
+  if (TASK_PRIORITIES.includes(p)) return p
+  if (p === 'p0' || p === 'critical') return 'urgent'
+  if (p === 'p1') return 'high'
+  if (p === 'p2' || p === 'normal') return 'medium'
+  if (p === 'p3') return 'low'
+  return TASK_PRIORITIES.includes(fallback) ? fallback : 'medium'
+}
+
+export function normalizeApprovalStatus(raw) {
+  const s = String(raw || '').trim().toLowerCase()
+  return APPROVAL_STATUSES.includes(s) ? s : ''
+}
+
+export function areTaskDependenciesMet(task, allTasks = []) {
+  const deps = Array.isArray(task?.dependsOn) ? task.dependsOn.filter(Boolean) : []
+  if (deps.length === 0) return true
+  const byId = new Map((Array.isArray(allTasks) ? allTasks : []).map((t) => [t.id, t]))
+  return deps.every((depId) => {
+    const dep = byId.get(depId)
+    return dep && dep.status === 'done'
+  })
+}
+
+export function summarizeRoomTasks(tasks = [], threadId = '') {
+  const list = Array.isArray(tasks)
+    ? (threadId ? tasks.filter((t) => !t.threadId || t.threadId === threadId) : tasks)
+    : []
+  const counts = {
+    total: 0,
+    todo: 0,
+    in_progress: 0,
+    in_review: 0,
+    blocked: 0,
+    done: 0,
+    cancelled: 0,
+    pendingApprovals: 0,
+  }
+  for (const t of list) {
+    if (!t || typeof t !== 'object') continue
+    if (t.status === 'cancelled') {
+      counts.cancelled += 1
+      continue
+    }
+    counts.total += 1
+    if (counts[t.status] !== undefined) counts[t.status] += 1
+    if (t.approvalRequired && t.approvalStatus === 'pending') {
+      counts.pendingApprovals += 1
+    }
+  }
+  return counts
+}
 
 export function sanitizeSlug(raw) {
   if (typeof raw !== 'string') return ''
@@ -160,6 +229,9 @@ export function evaluateAgentWake(message, selfSlug, maxHops = DEFAULT_MAX_AGENT
 
   if (senderActor === 'system' || (senderSlug === cleanSelf && senderActor === 'agent')) {
     return { wake: false, reason: 'self-agent-origin' }
+  }
+  if (message.kind === 'approval') {
+    return { wake: false, reason: 'awaiting-human-approval' }
   }
   if (hop >= maxHops) {
     return { wake: false, reason: 'max-hops-reached' }

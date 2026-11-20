@@ -29,6 +29,9 @@ export const GROUP_RENAME_ENDPOINT = '/api/sandbox-mesh.group-rename'
 export const ROOM_REMOVE_ENDPOINT = '/api/sandbox-mesh.room-remove'
 export const FILE_DOWNLOAD_ENDPOINT = '/api/sandbox-mesh.file-download'
 export const FILE_UPLOAD_ENDPOINT = '/api/sandbox-mesh.file-upload'
+export const TASK_CREATE_ENDPOINT = '/api/sandbox-mesh.task-create'
+export const TASK_UPDATE_ENDPOINT = '/api/sandbox-mesh.task-update'
+export const APPROVAL_DECIDE_ENDPOINT = '/api/sandbox-mesh.approval-decide'
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -96,6 +99,7 @@ export function registerBrowserRoutes(ctx, service) {
           ownerName: body.ownerName,
           role: body.role,
           description: body.description,
+          instructions: body.instructions,
           headers,
         }),
       },
@@ -248,6 +252,55 @@ export function registerBrowserRoutes(ctx, service) {
           headers,
         }),
       },
+      {
+        path: TASK_CREATE_ENDPOINT,
+        validate: (body) => (body?.roomId && (body?.title || (Array.isArray(body?.tasks) && body.tasks.length > 0))
+          ? null
+          : 'roomId and task title (or tasks[]) are required'),
+        run: (body, headers) => service.createTasks({
+          roomId: body.roomId,
+          threadId: body.threadId || '',
+          tasks: Array.isArray(body.tasks) ? body.tasks : [body],
+          actor: 'human',
+          notifyAssignees: body.notifyAssignees !== false,
+          headers,
+        }),
+      },
+      {
+        path: TASK_UPDATE_ENDPOINT,
+        validate: (body) => (body?.roomId && body?.taskId ? null : 'roomId and taskId are required'),
+        run: (body, headers) => service.updateTask({
+          roomId: body.roomId,
+          taskId: body.taskId,
+          title: body.title,
+          description: body.description,
+          assigneeSlug: body.assigneeSlug,
+          status: body.status,
+          priority: body.priority,
+          summary: body.summary,
+          artifacts: body.artifacts,
+          mergeArtifacts: body.mergeArtifacts,
+          dependsOn: body.dependsOn,
+          approvalRequired: body.approvalRequired,
+          approvalPrompt: body.approvalPrompt,
+          notifyModerator: false,
+          actor: 'human',
+          headers,
+        }),
+      },
+      {
+        path: APPROVAL_DECIDE_ENDPOINT,
+        validate: (body) => (body?.roomId && body?.taskId && ['approved', 'rejected'].includes(String(body?.decision || '').toLowerCase())
+          ? null
+          : 'roomId, taskId, and decision ("approved" or "rejected") are required'),
+        run: (body, headers) => service.decideApproval({
+          roomId: body.roomId,
+          taskId: body.taskId,
+          decision: String(body.decision || '').toLowerCase(),
+          comment: body.comment || '',
+          headers,
+        }),
+      },
     ]
 
     const disposers = [
@@ -334,7 +387,8 @@ export function registerBrowserRoutes(ctx, service) {
               return jsonResponse({ ok: false, error: errMsg }, 400)
             }
             const result = await spec.run(body || {}, request.headers)
-            return jsonResponse(result, result?.ok === false ? (result.status || 400) : 200)
+            const errStatus = Number.isInteger(result?.status) ? result.status : 400
+            return jsonResponse(result, result?.ok === false ? errStatus : 200)
           },
         }),
       ),
@@ -371,6 +425,7 @@ export function createIncomingMeshHandler({
   startNewTopic,
   sendMessage,
   sendFile,
+  updateTask,
   flushOutbox,
   setAgentActivity,
   clearAgentActivity,
@@ -502,13 +557,14 @@ export function createIncomingMeshHandler({
     let body = {}
     try { body = JSON.parse(rawBody || '{}') } catch {}
     const action = body.action
+    const httpStatus = (res) => (Number.isInteger(res?.status) ? res.status : (res?.ok ? 200 : 400))
 
     const handlers = {
       status: () => ({ status: 200, body: { ok: true, ...store.getSnapshot() } }),
       'pair-code': () => ({ status: 200, body: { ok: true, invite: store.createPairCode() } }),
       pair: async () => {
         const res = await claimPairInvite(body.invite)
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
       },
       'group-create': async () => {
         const res = await createGroup({
@@ -516,23 +572,23 @@ export function createIncomingMeshHandler({
           memberSlugs: body.memberSlugs,
           moderatorSlug: body.moderatorSlug,
         })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
       },
       'group-invite': async () => {
         const res = await inviteToGroup({ roomId: body.roomId, memberSlugs: body.memberSlugs })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
       },
       'group-moderate': async () => {
         const res = await updateGroupModeration({ roomId: body.roomId, moderatorSlug: body.moderatorSlug })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
       },
       'group-remove': async () => {
         const res = await removeFromGroup({ roomId: body.roomId, slug: body.slug })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
       },
       'new-topic': async () => {
         const res = await startNewTopic({ roomId: body.roomId })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
       },
       rooms: () => ({ status: 200, body: { ok: true, rooms: store.getSnapshot().rooms } }),
       messages: () => {
@@ -555,7 +611,7 @@ export function createIncomingMeshHandler({
           hop: actor === 'agent' ? Math.max(requestedHop, activeHop) : requestedHop,
           threadId: body.threadId || '',
         })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
       },
       'send-file': async () => {
         const res = await sendFile({
@@ -564,19 +620,39 @@ export function createIncomingMeshHandler({
           text: body.text || '',
           actor: body.actor || 'agent',
         })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
       },
       unpair: async () => {
         const res = await unpairPeer({ slug: body.slug })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
       },
       ping: async () => {
         const res = await pingPeer({ slug: body.slug })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
       },
       'group-leave': async () => {
         const res = await leaveGroup({ roomId: body.roomId })
-        return { status: res.status || (res.ok ? 200 : 400), body: res }
+        return { status: httpStatus(res), body: res }
+      },
+      tasks: () => ({
+        status: 200,
+        body: { ok: true, roomId: body.roomId, tasks: store.listRoomTasks(body.roomId, { threadId: body.threadId || '' }) },
+      }),
+      'task-update': async () => {
+        if (typeof updateTask !== 'function') {
+          return { status: 501, body: { ok: false, error: 'Task update unavailable' } }
+        }
+        const res = await updateTask({
+          roomId: body.roomId,
+          taskId: body.taskId,
+          status: body.status,
+          summary: body.summary,
+          artifacts: body.artifacts,
+          mergeArtifacts: true,
+          actor: 'agent',
+          notifyModerator: body.notifyModerator !== false,
+        })
+        return { status: httpStatus(res), body: res }
       },
     }
 
@@ -725,6 +801,38 @@ export function createIncomingMeshHandler({
           }
           notifyCatalogChanged()
           return { status: 200, body: { ok: true, room: metaRes.room } }
+        } catch (err) {
+          return { status: 400, body: { ok: false, error: err?.message || String(err) } }
+        }
+      }
+
+      if (cleanPath === '/mesh/task-sync' && method === 'POST') {
+        try {
+          const roomId = String(body.roomId || '').trim()
+          if (!roomId) {
+            return { status: 400, body: { ok: false, error: 'roomId is required' } }
+          }
+          if (body.roomMeta && body.roomMeta.type === 'group') {
+            const metaRes = applyRemoteGroupMeta(verified, body.roomMeta, roomId)
+            if (!metaRes.ok) {
+              return { status: metaRes.status, body: { ok: false, error: metaRes.error } }
+            }
+          }
+          const authRes = authorizeRoomSender(verified, roomId, null)
+          if (!authRes.ok) {
+            return { status: authRes.status, body: { ok: false, error: authRes.error } }
+          }
+          const incomingTasks = Array.isArray(body.tasks)
+            ? body.tasks
+            : (body.task && typeof body.task === 'object' ? [body.task] : [])
+          const synced = []
+          for (const rawTask of incomingTasks) {
+            try {
+              const res = store.upsertRemoteTask(roomId, rawTask)
+              synced.push({ id: res.task.id, applied: res.applied })
+            } catch {}
+          }
+          return { status: 200, body: { ok: true, roomId, synced } }
         } catch (err) {
           return { status: 400, body: { ok: false, error: err?.message || String(err) } }
         }

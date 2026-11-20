@@ -806,6 +806,158 @@ const ReactDOMServer = await importExternal('react-dom/server')
   // Verify localizeSystemMessage helper
   assert.equal(localizeSystemMessage('Renamed group to "New Name".', (k) => k), 'sysGroupRenamed「New Name」')
 
+  // Verify native tool cards for all 4 new task & approval tools
+  for (const [toolName, args, expectedText] of [
+    ['mesh_dispatch_tasks', { roomId: 'grp_rich', tasks: [{ title: 'Build API', assigneeSlug: 'bob' }] }, '并行派发任务'],
+    ['mesh_task_board', { roomId: 'grp_rich' }, '查看任务板'],
+    ['mesh_task_update', { roomId: 'grp_rich', taskId: 'tsk_1', status: 'done', summary: 'API tests passed' }, '更新任务进度'],
+    ['mesh_request_approval', { roomId: 'grp_rich', title: '生产发布审批', prompt: '确认发布 v2.0？' }, '人工审批门禁'],
+  ]) {
+    const html = ReactDOMServer.renderToStaticMarkup(
+      React.createElement(MeshToolCard, {
+        callId: `c-${toolName}`,
+        toolName,
+        phase: 'result',
+        block: {
+          kind: 'tool-result',
+          call: { name: toolName, argsRaw: JSON.stringify(args) },
+          content: [{ type: 'text', text: 'OK' }],
+          isError: false,
+        },
+      }),
+    )
+    assert.ok(html.includes(expectedText), `Expected tool card for ${toolName} to include "${expectedText}"`)
+  }
+
+  // Verify inline Human Approval Gate card + Task Board header badge + Settings Role SOP UI
+  const taskStatePayload = {
+    ok: true,
+    rev: 99,
+    state: {
+      self: {
+        slug: 'alice',
+        ownerName: 'Alice',
+        role: '系统架构与评审顾问',
+        description: '统筹方案',
+        instructions: 'Always run tests via local MCP before merge.',
+        endpointUrl: 'http://localhost:9000/s/alice/p/4090',
+      },
+      peers: [{ slug: 'bob', ownerName: 'Bob', role: '后端专家', status: 'online' }],
+      rooms: [
+        {
+          id: 'grp_proj',
+          type: 'group',
+          name: 'Release Team',
+          createdBy: 'alice',
+          moderatorSlug: 'alice',
+          activeThreadId: 'thr_p1',
+          members: [
+            { slug: 'alice', ownerName: 'Alice', role: '架构师' },
+            { slug: 'bob', ownerName: 'Bob', role: '后端专家' },
+          ],
+          unreadCount: 0,
+        },
+      ],
+      tasks: {
+        grp_proj: [
+          {
+            id: 'tsk_gate1',
+            roomId: 'grp_proj',
+            threadId: 'thr_p1',
+            title: '生产发布确认',
+            description: 'Release v2.0',
+            assigneeSlug: 'bob',
+            status: 'in_review',
+            priority: 'high',
+            approvalRequired: true,
+            approvalStatus: 'pending',
+            approvalPrompt: '所有单测通过，是否批准上线？',
+            createdAt: Date.now() - 1000,
+            updatedAt: Date.now(),
+            version: 1,
+          },
+          {
+            id: 'tsk_done1',
+            roomId: 'grp_proj',
+            threadId: 'thr_p1',
+            title: '完成接口开发',
+            assigneeSlug: 'bob',
+            status: 'done',
+            priority: 'medium',
+            artifacts: ['branch:feat/v2'],
+            createdAt: Date.now() - 2000,
+            updatedAt: Date.now() - 500,
+            version: 2,
+          },
+        ],
+      },
+      messages: {
+        grp_proj: [
+          {
+            id: 'm_appr1',
+            roomId: 'grp_proj',
+            threadId: 'thr_p1',
+            kind: 'approval',
+            taskId: 'tsk_gate1',
+            sender: { slug: 'alice', ownerName: 'Alice', actor: 'agent' },
+            text: '所有单测通过，是否批准上线？',
+            createdAt: Date.now(),
+          },
+        ],
+      },
+      activeStatuses: {},
+    },
+  }
+  const approvalCalls = []
+  const taskCtrl = createMeshController({
+    fetchImpl: async (url, init) => {
+      if (String(url).includes('approval-decide')) {
+        approvalCalls.push(JSON.parse(init.body))
+        const nextPayload = JSON.parse(JSON.stringify(taskStatePayload))
+        nextPayload.state.tasks.grp_proj[0].approvalStatus = 'approved'
+        nextPayload.state.tasks.grp_proj[0].approvalDecidedBy = 'Alice'
+        return new Response(JSON.stringify(nextPayload), { status: 200 })
+      }
+      return new Response(JSON.stringify(taskStatePayload), { status: 200 })
+    },
+  })
+  await taskCtrl.syncFromHost()
+  assert.equal(taskCtrl.getUnreadSummary().pendingApprovals, 1)
+
+  const TaskChatPage = createMeshChatPage({
+    React,
+    controller: taskCtrl,
+    getLocale: () => 'zh-CN',
+    subscribeLocale: () => () => {},
+  })
+  const pendingHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(TaskChatPage))
+  assert.ok(pendingHtml.includes('任务板 1/2'), 'Header must show live task progress 1/2')
+  assert.ok(pendingHtml.includes('生产发布确认'), 'Inline approval card must render linked task title')
+  assert.ok(pendingHtml.includes('批准继续'), 'Pending approval card must show Approve button')
+  assert.ok(pendingHtml.includes('驳回修改'), 'Pending approval card must show Reject button')
+
+  await taskCtrl.decideApproval({ roomId: 'grp_proj', taskId: 'tsk_gate1', decision: 'approved', comment: 'LGTM' })
+  assert.equal(approvalCalls.length, 1)
+  assert.equal(approvalCalls[0].decision, 'approved')
+  assert.equal(taskCtrl.getUnreadSummary().pendingApprovals, 0)
+  const approvedHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(TaskChatPage))
+  assert.ok(approvedHtml.includes('已批准'), 'Approved card must show approved status')
+  assert.ok(!approvedHtml.includes('批准继续'), 'Approved card must hide Approve button after decision')
+
+  const TaskSettingsPage = createMeshSettingsPage({
+    React,
+    controller: taskCtrl,
+    getLocale: () => 'zh-CN',
+    subscribeLocale: () => () => {},
+  })
+  const settingsSopHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(TaskSettingsPage))
+  assert.ok(settingsSopHtml.includes('角色规范与工作 SOP'), 'Settings must render Role SOP editor')
+  assert.ok(settingsSopHtml.includes('Always run tests via local MCP before merge.'))
+  assert.ok(settingsSopHtml.includes('DevOps 与运维部署专家'), 'Settings must include DevOps role preset')
+  assert.ok(settingsSopHtml.includes('全栈工程师'), 'Settings must include Full-Stack Engineer role preset')
+  assert.ok(settingsSopHtml.includes('安全审计与合规专家'), 'Settings must include Security Auditor role preset')
+
+  taskCtrl.dispose()
   richCtrl.dispose()
 }
 

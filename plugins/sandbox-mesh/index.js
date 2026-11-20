@@ -3,6 +3,7 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import {
+  areTaskDependenciesMet,
   canStartNewTopic,
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MESH_PORT,
@@ -33,6 +34,7 @@ import { createMeshStore, resolveStoragePath } from './src/host/store.js'
 import { installAgentBridge, syncSkillFile } from './src/host/agent-bridge.js'
 import { wireHarnessRuntime } from './src/host/harness-bridge.js'
 import {
+  APPROVAL_DECIDE_ENDPOINT,
   createIncomingMeshHandler,
   FILE_DOWNLOAD_ENDPOINT,
   FILE_UPLOAD_ENDPOINT,
@@ -55,6 +57,8 @@ import {
   SEND_ENDPOINT,
   SEND_FILE_ENDPOINT,
   STATE_ENDPOINT,
+  TASK_CREATE_ENDPOINT,
+  TASK_UPDATE_ENDPOINT,
 } from './src/host/routes.js'
 
 export const name = 'sandbox-mesh'
@@ -80,6 +84,9 @@ export {
   PEER_REMOVE_ENDPOINT,
   PEER_PING_ENDPOINT,
   ROOM_REMOVE_ENDPOINT,
+  TASK_CREATE_ENDPOINT,
+  TASK_UPDATE_ENDPOINT,
+  APPROVAL_DECIDE_ENDPOINT,
   searchWorkspaceFiles,
   maxMeshBodyBytes,
 }
@@ -154,7 +161,7 @@ export function createMeshService({
   const requestTimeoutMs = Number(config.requestTimeoutMs) > 0 ? Number(config.requestTimeoutMs) : 15 * 1000
   const fileTimeoutMs = Number(config.fileTimeoutMs) > 0 ? Number(config.fileTimeoutMs) : 120 * 1000
   const agentWakeEnabled = config.agentWakeEnabled !== false
-  const agentTurnTimeoutMs = Number(config.agentTurnTimeoutMs) > 0 ? Number(config.agentTurnTimeoutMs) : 5 * 60 * 1000
+  const agentTurnTimeoutMs = Number(config.agentTurnTimeoutMs) > 0 ? Number(config.agentTurnTimeoutMs) : 15 * 60 * 1000
 
   const resolveShareableFile = createFileShareGuard({
     homeDir,
@@ -980,6 +987,7 @@ export function createMeshService({
     text,
     files = [],
     kind = 'chat',
+    taskId = '',
     actor = 'human',
     hop = 0,
     threadId = '',
@@ -1038,7 +1046,7 @@ export function createMeshService({
       ? mentionsOverride
       : (phase === 'turn' && normalizedActor === 'agent' ? [] : extractMentions(cleanText))
     const hasAgentMention = mentions.some((m) => m === 'agent' || m.endsWith('-agent'))
-    const effectiveKind = ['chat', 'task', 'file', 'system'].includes(kind)
+    const effectiveKind = ['chat', 'task', 'file', 'system', 'approval'].includes(kind)
       ? (kind === 'chat' && hasAgentMention ? 'task' : kind)
       : 'chat'
 
@@ -1053,6 +1061,7 @@ export function createMeshService({
         actor: normalizedActor,
       },
       kind: effectiveKind,
+      taskId: String(taskId || '').trim().slice(0, 96),
       text: cleanText || `Shared ${allFileRefs.map((f) => `#${f}`).join(' ')}`,
       mentions,
       hop: numericHop,
@@ -1334,9 +1343,441 @@ export function createMeshService({
     }
   }
 
-  async function updateProfile({ ownerName, role, description, headers = null }) {
+  async function broadcastTaskSync(room, tasks = []) {
+    if (!room || !Array.isArray(tasks) || tasks.length === 0) {
+      return { deliveredTo: [], pendingPeers: [] }
+    }
+    return deliverToRoomMembers(room, {
+      path: '/mesh/task-sync',
+      payload: {
+        roomId: room.id,
+        tasks,
+        roomMeta: buildGroupRoomMeta(room),
+      },
+      enqueueOnFailure: true,
+    })
+  }
+
+  async function createTasks({
+    roomId,
+    threadId = '',
+    tasks = [],
+    actor = 'human',
+    notifyAssignees = true,
+    headers = null,
+  } = {}) {
     store.updateSelf(headers)
-    const updatedSelf = store.updateSelfProfile({ ownerName, role, description })
+    const self = store.getSelf()
+    const cleanRoomId = String(roomId || '').trim()
+    const room = store.getRoom(cleanRoomId)
+    if (!room) {
+      return { ok: false, status: 404, error: `Room "${cleanRoomId}" does not exist` }
+    }
+    if (room.unpaired) {
+      return { ok: false, status: 409, error: `Room "${cleanRoomId}" is unpaired` }
+    }
+    const rawList = Array.isArray(tasks) ? tasks.filter((t) => t && typeof t === 'object') : []
+    if (rawList.length === 0) {
+      return { ok: false, status: 400, error: 'At least one task is required' }
+    }
+    const effectiveThreadId = String(threadId || room.activeThreadId || '').trim()
+    const memberSet = new Set((room.members || []).map((m) => sanitizeSlug(m.slug)).filter(Boolean))
+    memberSet.add(self.slug)
+
+    const created = []
+    try {
+      for (const raw of rawList) {
+        const assignee = sanitizeSlug(raw.assigneeSlug || '')
+        if (assignee && !memberSet.has(assignee)) {
+          return {
+            ok: false,
+            status: 400,
+            error: `Assignee "@${assignee}" is not a member of room "${room.name}"`,
+          }
+        }
+        const resolvedDeps = []
+        if (Array.isArray(raw.dependsOn)) {
+          for (const dep of raw.dependsOn) {
+            if (typeof dep === 'number' && Number.isInteger(dep) && dep >= 0 && dep < created.length) {
+              resolvedDeps.push(created[dep].id)
+            } else if (typeof dep === 'string' && dep.trim()) {
+              resolvedDeps.push(dep.trim())
+            }
+          }
+        }
+        if (Array.isArray(raw.dependsOnIndices)) {
+          for (const idx of raw.dependsOnIndices) {
+            if (Number.isInteger(idx) && idx >= 0 && idx < created.length) {
+              resolvedDeps.push(created[idx].id)
+            }
+          }
+        }
+        const task = store.createTask(cleanRoomId, {
+          ...raw,
+          threadId: effectiveThreadId,
+          assigneeSlug: assignee,
+          createdBy: self.slug,
+          dependsOn: resolvedDeps,
+        })
+        created.push(task)
+      }
+    } catch (err) {
+      return { ok: false, status: 400, error: err?.message || String(err) }
+    }
+
+    const sync = await broadcastTaskSync(room, created)
+    const allTasks = store.listRoomTasks(cleanRoomId)
+    const dispatchedTasks = []
+    const blockedByDependencies = []
+    const waitingForApproval = []
+
+    const dispatchPromises = []
+    for (const task of created) {
+      if (task.approvalRequired && task.approvalStatus === 'pending') {
+        waitingForApproval.push(task)
+        dispatchPromises.push(
+          sendMessage({
+            roomId: cleanRoomId,
+            threadId: effectiveThreadId,
+            kind: 'approval',
+            taskId: task.id,
+            actor: actor === 'agent' ? 'agent' : 'human',
+            hop: actor === 'agent' ? 1 : 0,
+            mentionsOverride: [],
+            text: task.approvalPrompt || task.title,
+          }),
+        )
+        continue
+      }
+      if (!areTaskDependenciesMet(task, allTasks)) {
+        blockedByDependencies.push(task)
+        continue
+      }
+      if (notifyAssignees && task.assigneeSlug && task.status === 'todo') {
+        dispatchedTasks.push(task)
+        const descLine = task.description ? `\n\n${task.description}` : ''
+        const dispatchText = `@${task.assigneeSlug} **[Task \`${task.id}\`] ${task.title}**${descLine}\n\n_(Please update progress via \`mesh_task_update\` with \`taskId="${task.id}"\` as you work, and mark \`status="done"\` or \`"in_review"\` with \`artifacts\` when finished.)_`
+        dispatchPromises.push(
+          sendMessage({
+            roomId: cleanRoomId,
+            threadId: effectiveThreadId,
+            phase: 'turn',
+            kind: 'task',
+            taskId: task.id,
+            actor: actor === 'agent' ? 'agent' : 'human',
+            hop: actor === 'agent' ? 1 : 0,
+            mentionsOverride: [task.assigneeSlug],
+            text: dispatchText,
+          }),
+        )
+      }
+    }
+
+    if (dispatchPromises.length > 0) {
+      await Promise.all(dispatchPromises)
+    }
+
+    return {
+      ok: true,
+      roomId: cleanRoomId,
+      threadId: effectiveThreadId,
+      tasks: created,
+      dispatchedTasks,
+      blockedByDependencies,
+      waitingForApproval,
+      sync,
+      state: getStateSnapshot(),
+    }
+  }
+
+  async function updateTask({
+    roomId,
+    taskId,
+    title,
+    description,
+    assigneeSlug,
+    status,
+    priority,
+    summary,
+    artifacts,
+    mergeArtifacts = true,
+    dependsOn,
+    approvalRequired,
+    approvalPrompt,
+    approvalStatus,
+    notifyModerator = true,
+    actor = 'human',
+    headers = null,
+  } = {}) {
+    store.updateSelf(headers)
+    const self = store.getSelf()
+    const cleanRoomId = String(roomId || '').trim()
+    const room = store.getRoom(cleanRoomId)
+    if (!room) {
+      return { ok: false, status: 404, error: `Room "${cleanRoomId}" does not exist` }
+    }
+    if (room.unpaired) {
+      return { ok: false, status: 409, error: `Room "${cleanRoomId}" is unpaired` }
+    }
+    const prevTask = store.getTask(cleanRoomId, taskId)
+    if (!prevTask) {
+      return { ok: false, status: 404, error: `Task "${taskId}" not found` }
+    }
+    if (assigneeSlug !== undefined) {
+      const cleanAssignee = sanitizeSlug(assigneeSlug || '')
+      const memberSet = new Set((room.members || []).map((m) => sanitizeSlug(m.slug)).filter(Boolean))
+      memberSet.add(self.slug)
+      if (cleanAssignee && !memberSet.has(cleanAssignee)) {
+        return { ok: false, status: 400, error: `Assignee "@${cleanAssignee}" is not a member of this room` }
+      }
+    }
+
+    const prevStatus = prevTask.status
+    let updated
+    try {
+      updated = store.updateTask(
+        cleanRoomId,
+        taskId,
+        {
+          title,
+          description,
+          assigneeSlug,
+          status,
+          priority,
+          summary,
+          artifacts,
+          mergeArtifacts,
+          dependsOn,
+          approvalRequired,
+          approvalPrompt,
+          approvalStatus,
+        },
+        { allowApprovalDecision: actor === 'human' },
+      )
+    } catch (err) {
+      const msg = err?.message || String(err)
+      return {
+        ok: false,
+        status: /Only human approval/i.test(msg) ? 403 : 400,
+        error: msg,
+      }
+    }
+
+    const sync = await broadcastTaskSync(room, [updated])
+
+    // Detect downstream tasks newly unblocked by this task completing
+    const allRoomTasks = store.listRoomTasks(cleanRoomId)
+    const unblockedDependents = updated.status === 'done' && prevStatus !== 'done'
+      ? allRoomTasks.filter(
+          (t) =>
+            t.id !== updated.id
+            && t.status === 'todo'
+            && !(t.approvalRequired && t.approvalStatus === 'pending')
+            && Array.isArray(t.dependsOn)
+            && t.dependsOn.includes(updated.id)
+            && areTaskDependenciesMet(t, allRoomTasks),
+        )
+      : []
+
+    // Notify group Moderator when a non-moderator Agent marks a task done / in_review / blocked
+    const shouldNotifyMod = (
+      actor === 'agent'
+      && notifyModerator !== false
+      && updated.status !== prevStatus
+      && ['done', 'in_review', 'blocked'].includes(updated.status)
+    )
+    if (shouldNotifyMod) {
+      const modSlug = room.type === 'group' ? sanitizeSlug(room.moderatorSlug || room.createdBy || '') : ''
+      const targetMention = modSlug && modSlug !== self.slug ? [modSlug] : []
+      if (targetMention.length > 0) {
+        const artifactLine = updated.artifacts?.length
+          ? `\nArtifacts: ${updated.artifacts.map((a) => `\`${a}\``).join(', ')}`
+          : ''
+        const unlockLine = unblockedDependents.length > 0
+          ? `\nUnblocked downstream tasks ready to dispatch: ${unblockedDependents.map((d) => `\`${d.id}\` (${d.title}${d.assigneeSlug ? ` -> @${d.assigneeSlug}` : ''})`).join(', ')}`
+          : ''
+        const statusLabel = updated.status === 'done'
+          ? 'DONE'
+          : updated.status === 'in_review'
+            ? 'READY FOR REVIEW'
+            : 'BLOCKED'
+        await sendMessage({
+          roomId: cleanRoomId,
+          threadId: updated.threadId || room.activeThreadId || '',
+          phase: 'turn',
+          kind: 'task',
+          taskId: updated.id,
+          actor: 'agent',
+          hop: 1,
+          mentionsOverride: targetMention,
+          text: `**[Task \`${updated.id}\` · ${statusLabel}]** ${updated.title}\n${updated.summary || '(no summary)'}${artifactLine}${unlockLine}`,
+        })
+      }
+    }
+
+    return {
+      ok: true,
+      task: updated,
+      unblockedDependents,
+      sync,
+      state: getStateSnapshot(),
+    }
+  }
+
+  async function requestApproval({
+    roomId,
+    threadId = '',
+    taskId = '',
+    title = '',
+    prompt = '',
+    assigneeSlug = '',
+    actor = 'agent',
+    headers = null,
+  } = {}) {
+    store.updateSelf(headers)
+    const self = store.getSelf()
+    const cleanRoomId = String(roomId || '').trim()
+    const room = store.getRoom(cleanRoomId)
+    if (!room) {
+      return { ok: false, status: 404, error: `Room "${cleanRoomId}" does not exist` }
+    }
+    if (room.unpaired) {
+      return { ok: false, status: 409, error: `Room "${cleanRoomId}" is unpaired` }
+    }
+    const effectiveThreadId = String(threadId || room.activeThreadId || '').trim()
+    const cleanPrompt = String(prompt || title || '').trim()
+    if (!cleanPrompt) {
+      return { ok: false, status: 400, error: 'Approval prompt or title is required' }
+    }
+
+    let task
+    try {
+      if (taskId && store.getTask(cleanRoomId, taskId)) {
+        task = store.updateTask(
+          cleanRoomId,
+          taskId,
+          {
+            approvalRequired: true,
+            approvalStatus: 'pending',
+            approvalPrompt: cleanPrompt,
+            ...(assigneeSlug ? { assigneeSlug } : {}),
+          },
+          { allowApprovalDecision: false },
+        )
+      } else {
+        task = store.createTask(cleanRoomId, {
+          threadId: effectiveThreadId,
+          title: String(title || cleanPrompt).trim().slice(0, 160),
+          description: cleanPrompt,
+          assigneeSlug: sanitizeSlug(assigneeSlug || room.moderatorSlug || self.slug),
+          createdBy: self.slug,
+          status: 'in_review',
+          priority: 'high',
+          approvalRequired: true,
+          approvalPrompt: cleanPrompt,
+        })
+      }
+    } catch (err) {
+      return { ok: false, status: 400, error: err?.message || String(err) }
+    }
+
+    const sync = await broadcastTaskSync(room, [task])
+    const msgRes = await sendMessage({
+      roomId: cleanRoomId,
+      threadId: task.threadId || effectiveThreadId,
+      kind: 'approval',
+      taskId: task.id,
+      actor: actor === 'agent' ? 'agent' : 'human',
+      hop: actor === 'agent' ? 1 : 0,
+      mentionsOverride: [],
+      text: cleanPrompt,
+    })
+
+    return {
+      ok: true,
+      task,
+      message: msgRes.message || null,
+      sync,
+      state: getStateSnapshot(),
+    }
+  }
+
+  async function decideApproval({
+    roomId,
+    taskId,
+    decision,
+    comment = '',
+    headers = null,
+  } = {}) {
+    store.updateSelf(headers)
+    const self = store.getSelf()
+    const cleanRoomId = String(roomId || '').trim()
+    const room = store.getRoom(cleanRoomId)
+    if (!room) {
+      return { ok: false, status: 404, error: `Room "${cleanRoomId}" does not exist` }
+    }
+    if (room.unpaired) {
+      return { ok: false, status: 409, error: `Room "${cleanRoomId}" is unpaired` }
+    }
+    const cleanDecision = String(decision || '').trim().toLowerCase()
+    if (!['approved', 'rejected'].includes(cleanDecision)) {
+      return { ok: false, status: 400, error: 'Decision must be "approved" or "rejected"' }
+    }
+    const existing = store.getTask(cleanRoomId, taskId)
+    if (!existing) {
+      return { ok: false, status: 404, error: `Task "${taskId}" not found` }
+    }
+
+    const cleanComment = String(comment || '').trim().slice(0, 1000)
+    const nextStatus = cleanDecision === 'rejected'
+      ? (existing.status === 'done' || existing.status === 'in_review' || existing.status === 'todo' ? 'in_progress' : existing.status)
+      : existing.status
+
+    const updated = store.updateTask(
+      cleanRoomId,
+      taskId,
+      {
+        approvalRequired: true,
+        approvalStatus: cleanDecision,
+        approvalDecidedBy: self.ownerName || self.slug,
+        approvalComment: cleanComment,
+        status: nextStatus,
+      },
+      { allowApprovalDecision: true },
+    )
+    const sync = await broadcastTaskSync(room, [updated])
+
+    // Wake the task assignee (or group Moderator) automatically so the workflow continues seamlessly
+    const wakeTarget = updated.assigneeSlug
+      || (room.type === 'group' ? sanitizeSlug(room.moderatorSlug || room.createdBy || '') : '')
+    const decisionTag = cleanDecision === 'approved' ? 'APPROVED' : 'REJECTED'
+    const commentLine = cleanComment ? `\nComment: ${cleanComment}` : ''
+    const wakeText = `${wakeTarget ? `@${wakeTarget} ` : ''}**[Human Approval ${decisionTag}]** Task \`${updated.id}\` (${updated.title})${commentLine}\n${cleanDecision === 'approved' ? 'Approval granted — please proceed with the next steps.' : 'Changes requested — please revise and re-submit.'}`
+
+    const msgRes = await sendMessage({
+      roomId: cleanRoomId,
+      threadId: updated.threadId || room.activeThreadId || '',
+      kind: 'task',
+      taskId: updated.id,
+      actor: 'human',
+      hop: 0,
+      mentionsOverride: wakeTarget ? [wakeTarget] : [],
+      text: wakeText,
+      headers,
+    })
+
+    return {
+      ok: true,
+      task: updated,
+      message: msgRes.message || null,
+      sync,
+      state: getStateSnapshot(),
+    }
+  }
+
+  async function updateProfile({ ownerName, role, description, instructions, headers = null }) {
+    store.updateSelf(headers)
+    const updatedSelf = store.updateSelfProfile({ ownerName, role, description, instructions })
     const snap = store.getSnapshot()
     const peers = (snap.peers || [])
       .map((p) => store.getPeer(p.slug))
@@ -1440,6 +1881,7 @@ export function createMeshService({
     startNewTopic,
     sendMessage,
     sendFile,
+    updateTask,
     flushOutbox: () => flushOutbox({ force: true }),
     setAgentActivity,
     clearAgentActivity,
@@ -1487,6 +1929,10 @@ export function createMeshService({
     sendFile,
     uploadAndSendFile,
     readAttachmentFile,
+    createTasks,
+    updateTask,
+    requestApproval,
+    decideApproval,
     flushOutbox,
     handleIncomingMeshHttp,
   }

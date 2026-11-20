@@ -8,6 +8,8 @@ import {
   MeshNavIcon,
   ModeratorCrownIcon,
   RoundtableIcon,
+  ShieldCheckIcon,
+  TasksBoardIcon,
 } from './icons.js'
 import {
   renderMarkdownMessage,
@@ -198,10 +200,34 @@ export function createMeshToolView({ React, getLocale, subscribeLocale, controll
       const dest = parseRoomDisplayName(args.roomId, controller)
       targetPill = fname && dest ? `${fname} → ${dest}` : (fname || dest)
       summaryPreview = stripMarkdownForPreview(args.caption || '', 72)
+    } else if (toolName === 'mesh_dispatch_tasks') {
+      iconEl = TasksBoardIcon({ React, size: 14 })
+      titleText = t('toolDispatchTasksTitle')
+      const count = Array.isArray(args.tasks) ? args.tasks.length : 0
+      const dest = parseRoomDisplayName(args.roomId, controller)
+      targetPill = dest ? `${dest}${count ? ` · ${count}` : ''}` : (count ? `${count}` : '')
+      summaryPreview = Array.isArray(args.tasks)
+        ? stripMarkdownForPreview(args.tasks.map((tk) => tk?.title || '').filter(Boolean).join(' · '), 84)
+        : stripMarkdownForPreview(rawOutput, 84)
+    } else if (toolName === 'mesh_task_board') {
+      iconEl = TasksBoardIcon({ React, size: 14 })
+      titleText = t('toolTaskBoardTitle')
+      targetPill = parseRoomDisplayName(args.roomId, controller)
+      summaryPreview = stripMarkdownForPreview(rawOutput, 84)
+    } else if (toolName === 'mesh_task_update') {
+      iconEl = TasksBoardIcon({ React, size: 14 })
+      titleText = t('toolTaskUpdateTitle')
+      targetPill = [args.taskId, args.status].filter(Boolean).join(' → ')
+      summaryPreview = stripMarkdownForPreview(args.summary || rawOutput, 84)
+    } else if (toolName === 'mesh_request_approval') {
+      iconEl = ShieldCheckIcon({ React, size: 14 })
+      titleText = t('toolRequestApprovalTitle')
+      targetPill = parseRoomDisplayName(args.roomId, controller) || args.title || ''
+      summaryPreview = stripMarkdownForPreview(args.title || args.prompt || '', 84)
     }
 
     const hasDetails = Boolean(
-      args.question || args.topic || args.text || args.filePath || rawOutput,
+      args.question || args.topic || args.text || args.filePath || args.prompt || args.summary || (Array.isArray(args.tasks) && args.tasks.length > 0) || rawOutput,
     )
 
     const statusClass = isRunning ? 'running' : isError ? 'error' : 'ok'
@@ -327,16 +353,38 @@ export function createMeshToolView({ React, getLocale, subscribeLocale, controll
                       args.caption ? renderMarkdownMessage(H, args.caption, { keyPrefix: `t-file-${props.callId || '0'}`, t }) : null,
                       isError && rawOutput ? H('div', { className: 'sm-alert', style: { marginTop: '6px' } }, rawOutput) : null,
                     )
-                  : H(
-                      'div',
-                      { className: 'sm-tool-section' },
-                      (args.topic || args.text)
-                        ? renderMarkdownMessage(H, args.topic || args.text, { keyPrefix: `t-arg-${props.callId || '0'}`, t })
-                        : null,
-                      isDone && rawOutput
-                        ? renderMarkdownMessage(H, parsedReply.body || rawOutput, { keyPrefix: `t-out-${props.callId || '0'}`, t })
-                        : null,
-                    ),
+                  : toolName === 'mesh_dispatch_tasks'
+                    ? H(
+                        'div',
+                        { className: 'sm-tool-section' },
+                        Array.isArray(args.tasks) && args.tasks.length > 0
+                          ? H(
+                              'div',
+                              { className: 'sm-peer-checks', style: { marginBottom: rawOutput ? '6px' : '0' } },
+                              ...args.tasks.map((tk, idx) =>
+                                H(
+                                  'span',
+                                  { key: `${tk?.title || idx}-${idx}`, className: 'sm-member-tag', style: { cursor: 'default' } },
+                                  TasksBoardIcon({ React, size: 11 }),
+                                  `${tk?.title || `#${idx + 1}`}${tk?.assigneeSlug ? ` · @${tk.assigneeSlug}` : ''}`,
+                                ),
+                              ),
+                            )
+                          : null,
+                        isDone && rawOutput
+                          ? renderMarkdownMessage(H, rawOutput, { keyPrefix: `t-disp-${props.callId || '0'}`, t })
+                          : null,
+                      )
+                    : H(
+                        'div',
+                        { className: 'sm-tool-section' },
+                        (args.topic || args.text || args.prompt || args.summary)
+                          ? renderMarkdownMessage(H, args.topic || args.text || args.prompt || args.summary, { keyPrefix: `t-arg-${props.callId || '0'}`, t })
+                          : null,
+                        isDone && rawOutput
+                          ? renderMarkdownMessage(H, parsedReply.body || rawOutput, { keyPrefix: `t-out-${props.callId || '0'}`, t })
+                          : null,
+                      ),
           )
         : null,
     )

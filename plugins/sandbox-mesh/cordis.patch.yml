@@ -3,4 +3,4 @@
       name: '@dsh-dock/sandbox-mesh'
       config:
         port: 4090
-        maxAgentHops: 3
+        maxAgentHops: 8

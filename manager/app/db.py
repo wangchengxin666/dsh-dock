@@ -111,6 +111,35 @@ def init_db() -> None:
                 connection.exec_driver_sql(
                     "ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"
                 )
+            llm_columns = {
+                row[1]
+                for row in connection.exec_driver_sql("PRAGMA table_info(llm_profiles)")
+            }
+            if llm_columns:
+                if "api_protocol" not in llm_columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE llm_profiles ADD COLUMN api_protocol VARCHAR(64) NOT NULL DEFAULT 'openai-completions'"
+                    )
+                if "context_window" not in llm_columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE llm_profiles ADD COLUMN context_window INTEGER"
+                    )
+                if "max_tokens" not in llm_columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE llm_profiles ADD COLUMN max_tokens INTEGER"
+                    )
+                if "supports_image" not in llm_columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE llm_profiles ADD COLUMN supports_image BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                if "reasoning_effort" not in llm_columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE llm_profiles ADD COLUMN reasoning_effort VARCHAR(32)"
+                    )
+                if "thinking_format" not in llm_columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE llm_profiles ADD COLUMN thinking_format VARCHAR(64)"
+                    )
 
 
 def get_db() -> Generator[Session, None, None]:

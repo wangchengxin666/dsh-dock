@@ -4,12 +4,16 @@ import { dirname, join } from 'node:path'
 import {
   DEFAULT_MAX_AGENT_HOPS,
   DEFAULT_MAX_MESSAGES_PER_ROOM,
+  DEFAULT_MAX_TASKS_PER_ROOM,
   DEFAULT_MESH_PORT,
   DEFAULT_PAIR_TTL_MS,
   evaluateAgentWake,
   extractMentions,
   formatPairInvite,
+  normalizeApprovalStatus,
   normalizeEndpointUrl,
+  normalizeTaskPriority,
+  normalizeTaskStatus,
   pairRoomId,
   sanitizeSlug,
 } from '../shared/protocol.js'
@@ -186,6 +190,7 @@ function defaultState() {
     peers: {},
     rooms: {},
     messages: {},
+    tasks: {},
     outbox: [],
   }
 }
@@ -200,8 +205,37 @@ function normalizeLoadedState(raw) {
     peers: raw.peers && typeof raw.peers === 'object' ? { ...raw.peers } : {},
     rooms: raw.rooms && typeof raw.rooms === 'object' ? { ...raw.rooms } : {},
     messages: raw.messages && typeof raw.messages === 'object' ? { ...raw.messages } : {},
+    tasks: raw.tasks && typeof raw.tasks === 'object' ? { ...raw.tasks } : {},
     outbox: Array.isArray(raw.outbox) ? [...raw.outbox] : [],
   }
+}
+
+function sanitizeTaskArtifacts(raw) {
+  if (!Array.isArray(raw)) return []
+  const out = []
+  const seen = new Set()
+  for (const item of raw) {
+    const clean = String(item || '').trim().slice(0, 500)
+    if (!clean || seen.has(clean)) continue
+    seen.add(clean)
+    out.push(clean)
+    if (out.length >= 20) break
+  }
+  return out
+}
+
+function sanitizeTaskDeps(raw, selfId = '') {
+  if (!Array.isArray(raw)) return []
+  const out = []
+  const seen = new Set()
+  for (const item of raw) {
+    const clean = String(item || '').trim().slice(0, 96)
+    if (!clean || clean === selfId || seen.has(clean)) continue
+    seen.add(clean)
+    out.push(clean)
+    if (out.length >= 20) break
+  }
+  return out
 }
 
 export function createMeshStore({
@@ -213,6 +247,9 @@ export function createMeshStore({
   const maxMessagesPerRoom = Number(config.maxMessagesPerRoom) > 0
     ? Number(config.maxMessagesPerRoom)
     : DEFAULT_MAX_MESSAGES_PER_ROOM
+  const maxTasksPerRoom = Number(config.maxTasksPerRoom) > 0
+    ? Number(config.maxTasksPerRoom)
+    : DEFAULT_MAX_TASKS_PER_ROOM
 
   let state = existsSync(filePath)
     ? (() => {
@@ -227,6 +264,7 @@ export function createMeshStore({
   let actualPort = null
   let revision = 1
   const messageListeners = new Set()
+  const taskListeners = new Set()
 
   function persist() {
     revision += 1
@@ -241,6 +279,12 @@ export function createMeshStore({
     if (typeof listener !== 'function') return () => {}
     messageListeners.add(listener)
     return () => { messageListeners.delete(listener) }
+  }
+
+  function onTask(listener) {
+    if (typeof listener !== 'function') return () => {}
+    taskListeners.add(listener)
+    return () => { taskListeners.delete(listener) }
   }
 
   function updateSelf(headers = null, portOverride = null) {
@@ -275,6 +319,7 @@ export function createMeshStore({
       ownerEmail: resolved.ownerEmail || prev.ownerEmail || '',
       role: String(prev.role || config.role || '').trim(),
       description: String(prev.description || config.description || '').trim(),
+      instructions: String(prev.instructions || config.instructions || '').trim().slice(0, 2000),
       publicOrigin: effectivePublicOrigin,
       basePath: effectiveBasePath,
       meshPort: effectiveMeshPort,
@@ -295,7 +340,7 @@ export function createMeshStore({
     return state.self
   }
 
-  function updateSelfProfile({ ownerName, role, description } = {}) {
+  function updateSelfProfile({ ownerName, role, description, instructions } = {}) {
     const self = getSelf()
     if (typeof ownerName === 'string' && ownerName.trim()) {
       self.ownerName = ownerName.trim().slice(0, 80)
@@ -306,6 +351,10 @@ export function createMeshStore({
     }
     if (typeof description === 'string') {
       self.description = description.trim().slice(0, 600)
+    }
+    if (typeof instructions === 'string') {
+      // Local-only Role SOP: kept strictly private to this sandbox's wake prompt
+      self.instructions = instructions.trim().slice(0, 2000)
     }
     state.self = { ...self }
     // Sync updated self metadata into local room member entries
@@ -578,6 +627,7 @@ export function createMeshStore({
     delete state.peers[slug]
     delete state.rooms[rId]
     delete state.messages[rId]
+    delete state.tasks[rId]
     state.outbox = state.outbox.filter(
       (item) => item.targetSlug !== slug && item.payload?.message?.roomId !== rId,
     )
@@ -661,6 +711,7 @@ export function createMeshStore({
     if (!cleanId || !state.rooms[cleanId]) return false
     delete state.rooms[cleanId]
     delete state.messages[cleanId]
+    delete state.tasks[cleanId]
     state.outbox = state.outbox.filter(
       (item) => item.groupId !== cleanId && item.payload?.message?.roomId !== cleanId,
     )
@@ -1048,7 +1099,8 @@ export function createMeshStore({
         ownerEmail: String(rawMsg.sender?.ownerEmail || '').trim().toLowerCase(),
         actor: senderActor,
       },
-      kind: ['chat', 'task', 'file', 'system'].includes(rawMsg.kind) ? rawMsg.kind : 'chat',
+      kind: ['chat', 'task', 'file', 'system', 'approval'].includes(rawMsg.kind) ? rawMsg.kind : 'chat',
+      taskId: String(rawMsg.taskId || '').trim().slice(0, 96),
       text,
       mentions,
       hop,
@@ -1098,6 +1150,237 @@ export function createMeshStore({
   function getMessage(roomId, msgId) {
     if (!roomId || !msgId) return null
     return (state.messages[roomId] || []).find((m) => m.id === msgId) || null
+  }
+
+  function listRoomTasks(roomId, { threadId = '' } = {}) {
+    const cleanRoomId = String(roomId || '').trim()
+    const list = Array.isArray(state.tasks[cleanRoomId]) ? state.tasks[cleanRoomId] : []
+    const cleanTid = String(threadId || '').trim()
+    if (!cleanTid) return [...list]
+    return list.filter((t) => !t.threadId || t.threadId === cleanTid)
+  }
+
+  function getTask(roomId, taskId) {
+    const cleanRoomId = String(roomId || '').trim()
+    const cleanTaskId = String(taskId || '').trim()
+    if (!cleanRoomId || !cleanTaskId) return null
+    return (state.tasks[cleanRoomId] || []).find((t) => t.id === cleanTaskId) || null
+  }
+
+  function trimRoomTasks(list) {
+    if (list.length <= maxTasksPerRoom) return list
+    // Prefer pruning oldest completed/cancelled tasks before active ones
+    while (list.length > maxTasksPerRoom) {
+      const doneIdx = list.findIndex((t) => t.status === 'done' || t.status === 'cancelled')
+      if (doneIdx >= 0) {
+        list.splice(doneIdx, 1)
+      } else {
+        list.shift()
+      }
+    }
+    return list
+  }
+
+  function emitTaskEvent(task, eventKind = 'updated') {
+    for (const listener of taskListeners) {
+      try { listener(task, eventKind) } catch {}
+    }
+  }
+
+  function createTask(roomId, rawTask = {}, { nowMs = Date.now() } = {}) {
+    const cleanRoomId = String(roomId || '').trim()
+    const room = state.rooms[cleanRoomId]
+    if (!room) {
+      throw new Error(`Room "${cleanRoomId}" does not exist`)
+    }
+    const title = String(rawTask.title || '').trim().slice(0, 160)
+    if (!title) {
+      throw new Error('Task title is required')
+    }
+    const self = getSelf()
+    const id = String(rawTask.id || '').trim() || `tsk_${nowMs.toString(36)}_${generateRandomHex(4)}`
+    if (!/^tsk_[a-zA-Z0-9_-]{4,80}$/.test(id)) {
+      throw new Error('Invalid task id')
+    }
+    const list = Array.isArray(state.tasks[cleanRoomId]) ? state.tasks[cleanRoomId] : []
+    if (list.some((t) => t.id === id)) {
+      throw new Error(`Task "${id}" already exists`)
+    }
+    const approvalRequired = Boolean(rawTask.approvalRequired)
+    const task = {
+      id,
+      roomId: cleanRoomId,
+      threadId: String(rawTask.threadId || room.activeThreadId || '').trim().slice(0, 96),
+      title,
+      description: String(rawTask.description || '').trim().slice(0, 4000),
+      assigneeSlug: sanitizeSlug(rawTask.assigneeSlug || ''),
+      createdBy: sanitizeSlug(rawTask.createdBy || self.slug) || self.slug,
+      status: normalizeTaskStatus(rawTask.status, 'todo'),
+      priority: normalizeTaskPriority(rawTask.priority, 'medium'),
+      dependsOn: sanitizeTaskDeps(rawTask.dependsOn, id),
+      artifacts: sanitizeTaskArtifacts(rawTask.artifacts),
+      summary: String(rawTask.summary || '').trim().slice(0, 4000),
+      approvalRequired,
+      approvalStatus: approvalRequired ? 'pending' : '',
+      approvalPrompt: approvalRequired ? String(rawTask.approvalPrompt || title).trim().slice(0, 1000) : '',
+      approvalDecidedBy: '',
+      approvalDecidedAt: 0,
+      approvalComment: '',
+      createdAt: Number(rawTask.createdAt) > 0 ? Number(rawTask.createdAt) : nowMs,
+      updatedAt: nowMs,
+      version: 1,
+    }
+    list.push(task)
+    trimRoomTasks(list)
+    state.tasks[cleanRoomId] = list
+    room.updatedAt = Math.max(room.updatedAt || 0, nowMs)
+    persist()
+    emitTaskEvent(task, 'created')
+    return task
+  }
+
+  function updateTask(roomId, taskId, patch = {}, { allowApprovalDecision = false, nowMs = Date.now() } = {}) {
+    const cleanRoomId = String(roomId || '').trim()
+    const cleanTaskId = String(taskId || '').trim()
+    const room = state.rooms[cleanRoomId]
+    if (!room) {
+      throw new Error(`Room "${cleanRoomId}" does not exist`)
+    }
+    const list = Array.isArray(state.tasks[cleanRoomId]) ? state.tasks[cleanRoomId] : []
+    const task = list.find((t) => t.id === cleanTaskId)
+    if (!task) {
+      throw new Error(`Task "${cleanTaskId}" not found`)
+    }
+    if (patch.approvalStatus !== undefined) {
+      const requestedApproval = normalizeApprovalStatus(patch.approvalStatus)
+      if ((requestedApproval === 'approved' || requestedApproval === 'rejected') && !allowApprovalDecision) {
+        throw new Error('Only human approval actions may approve or reject a task')
+      }
+      task.approvalStatus = requestedApproval
+      if (requestedApproval === 'approved' || requestedApproval === 'rejected') {
+        task.approvalRequired = true
+        task.approvalDecidedBy = String(patch.approvalDecidedBy || '').trim().slice(0, 80)
+        task.approvalDecidedAt = Number(patch.approvalDecidedAt) > 0 ? Number(patch.approvalDecidedAt) : nowMs
+        if (typeof patch.approvalComment === 'string') {
+          task.approvalComment = patch.approvalComment.trim().slice(0, 1000)
+        }
+      }
+    }
+    if (patch.approvalRequired !== undefined) {
+      task.approvalRequired = Boolean(patch.approvalRequired)
+      if (task.approvalRequired && !task.approvalStatus) {
+        task.approvalStatus = 'pending'
+      } else if (!task.approvalRequired && !allowApprovalDecision) {
+        // Agents cannot silently strip a pending human approval requirement
+        if (task.approvalStatus === 'pending') {
+          task.approvalRequired = true
+        }
+      }
+    }
+    if (typeof patch.approvalPrompt === 'string') {
+      task.approvalPrompt = patch.approvalPrompt.trim().slice(0, 1000)
+    }
+    if (typeof patch.title === 'string' && patch.title.trim()) {
+      task.title = patch.title.trim().slice(0, 160)
+    }
+    if (typeof patch.description === 'string') {
+      task.description = patch.description.trim().slice(0, 4000)
+    }
+    if (patch.assigneeSlug !== undefined) {
+      task.assigneeSlug = sanitizeSlug(patch.assigneeSlug || '')
+    }
+    if (patch.status !== undefined) {
+      task.status = normalizeTaskStatus(patch.status, task.status)
+    }
+    if (patch.priority !== undefined) {
+      task.priority = normalizeTaskPriority(patch.priority, task.priority)
+    }
+    if (patch.dependsOn !== undefined) {
+      task.dependsOn = sanitizeTaskDeps(patch.dependsOn, task.id)
+    }
+    if (patch.artifacts !== undefined) {
+      task.artifacts = patch.mergeArtifacts === true
+        ? sanitizeTaskArtifacts([...(task.artifacts || []), ...(Array.isArray(patch.artifacts) ? patch.artifacts : [])])
+        : sanitizeTaskArtifacts(patch.artifacts)
+    }
+    if (typeof patch.summary === 'string') {
+      task.summary = patch.summary.trim().slice(0, 4000)
+    }
+    task.updatedAt = nowMs
+    task.version = (Number(task.version) || 1) + 1
+    room.updatedAt = Math.max(room.updatedAt || 0, nowMs)
+    persist()
+    emitTaskEvent(task, 'updated')
+    return task
+  }
+
+  function upsertRemoteTask(roomId, remoteTask, { nowMs = Date.now() } = {}) {
+    const cleanRoomId = String(roomId || '').trim()
+    const room = state.rooms[cleanRoomId]
+    if (!room) {
+      throw new Error(`Room "${cleanRoomId}" does not exist`)
+    }
+    if (!remoteTask || typeof remoteTask !== 'object') {
+      throw new Error('Invalid remote task payload')
+    }
+    const id = String(remoteTask.id || '').trim()
+    if (!/^tsk_[a-zA-Z0-9_-]{4,80}$/.test(id)) {
+      throw new Error('Invalid remote task id')
+    }
+    const title = String(remoteTask.title || '').trim().slice(0, 160)
+    if (!title) {
+      throw new Error('Remote task title is required')
+    }
+    const list = Array.isArray(state.tasks[cleanRoomId]) ? state.tasks[cleanRoomId] : []
+    const idx = list.findIndex((t) => t.id === id)
+    const incomingVersion = Math.max(1, Math.trunc(Number(remoteTask.version) || 1))
+    const incomingUpdatedAt = Number(remoteTask.updatedAt) > 0 ? Number(remoteTask.updatedAt) : nowMs
+    if (idx >= 0) {
+      const existing = list[idx]
+      const existingVersion = Math.max(1, Math.trunc(Number(existing.version) || 1))
+      if (
+        existingVersion > incomingVersion
+        || (existingVersion === incomingVersion && (existing.updatedAt || 0) >= incomingUpdatedAt)
+      ) {
+        return { task: existing, applied: false }
+      }
+    }
+    const approvalRequired = Boolean(remoteTask.approvalRequired)
+    const approvalStatus = normalizeApprovalStatus(remoteTask.approvalStatus)
+    const normalized = {
+      id,
+      roomId: cleanRoomId,
+      threadId: String(remoteTask.threadId || room.activeThreadId || '').trim().slice(0, 96),
+      title,
+      description: String(remoteTask.description || '').trim().slice(0, 4000),
+      assigneeSlug: sanitizeSlug(remoteTask.assigneeSlug || ''),
+      createdBy: sanitizeSlug(remoteTask.createdBy || ''),
+      status: normalizeTaskStatus(remoteTask.status, 'todo'),
+      priority: normalizeTaskPriority(remoteTask.priority, 'medium'),
+      dependsOn: sanitizeTaskDeps(remoteTask.dependsOn, id),
+      artifacts: sanitizeTaskArtifacts(remoteTask.artifacts),
+      summary: String(remoteTask.summary || '').trim().slice(0, 4000),
+      approvalRequired,
+      approvalStatus: approvalRequired ? (approvalStatus || 'pending') : approvalStatus,
+      approvalPrompt: String(remoteTask.approvalPrompt || '').trim().slice(0, 1000),
+      approvalDecidedBy: String(remoteTask.approvalDecidedBy || '').trim().slice(0, 80),
+      approvalDecidedAt: Number(remoteTask.approvalDecidedAt) > 0 ? Number(remoteTask.approvalDecidedAt) : 0,
+      approvalComment: String(remoteTask.approvalComment || '').trim().slice(0, 1000),
+      createdAt: Number(remoteTask.createdAt) > 0 ? Number(remoteTask.createdAt) : incomingUpdatedAt,
+      updatedAt: incomingUpdatedAt,
+      version: incomingVersion,
+    }
+    if (idx >= 0) {
+      list[idx] = normalized
+    } else {
+      list.push(normalized)
+      trimRoomTasks(list)
+    }
+    state.tasks[cleanRoomId] = list
+    room.updatedAt = Math.max(room.updatedAt || 0, nowMs)
+    persist()
+    emitTaskEvent(normalized, idx >= 0 ? 'updated' : 'created')
+    return { task: normalized, applied: true }
   }
 
   function updateMessageDelivery(roomId, msgId, delivery) {
@@ -1316,6 +1599,7 @@ export function createMeshStore({
       peers,
       rooms,
       messages: state.messages,
+      tasks: state.tasks,
       outboxCount: state.outbox.length,
       maxAgentHops,
     }
@@ -1327,6 +1611,7 @@ export function createMeshStore({
     getRevision: () => revision,
     bumpRevision: () => { revision += 1 },
     onMessage,
+    onTask,
     updateSelf,
     getSelf,
     updateSelfProfile,
@@ -1355,6 +1640,11 @@ export function createMeshStore({
     hasMessage,
     getMessage,
     recordMessage,
+    listRoomTasks,
+    getTask,
+    createTask,
+    updateTask,
+    upsertRemoteTask,
     updateMessageDelivery,
     markRoomRead,
     setRoomAgentSessionId,

@@ -56,6 +56,7 @@ from .schemas import (
     IdleSleepPolicyUpdate,
     LlmProfileCreate,
     LlmProfileOut,
+    LlmProfileUpdate,
     PluginSyncRequest,
     SandboxCreate,
     SandboxList,
@@ -77,6 +78,7 @@ from .services import (
     add_platform_admin,
     audit,
     create_llm_profile,
+    update_llm_profile,
     create_sandbox,
     create_template,
     deactivate_platform_admin,
@@ -1589,14 +1591,51 @@ def create_profile(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_api),
 ):
+    raw_key = payload.api_key.strip()
     profile = create_llm_profile(
         db,
         name=payload.name,
         base_url=payload.base_url,
         model=payload.model,
-        ciphertext=encrypt_secret(payload.api_key),
+        ciphertext=encrypt_secret(raw_key) if raw_key else "",
+        api_protocol=payload.api_protocol,
+        context_window=payload.context_window,
+        max_tokens=payload.max_tokens,
+        supports_image=payload.supports_image,
+        reasoning_effort=payload.reasoning_effort,
+        thinking_format=payload.thinking_format,
     )
     return profile
+
+
+@app.patch("/api/llm-profiles/{profile_id}", response_model=LlmProfileOut)
+def patch_profile(
+    profile_id: str,
+    payload: LlmProfileUpdate,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_api),
+):
+    profile = db.get(LlmProfile, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="LLM 配置不存在")
+    raw_key = payload.api_key.strip() if isinstance(payload.api_key, str) else None
+    ciphertext = encrypt_secret(raw_key) if raw_key else None
+    return update_llm_profile(
+        db,
+        profile,
+        name=payload.name,
+        base_url=payload.base_url,
+        model=payload.model,
+        ciphertext=ciphertext,
+        clear_api_key=payload.clear_api_key,
+        api_protocol=payload.api_protocol,
+        context_window=payload.context_window,
+        max_tokens=payload.max_tokens,
+        supports_image=payload.supports_image,
+        reasoning_effort=payload.reasoning_effort,
+        thinking_format=payload.thinking_format,
+        fields_set=set(payload.model_fields_set),
+    )
 
 
 @app.get("/api/llm-profiles", response_model=list[LlmProfileOut])

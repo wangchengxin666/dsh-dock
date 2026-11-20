@@ -583,15 +583,75 @@ def create_llm_profile(
     name: str,
     base_url: str,
     model: str,
-    ciphertext: str,
+    ciphertext: str = "",
+    *,
+    api_protocol: str = "openai-completions",
+    context_window: int | None = None,
+    max_tokens: int | None = None,
+    supports_image: bool = False,
+    reasoning_effort: str | None = None,
+    thinking_format: str | None = None,
 ) -> LlmProfile:
+    clean_reasoning = (reasoning_effort or "").strip() or None
+    clean_thinking_fmt = (thinking_format or "").strip() or None
     profile = LlmProfile(
-        name=name,
-        base_url=base_url,
-        model=model,
+        name=name.strip(),
+        base_url=base_url.strip(),
+        model=model.strip(),
+        api_protocol=(api_protocol or "openai-completions").strip(),
+        context_window=context_window,
+        max_tokens=max_tokens,
+        supports_image=bool(supports_image),
+        reasoning_effort=clean_reasoning,
+        thinking_format=clean_thinking_fmt,
         api_key_ciphertext=ciphertext,
     )
     db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def update_llm_profile(
+    db: Session,
+    profile: LlmProfile,
+    *,
+    name: str | None = None,
+    base_url: str | None = None,
+    model: str | None = None,
+    ciphertext: str | None = None,
+    clear_api_key: bool = False,
+    api_protocol: str | None = None,
+    context_window: int | None = None,
+    max_tokens: int | None = None,
+    supports_image: bool | None = None,
+    reasoning_effort: str | None = None,
+    thinking_format: str | None = None,
+    fields_set: set[str] | None = None,
+) -> LlmProfile:
+    provided = fields_set or set()
+    if name is not None:
+        profile.name = name.strip()
+    if base_url is not None:
+        profile.base_url = base_url.strip()
+    if model is not None:
+        profile.model = model.strip()
+    if clear_api_key:
+        profile.api_key_ciphertext = ""
+    elif ciphertext is not None:
+        profile.api_key_ciphertext = ciphertext
+    if api_protocol is not None:
+        profile.api_protocol = api_protocol.strip()
+    if "context_window" in provided or context_window is not None:
+        profile.context_window = context_window
+    if "max_tokens" in provided or max_tokens is not None:
+        profile.max_tokens = max_tokens
+    if supports_image is not None:
+        profile.supports_image = bool(supports_image)
+    if "reasoning_effort" in provided or reasoning_effort is not None:
+        profile.reasoning_effort = (reasoning_effort or "").strip() or None
+    if "thinking_format" in provided or thinking_format is not None:
+        profile.thinking_format = (thinking_format or "").strip() or None
     db.commit()
     db.refresh(profile)
     return profile

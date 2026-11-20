@@ -15,25 +15,103 @@ fi
 # Settings -> Models (or via injected DSH_DEFAULT_LLM_* defaults).
 args=(--profile web --patch /etc/dsh/sandbox.patch.yml --patch /etc/dsh/no-default-model.patch.yml)
 
-# First run: write a default-model row into the profile patch. Settings ->
-# Models later replaces this row with the user's provider/model, and this
-# check skips it, so a saved selection survives restarts.
+# First run: write default model + provider config into the profile patch when
+# not yet configured. Settings -> Models later edits these rows, and this check
+# skips them so user selections always survive restarts.
 profile_patch="${DSH_HOME}/profiles/web/cordis.patch.yml"
-if [ -f "${profile_patch}" ] && ! grep -q 'agent-default-model' "${profile_patch}"; then
-  tmp_patch="$(mktemp "${profile_patch}.XXXXXX")"
-  # A freshly initialized profile patch is the empty-flow sequence `[]`;
-  # appending a block item after it would be invalid YAML.
-  sed '/^[[:space:]]*\[\][[:space:]]*$/d' "${profile_patch}" >"${tmp_patch}"
-  default_provider="${DSH_DEFAULT_LLM_PROVIDER:-}"
-  default_model="${DSH_DEFAULT_LLM_MODEL:-}"
-  cat >>"${tmp_patch}" <<EOF
+if [ -f "${profile_patch}" ]; then
+  PROFILE_PATCH="${profile_patch}" node -e '
+    const fs = require("fs");
+    const patchPath = process.env.PROFILE_PATCH;
+    let content = fs.readFileSync(patchPath, "utf8");
+    const cleanStrip = () => content.replace(/^\s*\[\]\s*$/m, "").trimEnd();
+    const provider = (process.env.DSH_DEFAULT_LLM_PROVIDER || "").trim();
+    const model = (process.env.DSH_DEFAULT_LLM_MODEL || "").trim();
+    const baseUrl = (process.env.DSH_DEFAULT_LLM_BASE_URL || "").trim();
+    const api = (process.env.DSH_DEFAULT_LLM_API || "openai-completions").trim();
+    const displayName = (process.env.DSH_DEFAULT_LLM_DISPLAY_NAME || "").trim();
+    const apiKey = (process.env.DSH_DEFAULT_LLM_API_KEY || "").trim();
+    const ctxWin = Number.parseInt(process.env.DSH_DEFAULT_LLM_CONTEXT_WINDOW || "", 10);
+    const maxTok = Number.parseInt(process.env.DSH_DEFAULT_LLM_MAX_TOKENS || "", 10);
+    const supportsImage = (process.env.DSH_DEFAULT_LLM_SUPPORTS_IMAGE || "").trim().toLowerCase() === "true";
+    const reasoningEffort = (process.env.DSH_DEFAULT_LLM_REASONING_EFFORT || "").trim().toLowerCase();
+    const thinkingFormat = (process.env.DSH_DEFAULT_LLM_THINKING_FORMAT || "").trim();
+    const validEfforts = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+    let changed = false;
 
-- id: agent-default-model
-  config:
-    provider: '${default_provider}'
-    model: '${default_model}'
-EOF
-  mv "${tmp_patch}" "${profile_patch}"
+    if (!content.includes("id: agent-default-model")) {
+      const lines = [
+        "",
+        "- id: agent-default-model",
+        "  config:",
+        "    provider: " + JSON.stringify(provider),
+        "    model: " + JSON.stringify(model),
+      ];
+      if (validEfforts.has(reasoningEffort) && reasoningEffort !== "off") {
+        lines.push("    reasoningEffort: " + JSON.stringify(reasoningEffort));
+      }
+      content = cleanStrip() + "\n" + lines.join("\n") + "\n";
+      changed = true;
+    }
+
+    if (provider && baseUrl && model && !content.includes("id: llm-pi-ai")) {
+      const lines = [
+        "",
+        "- id: llm-pi-ai",
+        "  name: \"@deepseek-ai/dsh-llm-pi-ai\"",
+        "  config:",
+        "    providers:",
+        "      " + JSON.stringify(provider) + ":",
+        "        api: " + JSON.stringify(api),
+        "        baseURL: " + JSON.stringify(baseUrl),
+      ];
+      if (displayName) {
+        lines.push("        displayName: " + JSON.stringify(displayName));
+      }
+      if (apiKey) {
+        lines.push("        apiKeyEnv: DSH_DEFAULT_LLM_API_KEY");
+      }
+      if (validEfforts.has(reasoningEffort)) {
+        lines.push("        reasoning: " + JSON.stringify(reasoningEffort));
+      }
+      if (thinkingFormat) {
+        lines.push("        compat:");
+        lines.push("          thinkingFormat: " + JSON.stringify(thinkingFormat));
+      }
+      lines.push("        models:");
+      lines.push("          - id: " + JSON.stringify(model));
+      lines.push("            name: " + JSON.stringify(model));
+      if (Number.isFinite(ctxWin) && ctxWin >= 1024) {
+        lines.push("            contextWindow: " + ctxWin);
+      }
+      if (Number.isFinite(maxTok) && maxTok >= 128) {
+        lines.push("            maxTokens: " + maxTok);
+      }
+      lines.push("            input:");
+      lines.push("              - text");
+      if (supportsImage) {
+        lines.push("              - image");
+      }
+      if (reasoningEffort === "off") {
+        lines.push("            reasoningEfforts: false");
+      } else if (validEfforts.has(reasoningEffort)) {
+        lines.push("            reasoningEfforts:");
+        lines.push("              off: null");
+        lines.push("              minimal: minimal");
+        lines.push("              low: low");
+        lines.push("              medium: medium");
+        lines.push("              high: high");
+        lines.push("              xhigh: xhigh");
+        lines.push("              max: max");
+      }
+      content = cleanStrip() + "\n" + lines.join("\n") + "\n";
+      changed = true;
+    }
+
+    if (changed) {
+      fs.writeFileSync(patchPath, content.replace(/^\n+/, ""));
+    }
+  ' || true
 fi
 
 # Automatically enable the DSH Plugin Market (Discover tab), inject the

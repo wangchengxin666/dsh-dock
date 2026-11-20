@@ -1,4 +1,11 @@
-import { canStartNewTopic, DEFAULT_MAX_FILE_BYTES } from '../shared/protocol.js'
+import {
+  areTaskDependenciesMet,
+  canStartNewTopic,
+  DEFAULT_MAX_FILE_BYTES,
+  summarizeRoomTasks,
+  TASK_PRIORITIES,
+  TASK_STATUSES,
+} from '../shared/protocol.js'
 import { createTranslator } from './locale.js'
 import {
   MeshNavIcon,
@@ -23,6 +30,8 @@ import {
   RefreshIcon,
   EditIcon,
   CloseIcon,
+  TasksBoardIcon,
+  ShieldCheckIcon,
 } from './icons.js'
 import {
   avatarToneForSlug,
@@ -34,6 +43,26 @@ import {
 } from './markdown.js'
 
 export { MeshNavIcon }
+
+function taskStatusLabel(t, status) {
+  switch (status) {
+    case 'in_progress': return t('taskStatusInProgress')
+    case 'in_review': return t('taskStatusInReview')
+    case 'blocked': return t('taskStatusBlocked')
+    case 'done': return t('taskStatusDone')
+    case 'cancelled': return t('taskStatusCancelled')
+    default: return t('taskStatusTodo')
+  }
+}
+
+function taskPriorityLabel(t, priority) {
+  switch (priority) {
+    case 'urgent': return t('taskPriorityUrgent')
+    case 'high': return t('taskPriorityHigh')
+    case 'low': return t('taskPriorityLow')
+    default: return t('taskPriorityMedium')
+  }
+}
 
 function formatClock(ms) {
   if (!ms || typeof ms !== 'number') return ''
@@ -486,6 +515,12 @@ export function buildMessageRenderItems(messages, { isGroup = false } = {}) {
       return
     }
 
+    if (msg.kind === 'approval') {
+      flushTurns(true)
+      items.push({ kind: 'approval', id: msg.id, msg })
+      return
+    }
+
     if (isGroup && msg.phase === 'turn' && msg.sender?.actor === 'agent') {
       pendingTurns.push(msg)
       return
@@ -515,7 +550,15 @@ export function createMeshChatPage({
     const [, setTick] = useState(0)
     const [showNewGroup, setShowNewGroup] = useState(false)
     const [showPairDrawer, setShowPairDrawer] = useState(false)
-    const [rightPanel, setRightPanel] = useState('') // '' | 'files' | 'details'
+    const [rightPanel, setRightPanel] = useState('') // '' | 'tasks' | 'files' | 'details'
+    const [taskFilterAll, setTaskFilterAll] = useState(false)
+    const [showNewTaskForm, setShowNewTaskForm] = useState(false)
+    const [newTaskTitle, setNewTaskTitle] = useState('')
+    const [newTaskDesc, setNewTaskDesc] = useState('')
+    const [newTaskAssignee, setNewTaskAssignee] = useState('')
+    const [newTaskPriority, setNewTaskPriority] = useState('medium')
+    const [newTaskApproval, setNewTaskApproval] = useState(false)
+    const [approvalComments, setApprovalComments] = useState({})
     const [confirmAction, setConfirmAction] = useState(null)
     const [roomFilter, setRoomFilter] = useState('')
     const [groupName, setGroupName] = useState('')
@@ -656,6 +699,27 @@ export function createMeshChatPage({
       .filter((m) => m && m.attachment && (m.attachment.savedPath || m.attachment.sourcePath || m.attachment.name))
       .slice()
       .reverse()
+
+    const allRoomTasks = activeRoom && Array.isArray(state.tasks?.[activeRoom.id])
+      ? state.tasks[activeRoom.id]
+      : []
+    const visibleRoomTasks = taskFilterAll || !activeRoom?.activeThreadId
+      ? allRoomTasks
+      : allRoomTasks.filter((tk) => !tk.threadId || tk.threadId === activeRoom.activeThreadId)
+    const taskSummary = summarizeRoomTasks(allRoomTasks, activeRoom?.activeThreadId || '')
+    const taskById = new Map(allRoomTasks.map((tk) => [tk.id, tk]))
+    const taskSortRank = (tk) => {
+      if (tk.approvalRequired && tk.approvalStatus === 'pending') return 0
+      if (tk.status === 'blocked') return 1
+      if (tk.status === 'in_review') return 2
+      if (tk.status === 'in_progress') return 3
+      if (tk.status === 'todo') return 4
+      if (tk.status === 'done') return 5
+      return 6
+    }
+    const sortedVisibleTasks = visibleRoomTasks
+      .slice()
+      .sort((a, b) => (taskSortRank(a) - taskSortRank(b)) || ((b.updatedAt || 0) - (a.updatedAt || 0)))
 
     const { items: renderItems, topics: roomTopics } = buildMessageRenderItems(activeMessages, {
       isGroup: activeRoom?.type === 'group',
@@ -1149,6 +1213,7 @@ export function createMeshChatPage({
                 const isActive = activeRoom && activeRoom.id === room.id
                 const roomMsgs = state.messages?.[room.id] || []
                 const lastMsg = roomMsgs.length > 0 ? roomMsgs[roomMsgs.length - 1] : null
+                const roomTasksSummary = summarizeRoomTasks(state.tasks?.[room.id] || [])
                 const roomActivities = Array.isArray(activeStatusesMap[room.id]) ? activeStatusesMap[room.id] : []
                 const isRoomBusy = roomActivities.length > 0
                 const pairPeer = room.type === 'pair' ? peerBySlug.get(room.peerSlug) : null
@@ -1197,6 +1262,9 @@ export function createMeshChatPage({
                       'div',
                       { className: 'sm-room-preview-line' },
                       H('span', { className: `sm-room-preview${isRoomBusy ? ' live' : ''}` }, previewText),
+                      roomTasksSummary.pendingApprovals > 0
+                        ? H('span', { className: 'sm-badge sm-badge-approval' }, `${roomTasksSummary.pendingApprovals} ${t('taskApprovalBadgeShort')}`)
+                        : null,
                       room.unreadCount > 0
                         ? H('span', { className: 'sm-badge sm-badge-unread' }, String(room.unreadCount))
                         : null,
@@ -1362,6 +1430,19 @@ export function createMeshChatPage({
                       'button',
                       {
                         type: 'button',
+                        className: `sm-btn sm-btn-sm${rightPanel === 'tasks' ? ' sm-btn-primary' : ''}`,
+                        onClick: () => setRightPanel((p) => (p === 'tasks' ? '' : 'tasks')),
+                      },
+                      TasksBoardIcon({ React, size: 12 }),
+                      `${t('tasksBtn')}${taskSummary.total > 0 ? ` ${taskSummary.done}/${taskSummary.total}` : ''}`,
+                      taskSummary.pendingApprovals > 0
+                        ? H('span', { className: 'sm-badge sm-badge-approval', style: { marginLeft: '3px', padding: '0 5px' } }, String(taskSummary.pendingApprovals))
+                        : null,
+                    ),
+                    H(
+                      'button',
+                      {
+                        type: 'button',
                         className: `sm-btn sm-btn-sm${rightPanel === 'files' ? ' sm-btn-primary' : ''}`,
                         onClick: () => setRightPanel((p) => (p === 'files' ? '' : 'files')),
                       },
@@ -1483,6 +1564,143 @@ export function createMeshChatPage({
                             SystemBellIcon({ React, size: 11 }),
                             H('span', null, localizeSystemMessage(item.msg.text, t)),
                             clockStr ? H('span', { style: { opacity: 0.65, fontSize: '10.5px' } }, clockStr) : null,
+                          )
+                        }
+
+                        if (item.kind === 'approval') {
+                          const msg = item.msg
+                          const linkedTask = msg.taskId ? taskById.get(msg.taskId) : null
+                          const apprStatus = linkedTask?.approvalStatus || 'pending'
+                          const cardClass = apprStatus === 'approved'
+                            ? 'sm-approval-card approved'
+                            : apprStatus === 'rejected'
+                              ? 'sm-approval-card rejected'
+                              : 'sm-approval-card'
+                          const commentVal = linkedTask ? (approvalComments[linkedTask.id] || '') : ''
+                          const clockStr = formatClock(msg.createdAt)
+                          return H(
+                            'div',
+                            {
+                              key: item.id,
+                              'data-anchor-id': `sm-msg-${msg.id}`,
+                              className: cardClass,
+                            },
+                            H(
+                              'div',
+                              { className: 'sm-approval-head' },
+                              H(
+                                'span',
+                                { className: 'sm-approval-title' },
+                                ShieldCheckIcon({ React, size: 15 }),
+                                linkedTask?.title || t('taskApprovalGateTitle'),
+                              ),
+                              H(
+                                'div',
+                                { className: 'sm-row', style: { gap: '6px' } },
+                                H(
+                                  'span',
+                                  {
+                                    className: `sm-task-status ${apprStatus === 'approved' ? 'done' : apprStatus === 'rejected' ? 'blocked' : 'in_review'}`,
+                                  },
+                                  apprStatus === 'approved'
+                                    ? t('taskApprovalApproved')
+                                    : apprStatus === 'rejected'
+                                      ? t('taskApprovalRejected')
+                                      : t('taskApprovalPending'),
+                                ),
+                                clockStr ? H('span', { style: { fontSize: '11px', opacity: 0.65 } }, clockStr) : null,
+                              ),
+                            ),
+                            H(
+                              'div',
+                              { className: 'sm-approval-body' },
+                              renderMarkdownMessage(H, msg.text || linkedTask?.approvalPrompt || '', { keyPrefix: `appr-${msg.id}`, t }),
+                            ),
+                            linkedTask && apprStatus === 'pending' && !isRoomUnpaired
+                              ? H(
+                                  'div',
+                                  { className: 'sm-approval-actions' },
+                                  H('input', {
+                                    type: 'text',
+                                    className: 'sm-input',
+                                    value: commentVal,
+                                    placeholder: t('taskApprovalCommentPlaceholder'),
+                                    onChange: (e) => {
+                                      const val = e.target?.value || ''
+                                      setApprovalComments((prev) => ({ ...prev, [linkedTask.id]: val }))
+                                    },
+                                  }),
+                                  H(
+                                    'div',
+                                    { className: 'sm-approval-btns' },
+                                    H(
+                                      'button',
+                                      {
+                                        type: 'button',
+                                        className: 'sm-btn sm-btn-sm sm-btn-approve',
+                                        disabled: busy,
+                                        onClick: async () => {
+                                          const c = (approvalComments[linkedTask.id] || '').trim()
+                                          const res = await controller.decideApproval({
+                                            roomId: activeRoom.id,
+                                            taskId: linkedTask.id,
+                                            decision: 'approved',
+                                            comment: c,
+                                          })
+                                          if (res) {
+                                            setApprovalComments((prev) => {
+                                              const next = { ...prev }
+                                              delete next[linkedTask.id]
+                                              return next
+                                            })
+                                          }
+                                        },
+                                      },
+                                      CheckIcon({ React, size: 12 }),
+                                      t('taskApproveBtn'),
+                                    ),
+                                    H(
+                                      'button',
+                                      {
+                                        type: 'button',
+                                        className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                        disabled: busy,
+                                        onClick: async () => {
+                                          const c = (approvalComments[linkedTask.id] || '').trim()
+                                          const res = await controller.decideApproval({
+                                            roomId: activeRoom.id,
+                                            taskId: linkedTask.id,
+                                            decision: 'rejected',
+                                            comment: c,
+                                          })
+                                          if (res) {
+                                            setApprovalComments((prev) => {
+                                              const next = { ...prev }
+                                              delete next[linkedTask.id]
+                                              return next
+                                            })
+                                          }
+                                        },
+                                      },
+                                      CloseIcon({ React, size: 11 }),
+                                      t('taskRejectBtn'),
+                                    ),
+                                  ),
+                                )
+                              : linkedTask && (apprStatus === 'approved' || apprStatus === 'rejected')
+                                ? H(
+                                    'div',
+                                    { className: 'sm-approval-decided' },
+                                    H(
+                                      'span',
+                                      null,
+                                      `${t('taskApprovalDecidedBy')}: ${linkedTask.approvalDecidedBy || 'Human'}${linkedTask.approvalDecidedAt ? ` · ${formatClock(linkedTask.approvalDecidedAt)}` : ''}`,
+                                    ),
+                                    linkedTask.approvalComment
+                                      ? H('span', { style: { fontStyle: 'italic' } }, linkedTask.approvalComment)
+                                      : null,
+                                  )
+                                : null,
                           )
                         }
 
@@ -1924,7 +2142,7 @@ export function createMeshChatPage({
               ),
         ),
 
-        // Right Drawer: Shared Files Box OR Room Details & Management
+        // Right Drawer: Shared Task Board, Shared Files Box, OR Room Details & Management
         activeRoom && rightPanel
           ? H(
               'aside',
@@ -1935,8 +2153,16 @@ export function createMeshChatPage({
                 H(
                   'span',
                   { className: 'sm-row', style: { gap: '6px' } },
-                  rightPanel === 'files' ? ClipIcon({ React, size: 13 }) : SlidersIcon({ React, size: 13 }),
-                  rightPanel === 'files' ? t('filesDrawerTitle') : t('roomDetailsTitle'),
+                  rightPanel === 'tasks'
+                    ? TasksBoardIcon({ React, size: 13 })
+                    : rightPanel === 'files'
+                      ? ClipIcon({ React, size: 13 })
+                      : SlidersIcon({ React, size: 13 }),
+                  rightPanel === 'tasks'
+                    ? t('tasksDrawerTitle')
+                    : rightPanel === 'files'
+                      ? t('filesDrawerTitle')
+                      : t('roomDetailsTitle'),
                 ),
                 H(
                   'button',
@@ -1948,7 +2174,296 @@ export function createMeshChatPage({
                   CloseIcon({ React, size: 13 }),
                 ),
               ),
-              rightPanel === 'files'
+              rightPanel === 'tasks'
+                ? H(
+                    'div',
+                    { className: 'sm-drawer-body' },
+                    // Progress Summary + Filter + New Task button
+                    H(
+                      'div',
+                      { className: 'sm-task-progress-wrap' },
+                      H(
+                        'div',
+                        { className: 'sm-row', style: { justifyContent: 'space-between', fontSize: '11.5px' } },
+                        H('span', { style: { fontWeight: 600 } }, `${t('tasksProgressLabel')}: ${taskSummary.done}/${taskSummary.total}`),
+                        taskSummary.pendingApprovals > 0
+                          ? H('span', { className: 'sm-badge sm-badge-approval' }, `${taskSummary.pendingApprovals} ${t('taskApprovalBadgeShort')}`)
+                          : null,
+                      ),
+                      H(
+                        'div',
+                        { className: 'sm-task-progress-bar' },
+                        H('div', {
+                          className: 'sm-task-progress-fill',
+                          style: { width: `${taskSummary.total > 0 ? Math.round((taskSummary.done / taskSummary.total) * 100) : 0}%` },
+                        }),
+                      ),
+                      H(
+                        'div',
+                        { className: 'sm-row', style: { justifyContent: 'space-between', gap: '6px', marginTop: '4px' } },
+                        H(
+                          'div',
+                          { className: 'sm-row', style: { gap: '4px' } },
+                          H(
+                            'button',
+                            {
+                              type: 'button',
+                              className: `sm-btn sm-btn-sm${!taskFilterAll ? ' sm-btn-primary' : ''}`,
+                              onClick: () => setTaskFilterAll(false),
+                            },
+                            t('tasksFilterThread'),
+                          ),
+                          H(
+                            'button',
+                            {
+                              type: 'button',
+                              className: `sm-btn sm-btn-sm${taskFilterAll ? ' sm-btn-primary' : ''}`,
+                              onClick: () => setTaskFilterAll(true),
+                            },
+                            t('tasksFilterAll'),
+                          ),
+                        ),
+                        !isRoomUnpaired
+                          ? H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-btn sm-btn-sm',
+                                onClick: () => setShowNewTaskForm((v) => !v),
+                              },
+                              showNewTaskForm ? t('cancelBtn') : t('taskNewBtn'),
+                            )
+                          : null,
+                      ),
+                    ),
+                    // Inline New Task Form
+                    showNewTaskForm && !isRoomUnpaired
+                      ? H(
+                          'div',
+                          { className: 'sm-task-form' },
+                          H('input', {
+                            type: 'text',
+                            className: 'sm-input',
+                            value: newTaskTitle,
+                            placeholder: t('taskTitlePlaceholder'),
+                            onChange: (e) => setNewTaskTitle(e.target?.value || ''),
+                          }),
+                          H('textarea', {
+                            className: 'sm-sop-textarea',
+                            style: { minHeight: '56px' },
+                            value: newTaskDesc,
+                            placeholder: t('taskDescPlaceholder'),
+                            onChange: (e) => setNewTaskDesc(e.target?.value || ''),
+                          }),
+                          H(
+                            'div',
+                            { className: 'sm-row', style: { gap: '6px' } },
+                            H(
+                              'select',
+                              {
+                                className: 'sm-input',
+                                value: newTaskAssignee,
+                                onChange: (e) => setNewTaskAssignee(e.target?.value || ''),
+                              },
+                              H('option', { value: '' }, t('taskAssigneeNone')),
+                              ...(activeRoom.members || []).map((m) =>
+                                H('option', { key: m.slug, value: m.slug }, `@${m.slug}${m.role ? ` · ${m.role}` : ''}`),
+                              ),
+                            ),
+                            H(
+                              'select',
+                              {
+                                className: 'sm-input',
+                                style: { width: '92px', flex: 'none' },
+                                value: newTaskPriority,
+                                onChange: (e) => setNewTaskPriority(e.target?.value || 'medium'),
+                              },
+                              ...TASK_PRIORITIES.map((pr) =>
+                                H('option', { key: pr, value: pr }, taskPriorityLabel(t, pr)),
+                              ),
+                            ),
+                          ),
+                          H(
+                            'label',
+                            { className: 'sm-row', style: { fontSize: '11.5px', cursor: 'pointer', gap: '6px' } },
+                            H('input', {
+                              type: 'checkbox',
+                              checked: newTaskApproval,
+                              onChange: (e) => setNewTaskApproval(Boolean(e.target?.checked)),
+                            }),
+                            t('taskApprovalGateTitle'),
+                          ),
+                          H(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'sm-btn sm-btn-sm sm-btn-primary',
+                              disabled: busy || !newTaskTitle.trim(),
+                              onClick: async () => {
+                                const res = await controller.createTask({
+                                  roomId: activeRoom.id,
+                                  threadId: activeRoom.activeThreadId || '',
+                                  title: newTaskTitle.trim(),
+                                  description: newTaskDesc.trim(),
+                                  assigneeSlug: newTaskAssignee,
+                                  priority: newTaskPriority,
+                                  approvalRequired: newTaskApproval,
+                                  approvalPrompt: newTaskApproval ? (newTaskDesc.trim() || newTaskTitle.trim()) : '',
+                                  notifyAssignees: true,
+                                })
+                                if (res) {
+                                  setNewTaskTitle('')
+                                  setNewTaskDesc('')
+                                  setNewTaskAssignee('')
+                                  setNewTaskPriority('medium')
+                                  setNewTaskApproval(false)
+                                  setShowNewTaskForm(false)
+                                }
+                              },
+                            },
+                            t('taskCreateSubmit'),
+                          ),
+                        )
+                      : null,
+                    // Task Cards List
+                    sortedVisibleTasks.length === 0
+                      ? H('div', { style: { fontSize: '12px', opacity: 0.72, lineHeight: 1.5 } }, t('tasksEmptyHint'))
+                      : sortedVisibleTasks.map((tk) => {
+                          const isPendingAppr = Boolean(tk.approvalRequired && tk.approvalStatus === 'pending')
+                          const depsMet = areTaskDependenciesMet(tk, allRoomTasks)
+                          const cardCls = `sm-task-card${isPendingAppr ? ' is-approval-pending' : ''}${tk.status === 'blocked' ? ' is-blocked' : ''}${tk.status === 'done' ? ' is-done' : ''}`
+                          return H(
+                            'div',
+                            { key: tk.id, className: cardCls },
+                            H(
+                              'div',
+                              { className: 'sm-task-top' },
+                              H('span', { className: 'sm-task-title' }, tk.title),
+                              H('span', { className: `sm-task-priority ${tk.priority || 'medium'}` }, taskPriorityLabel(t, tk.priority)),
+                            ),
+                            H(
+                              'div',
+                              { className: 'sm-task-meta' },
+                              !isRoomUnpaired
+                                ? H(
+                                    'select',
+                                    {
+                                      className: `sm-task-status ${tk.status}`,
+                                      style: { border: '1px solid var(--sm-border-l2)', cursor: 'pointer' },
+                                      value: tk.status,
+                                      disabled: busy,
+                                      onChange: (e) => {
+                                        const nextSt = e.target?.value
+                                        if (nextSt && nextSt !== tk.status) {
+                                          void controller.updateTask({
+                                            roomId: activeRoom.id,
+                                            taskId: tk.id,
+                                            status: nextSt,
+                                          })
+                                        }
+                                      },
+                                    },
+                                    ...TASK_STATUSES.map((st) =>
+                                      H('option', { key: st, value: st }, taskStatusLabel(t, st)),
+                                    ),
+                                  )
+                                : H('span', { className: `sm-task-status ${tk.status}` }, taskStatusLabel(t, tk.status)),
+                              tk.assigneeSlug
+                                ? H('span', { className: 'sm-badge' }, `@${tk.assigneeSlug}`)
+                                : H('span', { style: { opacity: 0.6 } }, t('taskAssigneeNone')),
+                              isPendingAppr
+                                ? H('span', { className: 'sm-badge sm-badge-approval' }, t('taskApprovalPending'))
+                                : tk.approvalStatus === 'approved'
+                                  ? H('span', { className: 'sm-task-status done' }, t('taskApprovalApproved'))
+                                  : tk.approvalStatus === 'rejected'
+                                    ? H('span', { className: 'sm-task-status blocked' }, t('taskApprovalRejected'))
+                                    : null,
+                            ),
+                            Array.isArray(tk.dependsOn) && tk.dependsOn.length > 0
+                              ? H(
+                                  'div',
+                                  { style: { fontSize: '11px', opacity: 0.78 } },
+                                  `${t('taskDepsLabel')}: ${tk.dependsOn.map((id) => taskById.get(id)?.title || id).join(', ')} (${depsMet ? '✓' : '⏳'})`,
+                                )
+                              : null,
+                            tk.summary
+                              ? H('div', { className: 'sm-task-summary' }, tk.summary)
+                              : tk.description
+                                ? H('div', { className: 'sm-task-summary' }, tk.description)
+                                : null,
+                            Array.isArray(tk.artifacts) && tk.artifacts.length > 0
+                              ? H(
+                                  'div',
+                                  { className: 'sm-task-artifacts' },
+                                  ...tk.artifacts.map((art, aIdx) => {
+                                    const isHttp = /^https?:\/\//i.test(art)
+                                    return isHttp
+                                      ? H(
+                                          'a',
+                                          {
+                                            key: `${tk.id}-art-${aIdx}`,
+                                            className: 'sm-task-artifact-chip',
+                                            href: art,
+                                            target: '_blank',
+                                            rel: 'noopener noreferrer',
+                                            title: art,
+                                          },
+                                          art,
+                                        )
+                                      : H(
+                                          'button',
+                                          {
+                                            key: `${tk.id}-art-${aIdx}`,
+                                            type: 'button',
+                                            className: 'sm-task-artifact-chip',
+                                            title: art,
+                                            onClick: () => void flashCopy(art, `art-${tk.id}-${aIdx}`),
+                                          },
+                                          copiedKey === `art-${tk.id}-${aIdx}` ? t('copiedBtn') : art,
+                                        )
+                                  }),
+                                )
+                              : null,
+                            isPendingAppr && !isRoomUnpaired
+                              ? H(
+                                  'div',
+                                  { className: 'sm-approval-btns', style: { marginTop: '4px' } },
+                                  H(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'sm-btn sm-btn-sm sm-btn-approve',
+                                      disabled: busy,
+                                      onClick: () => void controller.decideApproval({
+                                        roomId: activeRoom.id,
+                                        taskId: tk.id,
+                                        decision: 'approved',
+                                      }),
+                                    },
+                                    CheckIcon({ React, size: 11 }),
+                                    t('taskApproveBtn'),
+                                  ),
+                                  H(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                      disabled: busy,
+                                      onClick: () => void controller.decideApproval({
+                                        roomId: activeRoom.id,
+                                        taskId: tk.id,
+                                        decision: 'rejected',
+                                      }),
+                                    },
+                                    CloseIcon({ React, size: 11 }),
+                                    t('taskRejectBtn'),
+                                  ),
+                                )
+                              : null,
+                          )
+                        }),
+                  )
+                : rightPanel === 'files'
                 ? H(
                     'div',
                     { className: 'sm-drawer-body' },
@@ -2444,6 +2959,7 @@ export function createMeshSettingsPage({
     const initialSelf = controller.getSnapshot().state?.self || {}
     const [roleInput, setRoleInput] = useState(initialSelf.role || '')
     const [descInput, setDescInput] = useState(initialSelf.description || '')
+    const [sopInput, setSopInput] = useState(initialSelf.instructions || '')
     const [profileDirty, setProfileDirty] = useState(false)
     const endpointInputRef = useRef ? useRef(null) : { current: null }
     const copyTimerRef = useRef ? useRef(null) : { current: null }
@@ -2454,6 +2970,7 @@ export function createMeshSettingsPage({
         if (!profileDirty) {
           setRoleInput(latestSelf.role || '')
           setDescInput(latestSelf.description || '')
+          setSopInput(latestSelf.instructions || '')
         }
         setTick((n) => n + 1)
       })
@@ -2483,11 +3000,16 @@ export function createMeshSettingsPage({
     const rooms = state.rooms || []
 
     const roleTemplates = [
-      { id: 'fe', role: t('tplFrontendRole'), desc: t('tplFrontendDesc') },
-      { id: 'be', role: t('tplBackendRole'), desc: t('tplBackendDesc') },
-      { id: 'qa', role: t('tplQaRole'), desc: t('tplQaDesc') },
-      { id: 'data', role: t('tplDataRole'), desc: t('tplDataDesc') },
-      { id: 'arch', role: t('tplArchRole'), desc: t('tplArchDesc') },
+      { id: 'pm', role: t('tplPmRole'), desc: t('tplPmDesc'), sop: t('tplPmSop') },
+      { id: 'arch', role: t('tplArchRole'), desc: t('tplArchDesc'), sop: t('tplArchSop') },
+      { id: 'fullstack', role: t('tplFullstackRole'), desc: t('tplFullstackDesc'), sop: t('tplFullstackSop') },
+      { id: 'fe', role: t('tplFrontendRole'), desc: t('tplFrontendDesc'), sop: t('tplFrontendSop') },
+      { id: 'be', role: t('tplBackendRole'), desc: t('tplBackendDesc'), sop: t('tplBackendSop') },
+      { id: 'qa', role: t('tplQaRole'), desc: t('tplQaDesc'), sop: t('tplQaSop') },
+      { id: 'devops', role: t('tplDevopsRole'), desc: t('tplDevopsDesc'), sop: t('tplDevopsSop') },
+      { id: 'sec', role: t('tplSecRole'), desc: t('tplSecDesc'), sop: t('tplSecSop') },
+      { id: 'data', role: t('tplDataRole'), desc: t('tplDataDesc'), sop: t('tplDataSop') },
+      { id: 'docs', role: t('tplDocsRole'), desc: t('tplDocsDesc'), sop: t('tplDocsSop') },
     ]
 
     const copyText = async (key, value, inputRef) => {
@@ -2511,6 +3033,7 @@ export function createMeshSettingsPage({
       const res = await controller.saveProfile({
         role: roleInput,
         description: descInput,
+        instructions: sopInput,
       })
       if (res) {
         setProfileDirty(false)
@@ -2626,6 +3149,21 @@ export function createMeshSettingsPage({
         ),
         H(
           'div',
+          { className: 'sm-invite-item', style: { flexDirection: 'column', alignItems: 'stretch', gap: '5px' } },
+          H('span', { className: 'sm-invite-label' }, t('sopLabel')),
+          H('textarea', {
+            className: 'sm-sop-textarea',
+            value: sopInput,
+            placeholder: t('sopPlaceholder'),
+            onChange: (e) => {
+              setProfileDirty(true)
+              setSopInput(e.target?.value || '')
+            },
+          }),
+          H('span', { style: { fontSize: '11.5px', opacity: 0.72 } }, t('sopHint')),
+        ),
+        H(
+          'div',
           { className: 'sm-template-row' },
           H('span', null, t('roleTemplatesLabel')),
           ...roleTemplates.map((tpl) =>
@@ -2639,6 +3177,7 @@ export function createMeshSettingsPage({
                   setProfileDirty(true)
                   setRoleInput(tpl.role)
                   setDescInput(tpl.desc)
+                  setSopInput(tpl.sop || '')
                 },
               },
               tpl.role,

@@ -20,6 +20,9 @@ const FILE_UPLOAD_API = 'api/sandbox-mesh.file-upload'
 const MARK_READ_API = 'api/sandbox-mesh.mark-read'
 const PEER_REMOVE_API = 'api/sandbox-mesh.peer-remove'
 const PEER_PING_API = 'api/sandbox-mesh.peer-ping'
+const TASK_CREATE_API = 'api/sandbox-mesh.task-create'
+const TASK_UPDATE_API = 'api/sandbox-mesh.task-update'
+const APPROVAL_DECIDE_API = 'api/sandbox-mesh.approval-decide'
 
 function defaultSnapshotState() {
   return {
@@ -27,6 +30,9 @@ function defaultSnapshotState() {
       slug: 'sandbox',
       ownerName: 'sandbox',
       ownerEmail: '',
+      role: '',
+      description: '',
+      instructions: '',
       publicOrigin: 'http://localhost:9000',
       basePath: '/s/sandbox',
       meshPort: 4090,
@@ -36,9 +42,10 @@ function defaultSnapshotState() {
     peers: [],
     rooms: [],
     messages: {},
+    tasks: {},
     activeStatuses: {},
     outboxCount: 0,
-    maxAgentHops: 4,
+    maxAgentHops: 8,
   }
 }
 
@@ -113,6 +120,7 @@ export function createMeshController({
       peers: Array.isArray(nextState.peers) ? nextState.peers : [],
       rooms: Array.isArray(nextState.rooms) ? nextState.rooms : [],
       messages: nextState.messages && typeof nextState.messages === 'object' ? nextState.messages : {},
+      tasks: nextState.tasks && typeof nextState.tasks === 'object' ? nextState.tasks : {},
       activeStatuses: nextState.activeStatuses && typeof nextState.activeStatuses === 'object' ? nextState.activeStatuses : {},
     }
     if (!selectedRoomId && state.rooms.length > 0) {
@@ -190,14 +198,14 @@ export function createMeshController({
     }
   }
 
-  async function saveProfile({ ownerName, role, description }) {
+  async function saveProfile({ ownerName, role, description, instructions }) {
     busy = true
     errorText = ''
     notify()
     try {
       const data = await requestJson(PROFILE_API, {
         method: 'POST',
-        body: JSON.stringify({ ownerName, role, description }),
+        body: JSON.stringify({ ownerName, role, description, instructions }),
       })
       if (data.state) applyServerState(data.state)
       busy = false
@@ -657,13 +665,120 @@ export function createMeshController({
     }
   }
 
+  async function createTask({
+    roomId,
+    threadId = '',
+    title,
+    description = '',
+    assigneeSlug = '',
+    priority = 'medium',
+    approvalRequired = false,
+    approvalPrompt = '',
+    notifyAssignees = true,
+  }) {
+    busy = true
+    errorText = ''
+    notify()
+    try {
+      const data = await requestJson(TASK_CREATE_API, {
+        method: 'POST',
+        body: JSON.stringify({
+          roomId: roomId || selectedRoomId,
+          threadId,
+          title,
+          description,
+          assigneeSlug,
+          priority,
+          approvalRequired,
+          approvalPrompt,
+          notifyAssignees,
+        }),
+      })
+      if (data.state) applyServerState(data.state)
+      busy = false
+      setTransientStatus('statusTaskCreated')
+      notify()
+      return data
+    } catch (err) {
+      busy = false
+      errorText = err?.message || String(err)
+      notify()
+      return null
+    }
+  }
+
+  async function updateTask({ roomId, taskId, status, assigneeSlug, priority, summary, artifacts, title, description }) {
+    busy = true
+    errorText = ''
+    notify()
+    try {
+      const data = await requestJson(TASK_UPDATE_API, {
+        method: 'POST',
+        body: JSON.stringify({
+          roomId: roomId || selectedRoomId,
+          taskId,
+          status,
+          assigneeSlug,
+          priority,
+          summary,
+          artifacts,
+          title,
+          description,
+        }),
+      })
+      if (data.state) applyServerState(data.state)
+      busy = false
+      setTransientStatus('statusTaskUpdated')
+      notify()
+      return data
+    } catch (err) {
+      busy = false
+      errorText = err?.message || String(err)
+      notify()
+      return null
+    }
+  }
+
+  async function decideApproval({ roomId, taskId, decision, comment = '' }) {
+    busy = true
+    errorText = ''
+    notify()
+    try {
+      const data = await requestJson(APPROVAL_DECIDE_API, {
+        method: 'POST',
+        body: JSON.stringify({
+          roomId: roomId || selectedRoomId,
+          taskId,
+          decision,
+          comment,
+        }),
+      })
+      if (data.state) applyServerState(data.state)
+      busy = false
+      setTransientStatus(decision === 'approved' ? 'statusApprovalApproved' : 'statusApprovalRejected', 4200)
+      notify()
+      return data
+    } catch (err) {
+      busy = false
+      errorText = err?.message || String(err)
+      notify()
+      return null
+    }
+  }
+
   function getUnreadSummary() {
     const totalUnread = (state.rooms || []).reduce((sum, r) => sum + (Number(r.unreadCount) || 0), 0)
     const activeCount = Object.values(state.activeStatuses || {}).reduce(
       (sum, list) => sum + (Array.isArray(list) ? list.length : 0),
       0,
     )
-    return { totalUnread, activeCount }
+    const pendingApprovals = Object.values(state.tasks || {}).reduce(
+      (sum, list) => sum + (Array.isArray(list)
+        ? list.filter((t) => t && t.status !== 'cancelled' && t.approvalRequired && t.approvalStatus === 'pending').length
+        : 0),
+      0,
+    )
+    return { totalUnread, activeCount, pendingApprovals }
   }
 
   function clearNotice() {
@@ -715,6 +830,9 @@ export function createMeshController({
     removePeer,
     pingPeer,
     pingAllPeers,
+    createTask,
+    updateTask,
+    decideApproval,
     getUnreadSummary,
     clearNotice,
     setError,

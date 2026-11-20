@@ -18,14 +18,20 @@ Cross-sandbox 1-on-1 pairing (`Pair`), LLM-moderated multi-sandbox group rooms (
 - **Live Preparing / Answering Animations**:
   - Hosts broadcast monotonic sequenced `/mesh/status` updates (`coordinating`, `preparing`, `answering`, `waiting_peer @<slug>`) over HMAC-signed endpoints with 150s TTL and spoof-protection (`targetSlug === verified.fromSlug`).
   - The chat UI speeds up polling while active and shows bouncing-dot typing bubbles (`.sm-typing-bubble`) alongside pulsing dots on active member tags (`.sm-dot-live`).
+- **Shared Room Task Board, Parallel Fan-Out & Human Approval Gates**:
+  - **`mesh_dispatch_tasks`**: Create tracked tasks with DAG dependencies (`dependsOn` / `dependsOnIndices`) and wake all runnable assigned sandboxes **in parallel** — supporting both non-blocking **`async`** mode (for long-running coding/testing/deployment turns with 15-minute timeout & 30s status heartbeats) and **`wait`** mode (parallel `Promise.all` for quick multi-role meetings/design reviews).
+  - **`mesh_task_board` & `mesh_task_update`**: Replicated across room members over HMAC-signed `/mesh/task-sync` with monotonic version conflict resolution, tracking status (`todo`, `in_progress`, `in_review`, `blocked`, `done`, `cancelled`), progress summaries, and deliverable `artifacts` (git branches, PR/preview URLs, workspace paths), automatically unlocking dependent tasks and notifying the Moderator.
+  - **`mesh_request_approval`**: Post interactive **Human Approval Gate** cards inline in the chat timeline for milestone sign-off (PRD approval, production release, risky changes). Agents can never self-approve; human **Approve / Reject** clicks (with optional feedback) replicate across peers and automatically wake the assigned sandbox to continue or revise.
+- **Per-Sandbox Role SOP & MCP/Skill Composability**:
+  - Configure each sandbox's public `role`/`description` alongside private, local-only **Role SOP (`instructions`)** (with 10 role presets including Product Manager, Architect/Tech Lead, Full-Stack Engineer, Frontend, Backend, QA, DevOps/SRE, Security Auditor, Data/AI, and Tech Writer). Each sandbox combines Mesh collaboration with its own locally configured MCP servers & Skills (Git, CI/CD, K8s, DB, etc.).
 - **Native Harness Integration & CLI Bridge**:
-  - Registers first-class Harness tools (`mesh_list_peers`, `mesh_ask_peer`, `mesh_discuss_group`, `mesh_send_message`, `mesh_share_file`), a dynamic `sandbox-peer` Skill provider, and main-session `@` input trigger chips (`@[slug](dsh-mesh:...)` / `@[group](dsh-mesh-group:...)`).
+  - Registers 9 first-class Harness tools (`mesh_list_peers`, `mesh_ask_peer`, `mesh_discuss_group`, `mesh_dispatch_tasks`, `mesh_task_board`, `mesh_task_update`, `mesh_request_approval`, `mesh_send_message`, `mesh_share_file`), native `tool.call.toolview` UI cards, a dynamic `sandbox-peer` Skill provider, and main-session `@` input trigger chips (`@[slug](dsh-mesh:...)` / `@[group](dsh-mesh-group:...)`).
   - Auto-provisions `/home/workspace/.local/bin/sandbox-peer` CLI and `~/.dsh/skills/sandbox-peer/SKILL.md`.
 - **Zero-Trust Security Model**:
-  - **One-Time Pairing**: 144-bit random base64url token (`DEFAULT_PAIR_TTL_MS = 5m`), `pairLimiter` (5 attempts/min), invalidated after 5 failed attempts or first consumption; derives `sharedSecret` using `HMAC-SHA256(inviteToken, "${initiatorKey}:${responderKey}")`.
+  - **One-Time Pairing**: 144-bit random base64url token (`DEFAULT_PAIR_TTL_MS = 5m`), `pairLimiter` (5 attempts/min), invalidated after 5 failed attempts or first consumption; derives `sharedSecret` using X25519 ECDH (with HMAC fallback).
   - **Signed Requests & Replay Protection**: Every `/mesh/*` route verifies `HMAC-SHA256` over `${METHOD}\n${cleanPath}\n${timestamp}\n${nonce}\n${sha256(body)}`, enforces a ±60s timestamp tolerance, and tracks nonces in a sliding-window replay guard.
   - **Loopback CLI Guard**: `/local/cli` requires a `0600` bearer token compared in constant time and rejects proxied traffic carrying `x-forwarded-prefix` or `x-forwarded-for` (`403`).
-  - **File & Loop Safety**: `safeFileName` path sanitization + SHA-256 verification + `10 MiB` cap (`mesh-inbox/<roomId>/`); `maxAgentHops` (default `3` in `cordis.patch.yml`, protocol default `4`) prevents infinite loops.
+  - **File, Approval & Loop Safety**: `safeFileName` path sanitization + SHA-256 verification + `10 MiB` cap (`mesh-inbox/<roomId>/`); human-only enforcement on `/api/sandbox-mesh.approval-decide`; `maxAgentHops` (default `8`) prevents infinite loops.
 
 ## Configuration
 
@@ -37,7 +43,7 @@ Bundled plugin defaults in [cordis.patch.yml](cordis.patch.yml):
       name: '@dsh-dock/sandbox-mesh'
       config:
         port: 4090
-        maxAgentHops: 3
+        maxAgentHops: 8
 ```
 
 ## Layout of the Package

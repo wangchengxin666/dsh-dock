@@ -27,6 +27,8 @@ Commands:
   new-topic <roomId>                        Rotate active threadId to start a clean context topic
   rooms                                     List all paired 1v1 and group rooms
   messages <roomId>                         Show message history in a room
+  tasks <roomId>                            Show shared task board for a room
+  task-update <roomId> <taskId> <status> [summary]  Update task progress on the shared board
   inbox [--ack]                             List unacknowledged @agent or task messages
   send <roomId> <text> [--task] [--hop N]   Send a message as this sandbox's DSH Agent
   send-file <roomId> <path> [caption]       Share a local workspace file to a room
@@ -69,6 +71,13 @@ async function main() {
     payload.roomId = args[1] || ''
   } else if (cmd === 'messages') {
     payload.roomId = args[1] || ''
+  } else if (cmd === 'tasks') {
+    payload.roomId = args[1] || ''
+  } else if (cmd === 'task-update') {
+    payload.roomId = args[1] || ''
+    payload.taskId = args[2] || ''
+    payload.status = args[3] || ''
+    payload.summary = args.slice(4).join(' ')
   } else if (cmd === 'inbox') {
     payload.ack = args.includes('--ack')
   } else if (cmd === 'send') {
@@ -200,20 +209,35 @@ Choose the right collaboration mode automatically from the user's conversation t
 - **Auto-Create / Reuse Task Group (\`mesh_discuss_group\`)**: Use when the user mentions \`@[name](dsh-mesh-group:<roomId>)\`, asks to form a group/discussion, OR when a task naturally requires **multiple sandboxes** (e.g., frontend + backend + QA, cross-container verification, joint review):
   1. Match connected sandboxes above by their **Role / Specialty** and pass only the relevant \`memberSlugs\` (or omit to include all paired sandboxes for cluster-wide tasks).
   2. Omit \`roomId\` and give a concise task-focused \`groupName\` (or omit \`groupName\` to auto-derive it from \`topic\`). By default (\`reuseExisting: true\`), an active group with the same name & members is reused with a fresh isolated topic; pass \`reuseExisting: false\` to force a dedicated new group.
-  3. As local Moderator, \`mesh_discuss_group\` posts the task brief into the room and returns \`roomId\` + \`threadId\`. Call each needed member selectively via \`mesh_ask_peer(roomId, threadId, targetSlug, question)\`, then post your synthesized conclusion via \`mesh_send_message(roomId, threadId, text)\` and report the outcome to the user.
+  3. As local Moderator, \`mesh_discuss_group\` posts the task brief into the room and returns \`roomId\` + \`threadId\`. For tracked/parallel/multi-stage tasks, dispatch via \`mesh_dispatch_tasks(roomId, threadId, tasks, mode)\` (and gate high-risk milestones with \`mesh_request_approval\`); for quick ad-hoc consultations, call \`mesh_ask_peer(roomId, threadId, targetSlug, question)\`, then post your synthesized conclusion via \`mesh_send_message(roomId, threadId, text)\` and report the outcome to the user.
 
-## 4. Native Harness Tools
+## 4. Native Harness Tools & End-to-End Collaboration Workflow
 
-1. **\`mesh_ask_peer\`** — Call a specific remote sandbox Agent (1-on-1 OR inside a group room):
-   - Pass \`targetSlug\`, \`question\` (write clear natural-language goals; avoid pasting long raw shell one-liners), optional \`roomId\` (pair room or \`grp_...\`), optional \`threadId\`, and optional \`files\`.
-   - Omit \`threadId\` on 1-on-1 tasks to start a clean isolated Session on the remote container; pass the returned \`threadId\` for multi-turn follow-ups on the same topic.
-   - Inside a group room, calling \`mesh_ask_peer(roomId="grp_...", targetSlug=...)\` wakes ONLY that member without disturbing others.
-2. **\`mesh_discuss_group\`** — Auto-create or reuse a task-focused group room for LLM-moderated collaboration:
+Use these native tools to coordinate full multi-sandbox projects (e.g., meeting -> requirements -> parallel development -> QA -> ops/deploy) while each sandbox uses its own locally configured **MCP servers & Skills** (Git, CI/CD, K8s, DB, etc.):
+
+1. **\`mesh_discuss_group\`** — Auto-create or reuse a task-focused group room for LLM-moderated collaboration:
    - Parameters: \`topic\`, optional \`roomId\`, optional \`groupName\`, optional \`memberSlugs\`, optional \`moderatorSlug\`, optional \`reuseExisting\` (default \`true\`), optional \`threadId\`.
-   - If you (self) are Moderator, posts the opening brief and returns \`roomId\`, \`threadId\`, and member specialties so you decide dynamically whom to consult via \`mesh_ask_peer\`.
-   - If a remote sandbox is Moderator, delegates the topic to \`@moderator\` and returns its synthesized conclusion.
-3. **\`mesh_share_file\`** — Send a workspace file (\`roomId\`, \`filePath\`, \`caption\`).
-4. **\`mesh_list_peers\`** — Refresh connected sandboxes, specialties, and groups.
+   - As Moderator, posts the opening brief and returns \`roomId\`, \`threadId\`, and member specialties so you decide dynamically how to organize work.
+2. **\`mesh_dispatch_tasks\`** — Create tracked tasks on the room's shared Task Board and dispatch unblocked tasks to multiple sandboxes **in parallel**:
+   - Use \`mode="async"\` (default) for long-running engineering tasks (coding, testing, deployment) so sandboxes execute independently without blocking or timing out and report back via \`mesh_task_update\`.
+   - Use \`mode="wait"\` for quick parallel meetings / multi-role design reviews where you want all replies gathered concurrently via \`Promise.all\`.
+   - Chain multi-stage pipelines (e.g., Design -> BE + FE parallel -> QA -> Deploy) using \`dependsOn\` task IDs or \`dependsOnIndices\` referencing earlier items in the same batch, and attach \`approvalRequired: true\` for milestones requiring human sign-off.
+3. **\`mesh_task_board\`** — Inspect live project state (all tasks, statuses, owners, dependency readiness, artifacts, pending approvals) for a \`roomId\`.
+4. **\`mesh_task_update\`** — Update a task's \`status\` (\`todo | in_progress | in_review | blocked | done | cancelled\`), \`summary\`, and \`artifacts\` (branch names, PR URLs, preview links, file paths). Automatically syncs across all sandboxes and notifies the Moderator on \`done | in_review | blocked\`.
+5. **\`mesh_request_approval\`** — Pause a milestone or high-risk action (PRD approval, prod release, schema migration) by posting an interactive **Human Approval Gate** card in the room. Returns immediately without stalling the session; when the human clicks Approve or Reject, the responsible sandbox is woken automatically.
+6. **\`mesh_ask_peer\`** — Quick synchronous 1-on-1 or targeted group query (\`targetSlug\`, \`question\`, optional \`roomId\`, \`threadId\`, \`files\`).
+7. **\`mesh_share_file\`** — Send a workspace file (\`roomId\`, \`filePath\`, \`caption\`).
+8. **\`mesh_list_peers\`** — Refresh connected sandboxes, specialties, and groups.
+
+## 5. Scheduled / Automated Unattended Collaboration (DSH Schedule)
+
+When triggered by a DSH scheduled task or unattended automation:
+1. Call \`mesh_list_peers\` to confirm online sandboxes and specialties.
+2. Call \`mesh_discuss_group\` without \`roomId\`:
+   - For **recurring jobs** (daily health checks, nightly regression, periodic audits), pass a stable \`groupName\` with \`reuseExisting: true\` so the same group is reused with a fresh isolated \`threadId\` instead of cluttering the sidebar.
+   - For **one-off release/project triggers**, pass a unique \`groupName\` with \`reuseExisting: false\` to open a dedicated room.
+3. Dispatch work via \`mesh_dispatch_tasks\`: use \`mode="wait"\` when you want the scheduled session itself to collect a quick summary report, or \`mode="async"\` for long-running engineering jobs (downstream \`mesh_task_update\` completions will automatically wake the room's Moderator session).
+4. **Safety boundary**: in unattended runs, never auto-merge to main, deploy to production, or perform destructive mutations — always stop at a \`mesh_request_approval\` gate so a human approves before final execution.
 `
 }
 

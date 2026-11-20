@@ -7,9 +7,78 @@ window.__ModuleLoader__.load({
     // --- shared/protocol.js ---
     const DEFAULT_MESH_PORT = 4090
     const DEFAULT_PAIR_TTL_MS = 5 * 60 * 1000
-    const DEFAULT_MAX_AGENT_HOPS = 4
+    const DEFAULT_MAX_AGENT_HOPS = 8
     const DEFAULT_MAX_MESSAGES_PER_ROOM = 300
+    const DEFAULT_MAX_TASKS_PER_ROOM = 200
     const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024
+
+    const TASK_STATUSES = ['todo', 'in_progress', 'in_review', 'blocked', 'done', 'cancelled']
+    const TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent']
+    const APPROVAL_STATUSES = ['', 'pending', 'approved', 'rejected']
+
+    function normalizeTaskStatus(raw, fallback = 'todo') {
+      const s = String(raw || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+      if (TASK_STATUSES.includes(s)) return s
+      if (s === 'doing' || s === 'working' || s === 'running' || s === 'active') return 'in_progress'
+      if (s === 'review' || s === 'reviewing' || s === 'qa') return 'in_review'
+      if (s === 'completed' || s === 'finished' || s === 'resolved') return 'done'
+      if (s === 'canceled') return 'cancelled'
+      return TASK_STATUSES.includes(fallback) ? fallback : 'todo'
+    }
+
+    function normalizeTaskPriority(raw, fallback = 'medium') {
+      const p = String(raw || '').trim().toLowerCase()
+      if (TASK_PRIORITIES.includes(p)) return p
+      if (p === 'p0' || p === 'critical') return 'urgent'
+      if (p === 'p1') return 'high'
+      if (p === 'p2' || p === 'normal') return 'medium'
+      if (p === 'p3') return 'low'
+      return TASK_PRIORITIES.includes(fallback) ? fallback : 'medium'
+    }
+
+    function normalizeApprovalStatus(raw) {
+      const s = String(raw || '').trim().toLowerCase()
+      return APPROVAL_STATUSES.includes(s) ? s : ''
+    }
+
+    function areTaskDependenciesMet(task, allTasks = []) {
+      const deps = Array.isArray(task?.dependsOn) ? task.dependsOn.filter(Boolean) : []
+      if (deps.length === 0) return true
+      const byId = new Map((Array.isArray(allTasks) ? allTasks : []).map((t) => [t.id, t]))
+      return deps.every((depId) => {
+        const dep = byId.get(depId)
+        return dep && dep.status === 'done'
+      })
+    }
+
+    function summarizeRoomTasks(tasks = [], threadId = '') {
+      const list = Array.isArray(tasks)
+        ? (threadId ? tasks.filter((t) => !t.threadId || t.threadId === threadId) : tasks)
+        : []
+      const counts = {
+        total: 0,
+        todo: 0,
+        in_progress: 0,
+        in_review: 0,
+        blocked: 0,
+        done: 0,
+        cancelled: 0,
+        pendingApprovals: 0,
+      }
+      for (const t of list) {
+        if (!t || typeof t !== 'object') continue
+        if (t.status === 'cancelled') {
+          counts.cancelled += 1
+          continue
+        }
+        counts.total += 1
+        if (counts[t.status] !== undefined) counts[t.status] += 1
+        if (t.approvalRequired && t.approvalStatus === 'pending') {
+          counts.pendingApprovals += 1
+        }
+      }
+      return counts
+    }
 
     function sanitizeSlug(raw) {
       if (typeof raw !== 'string') return ''
@@ -167,6 +236,9 @@ window.__ModuleLoader__.load({
 
       if (senderActor === 'system' || (senderSlug === cleanSelf && senderActor === 'agent')) {
         return { wake: false, reason: 'self-agent-origin' }
+      }
+      if (message.kind === 'approval') {
+        return { wake: false, reason: 'awaiting-human-approval' }
       }
       if (hop >= maxHops) {
         return { wake: false, reason: 'max-hops-reached' }
@@ -426,6 +498,10 @@ window.__ModuleLoader__.load({
       toolListPeersTitle: 'Inspect Mesh Nodes',
       toolSendMsgTitle: 'Send Mesh Message',
       toolShareFileTitle: 'Share Mesh File',
+      toolDispatchTasksTitle: 'Dispatch Tasks',
+      toolTaskBoardTitle: 'Task Board',
+      toolTaskUpdateTitle: 'Update Task',
+      toolRequestApprovalTitle: 'Human Approval Gate',
       toolStateRunning: 'Collaborating…',
       toolStateDone: 'Done',
       toolStateReplied: 'Replied',
@@ -442,6 +518,66 @@ window.__ModuleLoader__.load({
       wakeCardShowRaw: 'Show full prompt',
       wakeCardHideRaw: 'Hide full prompt',
       legacyPeerChipDesc: 'Mentioned remote sandbox',
+      // Shared Task Board, Human Approval Gates & Role SOP
+      tasksBtn: 'Tasks',
+      tasksDrawerTitle: 'Shared Task Board',
+      tasksEmptyHint: 'No tracked tasks yet. Ask the Moderator to break down a project or create one directly below.',
+      tasksProgressLabel: 'Progress',
+      tasksFilterThread: 'Current Topic',
+      tasksFilterAll: 'All Tasks',
+      taskNewBtn: '+ New Task',
+      taskTitlePlaceholder: 'Task title (e.g. Build login API)',
+      taskDescPlaceholder: 'Acceptance criteria, branch name, or deliverables (optional)…',
+      taskAssigneeNone: 'Unassigned',
+      taskCreateSubmit: 'Create & Notify',
+      taskStatusTodo: 'To Do',
+      taskStatusInProgress: 'In Progress',
+      taskStatusInReview: 'In Review',
+      taskStatusBlocked: 'Blocked',
+      taskStatusDone: 'Done',
+      taskStatusCancelled: 'Cancelled',
+      taskPriorityLow: 'Low',
+      taskPriorityMedium: 'Medium',
+      taskPriorityHigh: 'High',
+      taskPriorityUrgent: 'Urgent',
+      taskDepsLabel: 'Depends on',
+      taskArtifactsLabel: 'Deliverables',
+      taskApprovalGateTitle: 'Human Approval Required',
+      taskApprovalPending: 'Pending Approval',
+      taskApprovalApproved: 'Approved',
+      taskApprovalRejected: 'Changes Requested',
+      taskApproveBtn: 'Approve & Continue',
+      taskRejectBtn: 'Reject & Revise',
+      taskApprovalCommentPlaceholder: 'Optional note or feedback for the Agent…',
+      taskApprovalDecidedBy: 'Decided by',
+      taskApprovalBadgeShort: 'approval',
+      statusTaskCreated: 'Task created and synced!',
+      statusTaskUpdated: 'Task updated.',
+      statusApprovalApproved: 'Approved — Agent notified to proceed!',
+      statusApprovalRejected: 'Feedback sent — Agent notified to revise.',
+      sopLabel: 'Role SOP & Local Guidelines (Private to this sandbox)',
+      sopPlaceholder: 'Optional working SOP for this sandbox Agent (e.g., use local Git/CI MCP tools, always run tests before marking done, request approval before production deploy)…',
+      sopHint: 'Only injected into this sandbox’s own Agent wake prompt (never shared with other sandboxes). Pair with your own MCP servers and Skills.',
+      tplDevopsRole: 'DevOps & SRE Specialist',
+      tplDevopsDesc: 'Owns CI/CD pipelines, Docker/K8s deployments, monitoring, and rollback verification.',
+      tplFullstackRole: 'Full-Stack Engineer',
+      tplFullstackDesc: 'Owns end-to-end feature delivery across database, backend APIs, frontend UI, and automated tests.',
+      tplPmRole: 'Product Manager',
+      tplPmDesc: 'Owns requirement discovery, user stories, PRD specs, acceptance criteria, and milestone sign-off.',
+      tplSecRole: 'Security & Compliance Auditor',
+      tplSecDesc: 'Owns threat modeling, auth/XSS/SQLi code review, secret scanning, and dependency security audits.',
+      tplDocsRole: 'Tech Writer & Release Ops',
+      tplDocsDesc: 'Owns API docs, architecture guides, user manuals, changelogs, and release announcements.',
+      tplFrontendSop: 'Own UI/UX and client logic. Use locally configured Git/MCP tools to work on a feature branch, verify build & UI checks, attach branch/preview URL as task artifacts via mesh_task_update, and never modify production infra credentials.',
+      tplBackendSop: 'Own API contracts, schemas, and server logic. Implement on a feature branch via local Git/MCP tools, run automated unit/integration tests, report concrete API contracts and branch/PR artifacts via mesh_task_update.',
+      tplQaSop: 'Own end-to-end verification and regression testing. Pull the target branch/preview URL, run automated and exploratory checks, report exact reproduction steps if blocked, or mark done with test evidence.',
+      tplDataSop: 'Own research, data analysis, and structured synthesis. Cite sources clearly, validate calculations, attach generated reports via mesh_share_file or task artifacts.',
+      tplArchSop: 'Act as Architect & Tech Lead Moderator. Clarify system boundaries, break projects into parallel tasks with clear acceptance criteria and dependencies via mesh_dispatch_tasks, and request human sign-off via mesh_request_approval before major milestones or production releases.',
+      tplDevopsSop: 'Own build, deployment, and observability via locally configured CI/CD or infra MCP tools. Always call mesh_request_approval before production deployments or destructive changes, verify healthchecks after release, and record deployment URLs/versions in task artifacts.',
+      tplFullstackSop: 'Deliver features end-to-end (DB schema, API, UI, and tests) in your sandbox using locally configured Git/MCP tools. Keep changes on a clean feature branch, run full build & test checks, expose a preview URL if helpful, and report branch/PR/preview artifacts via mesh_task_update.',
+      tplPmSop: 'Turn rough goals into crisp PRDs with user stories, non-goals, and testable acceptance criteria. Coordinate kickoff meetings via mesh_discuss_group, request human PRD sign-off via mesh_request_approval before engineering starts, and validate final deliverables against acceptance criteria.',
+      tplSecSop: 'Review code, configs, auth flows, and dependencies for OWASP Top 10, secret leaks, privilege escalation, and injection risks. Mark blocking vulnerabilities with status="blocked" and concrete remediation steps via mesh_task_update.',
+      tplDocsSop: 'Produce clear, accurate API references, onboarding guides, and release notes based on verified code/PR artifacts from engineering and QA. Share final documents via Git/MCP or mesh_share_file and attach doc paths/links via mesh_task_update.',
     }
 
     const zh = {
@@ -628,6 +764,10 @@ window.__ModuleLoader__.load({
       toolListPeersTitle: '查看互联节点',
       toolSendMsgTitle: '发送互联消息',
       toolShareFileTitle: '跨沙箱共享文件',
+      toolDispatchTasksTitle: '并行派发任务',
+      toolTaskBoardTitle: '查看任务板',
+      toolTaskUpdateTitle: '更新任务进度',
+      toolRequestApprovalTitle: '人工审批门禁',
       toolStateRunning: '协同处理中…',
       toolStateDone: '已完成',
       toolStateReplied: '已回复',
@@ -644,6 +784,66 @@ window.__ModuleLoader__.load({
       wakeCardShowRaw: '查看完整提示词',
       wakeCardHideRaw: '收起完整提示词',
       legacyPeerChipDesc: '跨沙箱远程节点',
+      // Shared Task Board, Human Approval Gates & Role SOP
+      tasksBtn: '任务板',
+      tasksDrawerTitle: '共享任务板',
+      tasksEmptyHint: '当前暂无跟踪任务。可直接在群里让主持人拆解任务，或点击下方手动创建指派。',
+      tasksProgressLabel: '进度',
+      tasksFilterThread: '当前话题',
+      tasksFilterAll: '全部任务',
+      taskNewBtn: '+ 新建任务',
+      taskTitlePlaceholder: '输入任务标题（如：实现登录鉴权接口）',
+      taskDescPlaceholder: '验收标准、分支约定或交付物说明（可选）…',
+      taskAssigneeNone: '暂不指派',
+      taskCreateSubmit: '创建并派发',
+      taskStatusTodo: '待办',
+      taskStatusInProgress: '进行中',
+      taskStatusInReview: '待评审',
+      taskStatusBlocked: '已阻塞',
+      taskStatusDone: '已完成',
+      taskStatusCancelled: '已取消',
+      taskPriorityLow: '低',
+      taskPriorityMedium: '中',
+      taskPriorityHigh: '高',
+      taskPriorityUrgent: '紧急',
+      taskDepsLabel: '前置依赖',
+      taskArtifactsLabel: '交付产物',
+      taskApprovalGateTitle: '需要人工审批确认',
+      taskApprovalPending: '待审批',
+      taskApprovalApproved: '已批准',
+      taskApprovalRejected: '已驳回修改',
+      taskApproveBtn: '批准继续',
+      taskRejectBtn: '驳回修改',
+      taskApprovalCommentPlaceholder: '可选：补充审批意见或修改要求给 Agent…',
+      taskApprovalDecidedBy: '审批人',
+      taskApprovalBadgeShort: '待审批',
+      statusTaskCreated: '任务已创建并同步！',
+      statusTaskUpdated: '任务状态已更新。',
+      statusApprovalApproved: '已批准，已自动通知对应沙箱继续推进！',
+      statusApprovalRejected: '已驳回，已自动通知对应沙箱按意见修改。',
+      sopLabel: '角色规范与工作 SOP（仅本沙箱私有生效）',
+      sopPlaceholder: '填写本沙箱 Agent 的协作规范（例如：通过本地配置的 Git/CI MCP 在功能分支开发、完成前必须跑通单测、生产发布前必须发起人工审批）…',
+      sopHint: '仅注入本沙箱自身的唤醒提示词（不会同步泄露给其它沙箱），可与本地 MCP 和 Skill 完美配合。',
+      tplDevopsRole: 'DevOps 与运维部署专家',
+      tplDevopsDesc: '负责 CI/CD 流水线、Docker/K8s 部署发布、监控巡检与回滚验证。',
+      tplFullstackRole: '全栈工程师',
+      tplFullstackDesc: '负责从数据库、后端接口、前端界面到自动化测试的端到端独立功能交付。',
+      tplPmRole: '产品经理 / 需求分析',
+      tplPmDesc: '负责需求拆解、用户故事、PRD 规格编写、验收标准制定与里程碑推进。',
+      tplSecRole: '安全审计与合规专家',
+      tplSecDesc: '负责威胁建模、鉴权/注入/XSS 代码安全审查、密钥扫描与依赖漏洞审计。',
+      tplDocsRole: '技术文档与发布运营',
+      tplDocsDesc: '负责 API 文档、架构说明、使用手册、Release Notes 与上线公告整理。',
+      tplFrontendSop: '负责前端交互与界面实现。优先使用本沙箱配置的 Git/MCP 工具在独立功能分支开发，完成后自测构建与页面交互，并通过 mesh_task_update 上报分支/预览地址等产物，严禁触碰生产运维密钥。',
+      tplBackendSop: '负责接口设计与服务端实现。使用本沙箱配置的 Git/MCP 工具在功能分支编码，补齐单测与集成验证，并通过 mesh_task_update 清晰回报接口契约、测试结果与分支/PR 产物。',
+      tplQaSop: '负责端到端测试与上线验收。拉取对应分支或访问预览地址，执行自动化与边界回归测试；若发现缺陷标记 blocked 并附复现步骤，验证通过后标记 done 并附测试证据。',
+      tplDataSop: '负责资料调研、数据分析与结论输出。标明数据来源并核对口径，将分析报告通过 mesh_share_file 或任务产物同步给团队。',
+      tplArchSop: '担任架构师与技术统筹主持人。梳理系统边界与接口契约，通过 mesh_dispatch_tasks 拆解并行与分阶段任务（附依赖关系），在架构定稿、生产发布等关键节点通过 mesh_request_approval 发起人工审批确认。',
+      tplDevopsSop: '通过本沙箱配置的 CI/CD 或基础设施 MCP 工具负责构建、发布与健康检查。任何生产部署或高危变更前必须先调用 mesh_request_approval 获取人类批准，发布后校验健康状态并记录版本与访问地址到任务产物。',
+      tplFullstackSop: '独立承接端到端功能开发（数据模型、后端 API、前端 UI 与自动化测试）。使用本沙箱配置的 Git/MCP 工具在功能分支提交代码，跑通完整构建与测试并可启动本地预览服务，通过 mesh_task_update 回报分支、PR 与预览地址等产物。',
+      tplPmSop: '将模糊诉求收敛为清晰的 PRD（含用户场景、边界非目标与可验证的验收标准）。通过 mesh_discuss_group 组织评审会，需求定稿前调用 mesh_request_approval 经人工确认，交付后逐条核对验收标准。',
+      tplSecSop: '聚焦鉴权绕过、注入、XSS、密钥泄露与供应链漏洞审计。发现高危风险立即将对应任务标为 blocked 并给出明确修复方案；审计通过后通过 mesh_task_update 附审查清单与结论。',
+      tplDocsSop: '基于研发与 QA 交付的真实代码、PR 与测试结果，编写准确的接口文档、操作手册与版本发布说明，通过 Git/MCP 或 mesh_share_file 同步并在 mesh_task_update 记录文档路径与链接。',
     }
 
     function normalizeLang(rawLocale) {
@@ -2193,6 +2393,241 @@ window.__ModuleLoader__.load({
       flex-direction: column;
       gap: 8px;
     }
+
+    /* --- Task Board, Human Approval Gates & Role SOP --- */
+    .sm-nav-badge-dot.warn {
+      background: #f59e0b;
+      box-shadow: 0 0 0 2px var(--dsw-specific-sidebar-fill, #ffffff);
+    }
+    .sm-badge-approval {
+      background: rgba(245, 158, 11, 0.16);
+      color: #b45309;
+      border: 1px solid rgba(245, 158, 11, 0.38);
+      font-weight: 600;
+    }
+    .sm-approval-card {
+      border-radius: 11px;
+      border: 1px solid rgba(245, 158, 11, 0.42);
+      background: color-mix(in srgb, #f59e0b 6%, var(--sm-bg-layer1));
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 680px;
+    }
+    .sm-approval-card.approved {
+      border-color: rgba(16, 185, 129, 0.42);
+      background: color-mix(in srgb, #10b981 6%, var(--sm-bg-layer1));
+    }
+    .sm-approval-card.rejected {
+      border-color: rgba(239, 68, 68, 0.4);
+      background: color-mix(in srgb, #ef4444 5%, var(--sm-bg-layer1));
+    }
+    .sm-approval-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .sm-approval-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 650;
+      color: var(--sm-fg-primary);
+    }
+    .sm-approval-body {
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--sm-fg-primary);
+    }
+    .sm-approval-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding-top: 4px;
+      border-top: 1px dashed var(--sm-border-l1);
+    }
+    .sm-approval-btns {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .sm-btn-approve {
+      background: #10b981;
+      color: #ffffff;
+      border-color: #10b981;
+    }
+    .sm-btn-approve:hover:not(:disabled) {
+      background: #059669;
+      border-color: #059669;
+    }
+    .sm-approval-decided {
+      font-size: 12px;
+      color: var(--sm-fg-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .sm-task-progress-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .sm-task-progress-bar {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--sm-bg-layer2);
+      overflow: hidden;
+    }
+    .sm-task-progress-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--sm-accent);
+      transition: width 0.2s ease;
+    }
+    .sm-task-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px 11px;
+      border-radius: 9px;
+      border: 1px solid var(--sm-border-l1);
+      background: var(--sm-bg-layer2);
+    }
+    .sm-task-card.is-approval-pending {
+      border-color: rgba(245, 158, 11, 0.5);
+    }
+    .sm-task-card.is-blocked {
+      border-color: rgba(239, 68, 68, 0.42);
+    }
+    .sm-task-card.is-done {
+      opacity: 0.82;
+    }
+    .sm-task-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .sm-task-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--sm-fg-primary);
+      line-height: 1.38;
+      word-break: break-word;
+    }
+    .sm-task-meta {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+      font-size: 11px;
+    }
+    .sm-task-status {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 10.5px;
+      font-weight: 600;
+    }
+    .sm-task-status.todo {
+      background: var(--sm-bg-layer1);
+      color: var(--sm-fg-secondary);
+      border: 1px solid var(--sm-border-l2);
+    }
+    .sm-task-status.in_progress {
+      background: color-mix(in srgb, var(--sm-accent) 15%, transparent);
+      color: var(--sm-accent);
+    }
+    .sm-task-status.in_review {
+      background: rgba(139, 92, 246, 0.14);
+      color: #7c3aed;
+    }
+    .sm-task-status.blocked {
+      background: rgba(239, 68, 68, 0.14);
+      color: #dc2626;
+    }
+    .sm-task-status.done {
+      background: rgba(16, 185, 129, 0.15);
+      color: #059669;
+    }
+    .sm-task-status.cancelled {
+      background: var(--sm-bg-layer1);
+      color: var(--sm-fg-secondary);
+      text-decoration: line-through;
+    }
+    .sm-task-priority {
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      background: var(--sm-bg-layer1);
+      color: var(--sm-fg-secondary);
+    }
+    .sm-task-priority.high, .sm-task-priority.urgent {
+      background: rgba(239, 68, 68, 0.12);
+      color: #dc2626;
+    }
+    .sm-task-summary {
+      font-size: 11.5px;
+      color: var(--sm-fg-secondary);
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .sm-task-artifacts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .sm-task-artifact-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: var(--sm-bg-layer1);
+      border: 1px solid var(--sm-border-l1);
+      color: var(--sm-accent);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    .sm-task-form {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding: 10px;
+      border-radius: 9px;
+      border: 1px solid var(--sm-border-l2);
+      background: var(--sm-bg-layer1);
+    }
+    .sm-sop-textarea {
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 78px;
+      resize: vertical;
+      font-family: inherit;
+      font-size: 12.5px;
+      line-height: 1.5;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--sm-border-l2);
+      background: var(--sm-bg-input);
+      color: var(--sm-fg-primary);
+      outline: none;
+    }
+    .sm-sop-textarea:focus {
+      border-color: var(--sm-accent);
+    }
     `
 
     function installStyles() {
@@ -2776,6 +3211,50 @@ window.__ModuleLoader__.load({
           'aria-hidden': 'true',
         },
         H('path', { d: 'M4 4L12 12M12 4L4 12' }),
+      )
+    }
+
+    function TasksBoardIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('rect', { x: 2.2, y: 2.4, width: 11.6, height: 11.2, rx: 2 }),
+        H('path', { d: 'M5 6H11M5 8.8H11M5 11.4H8.6' }),
+      )
+    }
+
+    function ShieldCheckIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M8 1.9L13 3.8V7.6C13 10.9 10.9 13.3 8 14.3C5.1 13.3 3 10.9 3 7.6V3.8L8 1.9Z' }),
+        H('path', { d: 'M5.7 8.1L7.3 9.7L10.4 6.5' }),
       )
     }
 
@@ -3454,10 +3933,34 @@ window.__ModuleLoader__.load({
           const dest = parseRoomDisplayName(args.roomId, controller)
           targetPill = fname && dest ? `${fname} → ${dest}` : (fname || dest)
           summaryPreview = stripMarkdownForPreview(args.caption || '', 72)
+        } else if (toolName === 'mesh_dispatch_tasks') {
+          iconEl = TasksBoardIcon({ React, size: 14 })
+          titleText = t('toolDispatchTasksTitle')
+          const count = Array.isArray(args.tasks) ? args.tasks.length : 0
+          const dest = parseRoomDisplayName(args.roomId, controller)
+          targetPill = dest ? `${dest}${count ? ` · ${count}` : ''}` : (count ? `${count}` : '')
+          summaryPreview = Array.isArray(args.tasks)
+            ? stripMarkdownForPreview(args.tasks.map((tk) => tk?.title || '').filter(Boolean).join(' · '), 84)
+            : stripMarkdownForPreview(rawOutput, 84)
+        } else if (toolName === 'mesh_task_board') {
+          iconEl = TasksBoardIcon({ React, size: 14 })
+          titleText = t('toolTaskBoardTitle')
+          targetPill = parseRoomDisplayName(args.roomId, controller)
+          summaryPreview = stripMarkdownForPreview(rawOutput, 84)
+        } else if (toolName === 'mesh_task_update') {
+          iconEl = TasksBoardIcon({ React, size: 14 })
+          titleText = t('toolTaskUpdateTitle')
+          targetPill = [args.taskId, args.status].filter(Boolean).join(' → ')
+          summaryPreview = stripMarkdownForPreview(args.summary || rawOutput, 84)
+        } else if (toolName === 'mesh_request_approval') {
+          iconEl = ShieldCheckIcon({ React, size: 14 })
+          titleText = t('toolRequestApprovalTitle')
+          targetPill = parseRoomDisplayName(args.roomId, controller) || args.title || ''
+          summaryPreview = stripMarkdownForPreview(args.title || args.prompt || '', 84)
         }
 
         const hasDetails = Boolean(
-          args.question || args.topic || args.text || args.filePath || rawOutput,
+          args.question || args.topic || args.text || args.filePath || args.prompt || args.summary || (Array.isArray(args.tasks) && args.tasks.length > 0) || rawOutput,
         )
 
         const statusClass = isRunning ? 'running' : isError ? 'error' : 'ok'
@@ -3583,16 +4086,38 @@ window.__ModuleLoader__.load({
                           args.caption ? renderMarkdownMessage(H, args.caption, { keyPrefix: `t-file-${props.callId || '0'}`, t }) : null,
                           isError && rawOutput ? H('div', { className: 'sm-alert', style: { marginTop: '6px' } }, rawOutput) : null,
                         )
-                      : H(
-                          'div',
-                          { className: 'sm-tool-section' },
-                          (args.topic || args.text)
-                            ? renderMarkdownMessage(H, args.topic || args.text, { keyPrefix: `t-arg-${props.callId || '0'}`, t })
-                            : null,
-                          isDone && rawOutput
-                            ? renderMarkdownMessage(H, parsedReply.body || rawOutput, { keyPrefix: `t-out-${props.callId || '0'}`, t })
-                            : null,
-                        ),
+                      : toolName === 'mesh_dispatch_tasks'
+                        ? H(
+                            'div',
+                            { className: 'sm-tool-section' },
+                            Array.isArray(args.tasks) && args.tasks.length > 0
+                              ? H(
+                                  'div',
+                                  { className: 'sm-peer-checks', style: { marginBottom: rawOutput ? '6px' : '0' } },
+                                  ...args.tasks.map((tk, idx) =>
+                                    H(
+                                      'span',
+                                      { key: `${tk?.title || idx}-${idx}`, className: 'sm-member-tag', style: { cursor: 'default' } },
+                                      TasksBoardIcon({ React, size: 11 }),
+                                      `${tk?.title || `#${idx + 1}`}${tk?.assigneeSlug ? ` · @${tk.assigneeSlug}` : ''}`,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                            isDone && rawOutput
+                              ? renderMarkdownMessage(H, rawOutput, { keyPrefix: `t-disp-${props.callId || '0'}`, t })
+                              : null,
+                          )
+                        : H(
+                            'div',
+                            { className: 'sm-tool-section' },
+                            (args.topic || args.text || args.prompt || args.summary)
+                              ? renderMarkdownMessage(H, args.topic || args.text || args.prompt || args.summary, { keyPrefix: `t-arg-${props.callId || '0'}`, t })
+                              : null,
+                            isDone && rawOutput
+                              ? renderMarkdownMessage(H, parsedReply.body || rawOutput, { keyPrefix: `t-out-${props.callId || '0'}`, t })
+                              : null,
+                          ),
               )
             : null,
         )
@@ -3672,6 +4197,9 @@ window.__ModuleLoader__.load({
     const MARK_READ_API = 'api/sandbox-mesh.mark-read'
     const PEER_REMOVE_API = 'api/sandbox-mesh.peer-remove'
     const PEER_PING_API = 'api/sandbox-mesh.peer-ping'
+    const TASK_CREATE_API = 'api/sandbox-mesh.task-create'
+    const TASK_UPDATE_API = 'api/sandbox-mesh.task-update'
+    const APPROVAL_DECIDE_API = 'api/sandbox-mesh.approval-decide'
 
     function defaultSnapshotState() {
       return {
@@ -3679,6 +4207,9 @@ window.__ModuleLoader__.load({
           slug: 'sandbox',
           ownerName: 'sandbox',
           ownerEmail: '',
+          role: '',
+          description: '',
+          instructions: '',
           publicOrigin: 'http://localhost:9000',
           basePath: '/s/sandbox',
           meshPort: 4090,
@@ -3688,9 +4219,10 @@ window.__ModuleLoader__.load({
         peers: [],
         rooms: [],
         messages: {},
+        tasks: {},
         activeStatuses: {},
         outboxCount: 0,
-        maxAgentHops: 4,
+        maxAgentHops: 8,
       }
     }
 
@@ -3765,6 +4297,7 @@ window.__ModuleLoader__.load({
           peers: Array.isArray(nextState.peers) ? nextState.peers : [],
           rooms: Array.isArray(nextState.rooms) ? nextState.rooms : [],
           messages: nextState.messages && typeof nextState.messages === 'object' ? nextState.messages : {},
+          tasks: nextState.tasks && typeof nextState.tasks === 'object' ? nextState.tasks : {},
           activeStatuses: nextState.activeStatuses && typeof nextState.activeStatuses === 'object' ? nextState.activeStatuses : {},
         }
         if (!selectedRoomId && state.rooms.length > 0) {
@@ -3842,14 +4375,14 @@ window.__ModuleLoader__.load({
         }
       }
 
-      async function saveProfile({ ownerName, role, description }) {
+      async function saveProfile({ ownerName, role, description, instructions }) {
         busy = true
         errorText = ''
         notify()
         try {
           const data = await requestJson(PROFILE_API, {
             method: 'POST',
-            body: JSON.stringify({ ownerName, role, description }),
+            body: JSON.stringify({ ownerName, role, description, instructions }),
           })
           if (data.state) applyServerState(data.state)
           busy = false
@@ -4309,13 +4842,120 @@ window.__ModuleLoader__.load({
         }
       }
 
+      async function createTask({
+        roomId,
+        threadId = '',
+        title,
+        description = '',
+        assigneeSlug = '',
+        priority = 'medium',
+        approvalRequired = false,
+        approvalPrompt = '',
+        notifyAssignees = true,
+      }) {
+        busy = true
+        errorText = ''
+        notify()
+        try {
+          const data = await requestJson(TASK_CREATE_API, {
+            method: 'POST',
+            body: JSON.stringify({
+              roomId: roomId || selectedRoomId,
+              threadId,
+              title,
+              description,
+              assigneeSlug,
+              priority,
+              approvalRequired,
+              approvalPrompt,
+              notifyAssignees,
+            }),
+          })
+          if (data.state) applyServerState(data.state)
+          busy = false
+          setTransientStatus('statusTaskCreated')
+          notify()
+          return data
+        } catch (err) {
+          busy = false
+          errorText = err?.message || String(err)
+          notify()
+          return null
+        }
+      }
+
+      async function updateTask({ roomId, taskId, status, assigneeSlug, priority, summary, artifacts, title, description }) {
+        busy = true
+        errorText = ''
+        notify()
+        try {
+          const data = await requestJson(TASK_UPDATE_API, {
+            method: 'POST',
+            body: JSON.stringify({
+              roomId: roomId || selectedRoomId,
+              taskId,
+              status,
+              assigneeSlug,
+              priority,
+              summary,
+              artifacts,
+              title,
+              description,
+            }),
+          })
+          if (data.state) applyServerState(data.state)
+          busy = false
+          setTransientStatus('statusTaskUpdated')
+          notify()
+          return data
+        } catch (err) {
+          busy = false
+          errorText = err?.message || String(err)
+          notify()
+          return null
+        }
+      }
+
+      async function decideApproval({ roomId, taskId, decision, comment = '' }) {
+        busy = true
+        errorText = ''
+        notify()
+        try {
+          const data = await requestJson(APPROVAL_DECIDE_API, {
+            method: 'POST',
+            body: JSON.stringify({
+              roomId: roomId || selectedRoomId,
+              taskId,
+              decision,
+              comment,
+            }),
+          })
+          if (data.state) applyServerState(data.state)
+          busy = false
+          setTransientStatus(decision === 'approved' ? 'statusApprovalApproved' : 'statusApprovalRejected', 4200)
+          notify()
+          return data
+        } catch (err) {
+          busy = false
+          errorText = err?.message || String(err)
+          notify()
+          return null
+        }
+      }
+
       function getUnreadSummary() {
         const totalUnread = (state.rooms || []).reduce((sum, r) => sum + (Number(r.unreadCount) || 0), 0)
         const activeCount = Object.values(state.activeStatuses || {}).reduce(
           (sum, list) => sum + (Array.isArray(list) ? list.length : 0),
           0,
         )
-        return { totalUnread, activeCount }
+        const pendingApprovals = Object.values(state.tasks || {}).reduce(
+          (sum, list) => sum + (Array.isArray(list)
+            ? list.filter((t) => t && t.status !== 'cancelled' && t.approvalRequired && t.approvalStatus === 'pending').length
+            : 0),
+          0,
+        )
+        return { totalUnread, activeCount, pendingApprovals }
       }
 
       function clearNotice() {
@@ -4367,6 +5007,9 @@ window.__ModuleLoader__.load({
         removePeer,
         pingPeer,
         pingAllPeers,
+        createTask,
+        updateTask,
+        decideApproval,
         getUnreadSummary,
         clearNotice,
         setError,
@@ -4386,6 +5029,26 @@ window.__ModuleLoader__.load({
     }
 
     // --- client/mesh-page.js ---
+    function taskStatusLabel(t, status) {
+      switch (status) {
+        case 'in_progress': return t('taskStatusInProgress')
+        case 'in_review': return t('taskStatusInReview')
+        case 'blocked': return t('taskStatusBlocked')
+        case 'done': return t('taskStatusDone')
+        case 'cancelled': return t('taskStatusCancelled')
+        default: return t('taskStatusTodo')
+      }
+    }
+
+    function taskPriorityLabel(t, priority) {
+      switch (priority) {
+        case 'urgent': return t('taskPriorityUrgent')
+        case 'high': return t('taskPriorityHigh')
+        case 'low': return t('taskPriorityLow')
+        default: return t('taskPriorityMedium')
+      }
+    }
+
     function formatClock(ms) {
       if (!ms || typeof ms !== 'number') return ''
       try {
@@ -4837,6 +5500,12 @@ window.__ModuleLoader__.load({
           return
         }
 
+        if (msg.kind === 'approval') {
+          flushTurns(true)
+          items.push({ kind: 'approval', id: msg.id, msg })
+          return
+        }
+
         if (isGroup && msg.phase === 'turn' && msg.sender?.actor === 'agent') {
           pendingTurns.push(msg)
           return
@@ -4866,7 +5535,15 @@ window.__ModuleLoader__.load({
         const [, setTick] = useState(0)
         const [showNewGroup, setShowNewGroup] = useState(false)
         const [showPairDrawer, setShowPairDrawer] = useState(false)
-        const [rightPanel, setRightPanel] = useState('') // '' | 'files' | 'details'
+        const [rightPanel, setRightPanel] = useState('') // '' | 'tasks' | 'files' | 'details'
+        const [taskFilterAll, setTaskFilterAll] = useState(false)
+        const [showNewTaskForm, setShowNewTaskForm] = useState(false)
+        const [newTaskTitle, setNewTaskTitle] = useState('')
+        const [newTaskDesc, setNewTaskDesc] = useState('')
+        const [newTaskAssignee, setNewTaskAssignee] = useState('')
+        const [newTaskPriority, setNewTaskPriority] = useState('medium')
+        const [newTaskApproval, setNewTaskApproval] = useState(false)
+        const [approvalComments, setApprovalComments] = useState({})
         const [confirmAction, setConfirmAction] = useState(null)
         const [roomFilter, setRoomFilter] = useState('')
         const [groupName, setGroupName] = useState('')
@@ -5007,6 +5684,27 @@ window.__ModuleLoader__.load({
           .filter((m) => m && m.attachment && (m.attachment.savedPath || m.attachment.sourcePath || m.attachment.name))
           .slice()
           .reverse()
+
+        const allRoomTasks = activeRoom && Array.isArray(state.tasks?.[activeRoom.id])
+          ? state.tasks[activeRoom.id]
+          : []
+        const visibleRoomTasks = taskFilterAll || !activeRoom?.activeThreadId
+          ? allRoomTasks
+          : allRoomTasks.filter((tk) => !tk.threadId || tk.threadId === activeRoom.activeThreadId)
+        const taskSummary = summarizeRoomTasks(allRoomTasks, activeRoom?.activeThreadId || '')
+        const taskById = new Map(allRoomTasks.map((tk) => [tk.id, tk]))
+        const taskSortRank = (tk) => {
+          if (tk.approvalRequired && tk.approvalStatus === 'pending') return 0
+          if (tk.status === 'blocked') return 1
+          if (tk.status === 'in_review') return 2
+          if (tk.status === 'in_progress') return 3
+          if (tk.status === 'todo') return 4
+          if (tk.status === 'done') return 5
+          return 6
+        }
+        const sortedVisibleTasks = visibleRoomTasks
+          .slice()
+          .sort((a, b) => (taskSortRank(a) - taskSortRank(b)) || ((b.updatedAt || 0) - (a.updatedAt || 0)))
 
         const { items: renderItems, topics: roomTopics } = buildMessageRenderItems(activeMessages, {
           isGroup: activeRoom?.type === 'group',
@@ -5500,6 +6198,7 @@ window.__ModuleLoader__.load({
                     const isActive = activeRoom && activeRoom.id === room.id
                     const roomMsgs = state.messages?.[room.id] || []
                     const lastMsg = roomMsgs.length > 0 ? roomMsgs[roomMsgs.length - 1] : null
+                    const roomTasksSummary = summarizeRoomTasks(state.tasks?.[room.id] || [])
                     const roomActivities = Array.isArray(activeStatusesMap[room.id]) ? activeStatusesMap[room.id] : []
                     const isRoomBusy = roomActivities.length > 0
                     const pairPeer = room.type === 'pair' ? peerBySlug.get(room.peerSlug) : null
@@ -5548,6 +6247,9 @@ window.__ModuleLoader__.load({
                           'div',
                           { className: 'sm-room-preview-line' },
                           H('span', { className: `sm-room-preview${isRoomBusy ? ' live' : ''}` }, previewText),
+                          roomTasksSummary.pendingApprovals > 0
+                            ? H('span', { className: 'sm-badge sm-badge-approval' }, `${roomTasksSummary.pendingApprovals} ${t('taskApprovalBadgeShort')}`)
+                            : null,
                           room.unreadCount > 0
                             ? H('span', { className: 'sm-badge sm-badge-unread' }, String(room.unreadCount))
                             : null,
@@ -5713,6 +6415,19 @@ window.__ModuleLoader__.load({
                           'button',
                           {
                             type: 'button',
+                            className: `sm-btn sm-btn-sm${rightPanel === 'tasks' ? ' sm-btn-primary' : ''}`,
+                            onClick: () => setRightPanel((p) => (p === 'tasks' ? '' : 'tasks')),
+                          },
+                          TasksBoardIcon({ React, size: 12 }),
+                          `${t('tasksBtn')}${taskSummary.total > 0 ? ` ${taskSummary.done}/${taskSummary.total}` : ''}`,
+                          taskSummary.pendingApprovals > 0
+                            ? H('span', { className: 'sm-badge sm-badge-approval', style: { marginLeft: '3px', padding: '0 5px' } }, String(taskSummary.pendingApprovals))
+                            : null,
+                        ),
+                        H(
+                          'button',
+                          {
+                            type: 'button',
                             className: `sm-btn sm-btn-sm${rightPanel === 'files' ? ' sm-btn-primary' : ''}`,
                             onClick: () => setRightPanel((p) => (p === 'files' ? '' : 'files')),
                           },
@@ -5834,6 +6549,143 @@ window.__ModuleLoader__.load({
                                 SystemBellIcon({ React, size: 11 }),
                                 H('span', null, localizeSystemMessage(item.msg.text, t)),
                                 clockStr ? H('span', { style: { opacity: 0.65, fontSize: '10.5px' } }, clockStr) : null,
+                              )
+                            }
+
+                            if (item.kind === 'approval') {
+                              const msg = item.msg
+                              const linkedTask = msg.taskId ? taskById.get(msg.taskId) : null
+                              const apprStatus = linkedTask?.approvalStatus || 'pending'
+                              const cardClass = apprStatus === 'approved'
+                                ? 'sm-approval-card approved'
+                                : apprStatus === 'rejected'
+                                  ? 'sm-approval-card rejected'
+                                  : 'sm-approval-card'
+                              const commentVal = linkedTask ? (approvalComments[linkedTask.id] || '') : ''
+                              const clockStr = formatClock(msg.createdAt)
+                              return H(
+                                'div',
+                                {
+                                  key: item.id,
+                                  'data-anchor-id': `sm-msg-${msg.id}`,
+                                  className: cardClass,
+                                },
+                                H(
+                                  'div',
+                                  { className: 'sm-approval-head' },
+                                  H(
+                                    'span',
+                                    { className: 'sm-approval-title' },
+                                    ShieldCheckIcon({ React, size: 15 }),
+                                    linkedTask?.title || t('taskApprovalGateTitle'),
+                                  ),
+                                  H(
+                                    'div',
+                                    { className: 'sm-row', style: { gap: '6px' } },
+                                    H(
+                                      'span',
+                                      {
+                                        className: `sm-task-status ${apprStatus === 'approved' ? 'done' : apprStatus === 'rejected' ? 'blocked' : 'in_review'}`,
+                                      },
+                                      apprStatus === 'approved'
+                                        ? t('taskApprovalApproved')
+                                        : apprStatus === 'rejected'
+                                          ? t('taskApprovalRejected')
+                                          : t('taskApprovalPending'),
+                                    ),
+                                    clockStr ? H('span', { style: { fontSize: '11px', opacity: 0.65 } }, clockStr) : null,
+                                  ),
+                                ),
+                                H(
+                                  'div',
+                                  { className: 'sm-approval-body' },
+                                  renderMarkdownMessage(H, msg.text || linkedTask?.approvalPrompt || '', { keyPrefix: `appr-${msg.id}`, t }),
+                                ),
+                                linkedTask && apprStatus === 'pending' && !isRoomUnpaired
+                                  ? H(
+                                      'div',
+                                      { className: 'sm-approval-actions' },
+                                      H('input', {
+                                        type: 'text',
+                                        className: 'sm-input',
+                                        value: commentVal,
+                                        placeholder: t('taskApprovalCommentPlaceholder'),
+                                        onChange: (e) => {
+                                          const val = e.target?.value || ''
+                                          setApprovalComments((prev) => ({ ...prev, [linkedTask.id]: val }))
+                                        },
+                                      }),
+                                      H(
+                                        'div',
+                                        { className: 'sm-approval-btns' },
+                                        H(
+                                          'button',
+                                          {
+                                            type: 'button',
+                                            className: 'sm-btn sm-btn-sm sm-btn-approve',
+                                            disabled: busy,
+                                            onClick: async () => {
+                                              const c = (approvalComments[linkedTask.id] || '').trim()
+                                              const res = await controller.decideApproval({
+                                                roomId: activeRoom.id,
+                                                taskId: linkedTask.id,
+                                                decision: 'approved',
+                                                comment: c,
+                                              })
+                                              if (res) {
+                                                setApprovalComments((prev) => {
+                                                  const next = { ...prev }
+                                                  delete next[linkedTask.id]
+                                                  return next
+                                                })
+                                              }
+                                            },
+                                          },
+                                          CheckIcon({ React, size: 12 }),
+                                          t('taskApproveBtn'),
+                                        ),
+                                        H(
+                                          'button',
+                                          {
+                                            type: 'button',
+                                            className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                            disabled: busy,
+                                            onClick: async () => {
+                                              const c = (approvalComments[linkedTask.id] || '').trim()
+                                              const res = await controller.decideApproval({
+                                                roomId: activeRoom.id,
+                                                taskId: linkedTask.id,
+                                                decision: 'rejected',
+                                                comment: c,
+                                              })
+                                              if (res) {
+                                                setApprovalComments((prev) => {
+                                                  const next = { ...prev }
+                                                  delete next[linkedTask.id]
+                                                  return next
+                                                })
+                                              }
+                                            },
+                                          },
+                                          CloseIcon({ React, size: 11 }),
+                                          t('taskRejectBtn'),
+                                        ),
+                                      ),
+                                    )
+                                  : linkedTask && (apprStatus === 'approved' || apprStatus === 'rejected')
+                                    ? H(
+                                        'div',
+                                        { className: 'sm-approval-decided' },
+                                        H(
+                                          'span',
+                                          null,
+                                          `${t('taskApprovalDecidedBy')}: ${linkedTask.approvalDecidedBy || 'Human'}${linkedTask.approvalDecidedAt ? ` · ${formatClock(linkedTask.approvalDecidedAt)}` : ''}`,
+                                        ),
+                                        linkedTask.approvalComment
+                                          ? H('span', { style: { fontStyle: 'italic' } }, linkedTask.approvalComment)
+                                          : null,
+                                      )
+                                    : null,
                               )
                             }
 
@@ -6275,7 +7127,7 @@ window.__ModuleLoader__.load({
                   ),
             ),
 
-            // Right Drawer: Shared Files Box OR Room Details & Management
+            // Right Drawer: Shared Task Board, Shared Files Box, OR Room Details & Management
             activeRoom && rightPanel
               ? H(
                   'aside',
@@ -6286,8 +7138,16 @@ window.__ModuleLoader__.load({
                     H(
                       'span',
                       { className: 'sm-row', style: { gap: '6px' } },
-                      rightPanel === 'files' ? ClipIcon({ React, size: 13 }) : SlidersIcon({ React, size: 13 }),
-                      rightPanel === 'files' ? t('filesDrawerTitle') : t('roomDetailsTitle'),
+                      rightPanel === 'tasks'
+                        ? TasksBoardIcon({ React, size: 13 })
+                        : rightPanel === 'files'
+                          ? ClipIcon({ React, size: 13 })
+                          : SlidersIcon({ React, size: 13 }),
+                      rightPanel === 'tasks'
+                        ? t('tasksDrawerTitle')
+                        : rightPanel === 'files'
+                          ? t('filesDrawerTitle')
+                          : t('roomDetailsTitle'),
                     ),
                     H(
                       'button',
@@ -6299,7 +7159,296 @@ window.__ModuleLoader__.load({
                       CloseIcon({ React, size: 13 }),
                     ),
                   ),
-                  rightPanel === 'files'
+                  rightPanel === 'tasks'
+                    ? H(
+                        'div',
+                        { className: 'sm-drawer-body' },
+                        // Progress Summary + Filter + New Task button
+                        H(
+                          'div',
+                          { className: 'sm-task-progress-wrap' },
+                          H(
+                            'div',
+                            { className: 'sm-row', style: { justifyContent: 'space-between', fontSize: '11.5px' } },
+                            H('span', { style: { fontWeight: 600 } }, `${t('tasksProgressLabel')}: ${taskSummary.done}/${taskSummary.total}`),
+                            taskSummary.pendingApprovals > 0
+                              ? H('span', { className: 'sm-badge sm-badge-approval' }, `${taskSummary.pendingApprovals} ${t('taskApprovalBadgeShort')}`)
+                              : null,
+                          ),
+                          H(
+                            'div',
+                            { className: 'sm-task-progress-bar' },
+                            H('div', {
+                              className: 'sm-task-progress-fill',
+                              style: { width: `${taskSummary.total > 0 ? Math.round((taskSummary.done / taskSummary.total) * 100) : 0}%` },
+                            }),
+                          ),
+                          H(
+                            'div',
+                            { className: 'sm-row', style: { justifyContent: 'space-between', gap: '6px', marginTop: '4px' } },
+                            H(
+                              'div',
+                              { className: 'sm-row', style: { gap: '4px' } },
+                              H(
+                                'button',
+                                {
+                                  type: 'button',
+                                  className: `sm-btn sm-btn-sm${!taskFilterAll ? ' sm-btn-primary' : ''}`,
+                                  onClick: () => setTaskFilterAll(false),
+                                },
+                                t('tasksFilterThread'),
+                              ),
+                              H(
+                                'button',
+                                {
+                                  type: 'button',
+                                  className: `sm-btn sm-btn-sm${taskFilterAll ? ' sm-btn-primary' : ''}`,
+                                  onClick: () => setTaskFilterAll(true),
+                                },
+                                t('tasksFilterAll'),
+                              ),
+                            ),
+                            !isRoomUnpaired
+                              ? H(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    className: 'sm-btn sm-btn-sm',
+                                    onClick: () => setShowNewTaskForm((v) => !v),
+                                  },
+                                  showNewTaskForm ? t('cancelBtn') : t('taskNewBtn'),
+                                )
+                              : null,
+                          ),
+                        ),
+                        // Inline New Task Form
+                        showNewTaskForm && !isRoomUnpaired
+                          ? H(
+                              'div',
+                              { className: 'sm-task-form' },
+                              H('input', {
+                                type: 'text',
+                                className: 'sm-input',
+                                value: newTaskTitle,
+                                placeholder: t('taskTitlePlaceholder'),
+                                onChange: (e) => setNewTaskTitle(e.target?.value || ''),
+                              }),
+                              H('textarea', {
+                                className: 'sm-sop-textarea',
+                                style: { minHeight: '56px' },
+                                value: newTaskDesc,
+                                placeholder: t('taskDescPlaceholder'),
+                                onChange: (e) => setNewTaskDesc(e.target?.value || ''),
+                              }),
+                              H(
+                                'div',
+                                { className: 'sm-row', style: { gap: '6px' } },
+                                H(
+                                  'select',
+                                  {
+                                    className: 'sm-input',
+                                    value: newTaskAssignee,
+                                    onChange: (e) => setNewTaskAssignee(e.target?.value || ''),
+                                  },
+                                  H('option', { value: '' }, t('taskAssigneeNone')),
+                                  ...(activeRoom.members || []).map((m) =>
+                                    H('option', { key: m.slug, value: m.slug }, `@${m.slug}${m.role ? ` · ${m.role}` : ''}`),
+                                  ),
+                                ),
+                                H(
+                                  'select',
+                                  {
+                                    className: 'sm-input',
+                                    style: { width: '92px', flex: 'none' },
+                                    value: newTaskPriority,
+                                    onChange: (e) => setNewTaskPriority(e.target?.value || 'medium'),
+                                  },
+                                  ...TASK_PRIORITIES.map((pr) =>
+                                    H('option', { key: pr, value: pr }, taskPriorityLabel(t, pr)),
+                                  ),
+                                ),
+                              ),
+                              H(
+                                'label',
+                                { className: 'sm-row', style: { fontSize: '11.5px', cursor: 'pointer', gap: '6px' } },
+                                H('input', {
+                                  type: 'checkbox',
+                                  checked: newTaskApproval,
+                                  onChange: (e) => setNewTaskApproval(Boolean(e.target?.checked)),
+                                }),
+                                t('taskApprovalGateTitle'),
+                              ),
+                              H(
+                                'button',
+                                {
+                                  type: 'button',
+                                  className: 'sm-btn sm-btn-sm sm-btn-primary',
+                                  disabled: busy || !newTaskTitle.trim(),
+                                  onClick: async () => {
+                                    const res = await controller.createTask({
+                                      roomId: activeRoom.id,
+                                      threadId: activeRoom.activeThreadId || '',
+                                      title: newTaskTitle.trim(),
+                                      description: newTaskDesc.trim(),
+                                      assigneeSlug: newTaskAssignee,
+                                      priority: newTaskPriority,
+                                      approvalRequired: newTaskApproval,
+                                      approvalPrompt: newTaskApproval ? (newTaskDesc.trim() || newTaskTitle.trim()) : '',
+                                      notifyAssignees: true,
+                                    })
+                                    if (res) {
+                                      setNewTaskTitle('')
+                                      setNewTaskDesc('')
+                                      setNewTaskAssignee('')
+                                      setNewTaskPriority('medium')
+                                      setNewTaskApproval(false)
+                                      setShowNewTaskForm(false)
+                                    }
+                                  },
+                                },
+                                t('taskCreateSubmit'),
+                              ),
+                            )
+                          : null,
+                        // Task Cards List
+                        sortedVisibleTasks.length === 0
+                          ? H('div', { style: { fontSize: '12px', opacity: 0.72, lineHeight: 1.5 } }, t('tasksEmptyHint'))
+                          : sortedVisibleTasks.map((tk) => {
+                              const isPendingAppr = Boolean(tk.approvalRequired && tk.approvalStatus === 'pending')
+                              const depsMet = areTaskDependenciesMet(tk, allRoomTasks)
+                              const cardCls = `sm-task-card${isPendingAppr ? ' is-approval-pending' : ''}${tk.status === 'blocked' ? ' is-blocked' : ''}${tk.status === 'done' ? ' is-done' : ''}`
+                              return H(
+                                'div',
+                                { key: tk.id, className: cardCls },
+                                H(
+                                  'div',
+                                  { className: 'sm-task-top' },
+                                  H('span', { className: 'sm-task-title' }, tk.title),
+                                  H('span', { className: `sm-task-priority ${tk.priority || 'medium'}` }, taskPriorityLabel(t, tk.priority)),
+                                ),
+                                H(
+                                  'div',
+                                  { className: 'sm-task-meta' },
+                                  !isRoomUnpaired
+                                    ? H(
+                                        'select',
+                                        {
+                                          className: `sm-task-status ${tk.status}`,
+                                          style: { border: '1px solid var(--sm-border-l2)', cursor: 'pointer' },
+                                          value: tk.status,
+                                          disabled: busy,
+                                          onChange: (e) => {
+                                            const nextSt = e.target?.value
+                                            if (nextSt && nextSt !== tk.status) {
+                                              void controller.updateTask({
+                                                roomId: activeRoom.id,
+                                                taskId: tk.id,
+                                                status: nextSt,
+                                              })
+                                            }
+                                          },
+                                        },
+                                        ...TASK_STATUSES.map((st) =>
+                                          H('option', { key: st, value: st }, taskStatusLabel(t, st)),
+                                        ),
+                                      )
+                                    : H('span', { className: `sm-task-status ${tk.status}` }, taskStatusLabel(t, tk.status)),
+                                  tk.assigneeSlug
+                                    ? H('span', { className: 'sm-badge' }, `@${tk.assigneeSlug}`)
+                                    : H('span', { style: { opacity: 0.6 } }, t('taskAssigneeNone')),
+                                  isPendingAppr
+                                    ? H('span', { className: 'sm-badge sm-badge-approval' }, t('taskApprovalPending'))
+                                    : tk.approvalStatus === 'approved'
+                                      ? H('span', { className: 'sm-task-status done' }, t('taskApprovalApproved'))
+                                      : tk.approvalStatus === 'rejected'
+                                        ? H('span', { className: 'sm-task-status blocked' }, t('taskApprovalRejected'))
+                                        : null,
+                                ),
+                                Array.isArray(tk.dependsOn) && tk.dependsOn.length > 0
+                                  ? H(
+                                      'div',
+                                      { style: { fontSize: '11px', opacity: 0.78 } },
+                                      `${t('taskDepsLabel')}: ${tk.dependsOn.map((id) => taskById.get(id)?.title || id).join(', ')} (${depsMet ? '✓' : '⏳'})`,
+                                    )
+                                  : null,
+                                tk.summary
+                                  ? H('div', { className: 'sm-task-summary' }, tk.summary)
+                                  : tk.description
+                                    ? H('div', { className: 'sm-task-summary' }, tk.description)
+                                    : null,
+                                Array.isArray(tk.artifacts) && tk.artifacts.length > 0
+                                  ? H(
+                                      'div',
+                                      { className: 'sm-task-artifacts' },
+                                      ...tk.artifacts.map((art, aIdx) => {
+                                        const isHttp = /^https?:\/\//i.test(art)
+                                        return isHttp
+                                          ? H(
+                                              'a',
+                                              {
+                                                key: `${tk.id}-art-${aIdx}`,
+                                                className: 'sm-task-artifact-chip',
+                                                href: art,
+                                                target: '_blank',
+                                                rel: 'noopener noreferrer',
+                                                title: art,
+                                              },
+                                              art,
+                                            )
+                                          : H(
+                                              'button',
+                                              {
+                                                key: `${tk.id}-art-${aIdx}`,
+                                                type: 'button',
+                                                className: 'sm-task-artifact-chip',
+                                                title: art,
+                                                onClick: () => void flashCopy(art, `art-${tk.id}-${aIdx}`),
+                                              },
+                                              copiedKey === `art-${tk.id}-${aIdx}` ? t('copiedBtn') : art,
+                                            )
+                                      }),
+                                    )
+                                  : null,
+                                isPendingAppr && !isRoomUnpaired
+                                  ? H(
+                                      'div',
+                                      { className: 'sm-approval-btns', style: { marginTop: '4px' } },
+                                      H(
+                                        'button',
+                                        {
+                                          type: 'button',
+                                          className: 'sm-btn sm-btn-sm sm-btn-approve',
+                                          disabled: busy,
+                                          onClick: () => void controller.decideApproval({
+                                            roomId: activeRoom.id,
+                                            taskId: tk.id,
+                                            decision: 'approved',
+                                          }),
+                                        },
+                                        CheckIcon({ React, size: 11 }),
+                                        t('taskApproveBtn'),
+                                      ),
+                                      H(
+                                        'button',
+                                        {
+                                          type: 'button',
+                                          className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                          disabled: busy,
+                                          onClick: () => void controller.decideApproval({
+                                            roomId: activeRoom.id,
+                                            taskId: tk.id,
+                                            decision: 'rejected',
+                                          }),
+                                        },
+                                        CloseIcon({ React, size: 11 }),
+                                        t('taskRejectBtn'),
+                                      ),
+                                    )
+                                  : null,
+                              )
+                            }),
+                      )
+                    : rightPanel === 'files'
                     ? H(
                         'div',
                         { className: 'sm-drawer-body' },
@@ -6795,6 +7944,7 @@ window.__ModuleLoader__.load({
         const initialSelf = controller.getSnapshot().state?.self || {}
         const [roleInput, setRoleInput] = useState(initialSelf.role || '')
         const [descInput, setDescInput] = useState(initialSelf.description || '')
+        const [sopInput, setSopInput] = useState(initialSelf.instructions || '')
         const [profileDirty, setProfileDirty] = useState(false)
         const endpointInputRef = useRef ? useRef(null) : { current: null }
         const copyTimerRef = useRef ? useRef(null) : { current: null }
@@ -6805,6 +7955,7 @@ window.__ModuleLoader__.load({
             if (!profileDirty) {
               setRoleInput(latestSelf.role || '')
               setDescInput(latestSelf.description || '')
+              setSopInput(latestSelf.instructions || '')
             }
             setTick((n) => n + 1)
           })
@@ -6834,11 +7985,16 @@ window.__ModuleLoader__.load({
         const rooms = state.rooms || []
 
         const roleTemplates = [
-          { id: 'fe', role: t('tplFrontendRole'), desc: t('tplFrontendDesc') },
-          { id: 'be', role: t('tplBackendRole'), desc: t('tplBackendDesc') },
-          { id: 'qa', role: t('tplQaRole'), desc: t('tplQaDesc') },
-          { id: 'data', role: t('tplDataRole'), desc: t('tplDataDesc') },
-          { id: 'arch', role: t('tplArchRole'), desc: t('tplArchDesc') },
+          { id: 'pm', role: t('tplPmRole'), desc: t('tplPmDesc'), sop: t('tplPmSop') },
+          { id: 'arch', role: t('tplArchRole'), desc: t('tplArchDesc'), sop: t('tplArchSop') },
+          { id: 'fullstack', role: t('tplFullstackRole'), desc: t('tplFullstackDesc'), sop: t('tplFullstackSop') },
+          { id: 'fe', role: t('tplFrontendRole'), desc: t('tplFrontendDesc'), sop: t('tplFrontendSop') },
+          { id: 'be', role: t('tplBackendRole'), desc: t('tplBackendDesc'), sop: t('tplBackendSop') },
+          { id: 'qa', role: t('tplQaRole'), desc: t('tplQaDesc'), sop: t('tplQaSop') },
+          { id: 'devops', role: t('tplDevopsRole'), desc: t('tplDevopsDesc'), sop: t('tplDevopsSop') },
+          { id: 'sec', role: t('tplSecRole'), desc: t('tplSecDesc'), sop: t('tplSecSop') },
+          { id: 'data', role: t('tplDataRole'), desc: t('tplDataDesc'), sop: t('tplDataSop') },
+          { id: 'docs', role: t('tplDocsRole'), desc: t('tplDocsDesc'), sop: t('tplDocsSop') },
         ]
 
         const copyText = async (key, value, inputRef) => {
@@ -6862,6 +8018,7 @@ window.__ModuleLoader__.load({
           const res = await controller.saveProfile({
             role: roleInput,
             description: descInput,
+            instructions: sopInput,
           })
           if (res) {
             setProfileDirty(false)
@@ -6977,6 +8134,21 @@ window.__ModuleLoader__.load({
             ),
             H(
               'div',
+              { className: 'sm-invite-item', style: { flexDirection: 'column', alignItems: 'stretch', gap: '5px' } },
+              H('span', { className: 'sm-invite-label' }, t('sopLabel')),
+              H('textarea', {
+                className: 'sm-sop-textarea',
+                value: sopInput,
+                placeholder: t('sopPlaceholder'),
+                onChange: (e) => {
+                  setProfileDirty(true)
+                  setSopInput(e.target?.value || '')
+                },
+              }),
+              H('span', { style: { fontSize: '11.5px', opacity: 0.72 } }, t('sopHint')),
+            ),
+            H(
+              'div',
               { className: 'sm-template-row' },
               H('span', null, t('roleTemplatesLabel')),
               ...roleTemplates.map((tpl) =>
@@ -6990,6 +8162,7 @@ window.__ModuleLoader__.load({
                       setProfileDirty(true)
                       setRoleInput(tpl.role)
                       setDescInput(tpl.desc)
+                      setSopInput(tpl.sop || '')
                     },
                   },
                   tpl.role,
@@ -7494,6 +8667,10 @@ window.__ModuleLoader__.load({
         'mesh_list_peers',
         'mesh_send_message',
         'mesh_share_file',
+        'mesh_dispatch_tasks',
+        'mesh_task_board',
+        'mesh_task_update',
+        'mesh_request_approval',
       ]
       ctx.slots.inject('tool.call.toolview', () => {
         const disposers = MESH_TOOL_NAMES.map((toolKey) =>
@@ -7539,15 +8716,15 @@ window.__ModuleLoader__.load({
             if (bgTimer) clearInterval(bgTimer)
           }
         }, [])
-        const summary = controller.getUnreadSummary ? controller.getUnreadSummary() : { totalUnread: 0, activeCount: 0 }
-        const showDot = summary.activeCount > 0 || summary.totalUnread > 0
+        const summary = controller.getUnreadSummary ? controller.getUnreadSummary() : { totalUnread: 0, activeCount: 0, pendingApprovals: 0 }
+        const showDot = summary.activeCount > 0 || summary.totalUnread > 0 || (summary.pendingApprovals || 0) > 0
         return React.createElement(
           'span',
           { className: 'sm-nav-icon-wrap' },
           MeshNavIcon({ React, size }),
           showDot
             ? React.createElement('span', {
-                className: `sm-nav-badge-dot${summary.activeCount > 0 ? ' live' : ''}`,
+                className: `sm-nav-badge-dot${summary.pendingApprovals > 0 ? ' warn' : summary.activeCount > 0 ? ' live' : ''}`,
               })
             : null,
         )

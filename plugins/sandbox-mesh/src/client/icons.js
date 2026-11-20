@@ -565,3 +565,47 @@ export function CloseIcon({ React, size = 13 }) {
     H('path', { d: 'M4 4L12 12M12 4L4 12' }),
   )
 }
+
+export function TasksBoardIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('rect', { x: 2.2, y: 2.4, width: 11.6, height: 11.2, rx: 2 }),
+    H('path', { d: 'M5 6H11M5 8.8H11M5 11.4H8.6' }),
+  )
+}
+
+export function ShieldCheckIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M8 1.9L13 3.8V7.6C13 10.9 10.9 13.3 8 14.3C5.1 13.3 3 10.9 3 7.6V3.8L8 1.9Z' }),
+    H('path', { d: 'M5.7 8.1L7.3 9.7L10.4 6.5' }),
+  )
+}
