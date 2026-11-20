@@ -503,9 +503,16 @@ export function createIncomingMeshHandler({
     if (verified.groupId && verified.groupId !== existing.id) {
       return { ok: false, status: 403, error: 'Mesh group header mismatch' }
     }
+    if (store.getPeer(verified.fromSlug)?.sharedSecret && verified.scope !== 'pair') {
+      return { ok: false, status: 403, error: 'Pairwise HMAC signature is required for paired sandboxes' }
+    }
 
     const isCreator = verified.scope === 'pair' && verified.fromSlug === existing.createdBy
-    const isModerator = verified.scope === 'pair' && verified.fromSlug === existing.moderatorSlug
+    // An appointed Moderator who is not directly paired with this member signs with the room's
+    // groupSecret (same trust model as /mesh/message & /mesh/task-sync), allowing Moderator-led
+    // group rename / handoff while keeping member removal & groupSecret rotation strictly creator-only.
+    const isModerator = verified.fromSlug === existing.moderatorSlug
+      && (verified.scope === 'pair' || !store.getPeer(verified.fromSlug)?.sharedSecret)
     const room = store.upsertGroupRoom(groupPayload, {
       remote: true,
       authoritative: isCreator || isModerator,

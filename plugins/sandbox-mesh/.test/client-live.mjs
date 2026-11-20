@@ -115,7 +115,7 @@ const ReactDOMServer = await importExternal('react-dom/server')
     subscribeLocale: () => () => {},
   })
   const chatHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(ChatPage, {}))
-  assert.ok(chatHtml.includes('协作会话'))
+  assert.ok(chatHtml.includes('协同会话'))
   assert.ok(chatHtml.includes('+ 建群'))
   assert.ok(chatHtml.includes('Bob (bob)'))
   assert.ok(chatHtml.includes('新话题'))
@@ -262,7 +262,7 @@ const ReactDOMServer = await importExternal('react-dom/server')
     subscribeLocale: () => () => {},
   })
   const settingsHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(SettingsPage, {}))
-  assert.ok(settingsHtml.includes('沙箱互联与远程 Agent 名片'))
+  assert.ok(settingsHtml.includes('协同空间与角色名片'))
   assert.ok(settingsHtml.includes('本沙箱 Agent 名片'))
   assert.ok(settingsHtml.includes('https://dock.example.com/s/alice/p/4090'))
   assert.ok(settingsHtml.includes('alice.k8F9mP2xQ7vL4nR1wZ3y'))
@@ -287,7 +287,7 @@ const ReactDOMServer = await importExternal('react-dom/server')
     subscribeLocale: () => () => {},
   })
   const emptyChatHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(EmptyChatPage, {}))
-  assert.ok(emptyChatHtml.includes('开始沙箱互联'))
+  assert.ok(emptyChatHtml.includes('开启协同空间'))
   assert.ok(emptyChatHtml.includes('生成配对码'))
   emptyController.dispose()
 
@@ -588,11 +588,11 @@ const ReactDOMServer = await importExternal('react-dom/server')
 
   assert.ok(regs.some((r) => r.opts.name === 'sidebar.panellist' && r.opts.id === 'sandbox-mesh'))
   assert.ok(regs.some((r) => r.opts.name === 'main' && r.opts.key === 'sandbox-mesh'))
-  assert.ok(regs.some((r) => r.opts.name === 'settings.section' && r.opts.id === 'sandbox-mesh' && r.opts.label === 'Sandbox Mesh'))
+  assert.ok(regs.some((r) => r.opts.name === 'settings.section' && r.opts.id === 'sandbox-mesh' && r.opts.label === 'Collab Space'))
 
   activeLang = 'zh-CN'
   for (const fn of localeListeners) fn({ active: activeLang })
-  assert.ok(regs.some((r) => r.opts.name === 'settings.section' && r.opts.label === '沙箱互联'))
+  assert.ok(regs.some((r) => r.opts.name === 'settings.section' && r.opts.label === '协同空间'))
 
   await fiber.dispose()
   assert.equal(appendedStyles.length, 0)
@@ -799,7 +799,7 @@ const ReactDOMServer = await importExternal('react-dom/server')
   const wakeHtml = ReactDOMServer.renderToStaticMarkup(
     React.createElement(WakeCard, { node: { data: parsedWake }, raw: wakeRaw }),
   )
-  assert.ok(wakeHtml.includes('沙箱互联协作请求'))
+  assert.ok(wakeHtml.includes('协同空间协作请求'))
   assert.ok(wakeHtml.includes('请分析一下今天的性能报告'))
   assert.ok(!wakeHtml.includes('&lt;remote-mesh-context&gt;'), 'Collapsed wake card must hide raw XML tags')
 

@@ -1,4 +1,4 @@
 {
-  "name": "Sandbox Mesh & Group Chat",
-  "description": "Pair sandboxes with one-time codes or cross-network Traefik URLs, create multi-sandbox groups, share files, and let humans and DSH Agents collaborate in unified rooms."
+  "name": "Collab Space",
+  "description": "Multi-sandbox collaboration space with one-time pairing, LLM-moderated group rooms, shared task boards, human approval gates, and file transfer over Traefik."
 }

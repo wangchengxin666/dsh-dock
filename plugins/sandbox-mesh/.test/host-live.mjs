@@ -1430,6 +1430,56 @@ try {
       assert.equal(cliPingRes.body.ok, true)
       assert.equal(cliPingRes.body.status, 'online')
 
+      // 14f. Unpaired Moderator <-> Member group collaboration (star topology: Alice paired with Bob & Charlie; Bob NOT paired with Charlie)
+      assert.equal(bob.store.getPeer('charlie'), null, 'Bob and Charlie must NOT be directly paired')
+      assert.equal(charlie.store.getPeer('bob'), null, 'Charlie and Bob must NOT be directly paired')
+      const starGrp = await alice.createGroup({
+        name: 'Star Topology Squad',
+        memberSlugs: ['bob', 'charlie'],
+        moderatorSlug: 'bob',
+      })
+      assert.equal(starGrp.ok, true)
+      const starRoomId = starGrp.room.id
+      const starThreadId = starGrp.room.activeThreadId
+      assert.equal(bob.store.getRoom(starRoomId)?.moderatorSlug, 'bob')
+      assert.equal(charlie.store.getRoom(starRoomId)?.moderatorSlug, 'bob')
+
+      // Bob (unpaired Moderator) dispatches a tracked task directly to Charlie via groupSecret!
+      const bobDispatchTool = bobTools.get('mesh_dispatch_tasks')
+      wokeNodes.length = 0
+      charlie.setAgentWakeHandler(({ message }) => { wokeNodes.push({ node: 'charlie', taskId: message.taskId }) })
+      const bobDisp = await bobDispatchTool.execute({
+        roomId: starRoomId,
+        threadId: starThreadId,
+        mode: 'async',
+        tasks: [{ title: 'Charlie QA Smoke Check', assigneeSlug: 'charlie' }],
+      })
+      assert.equal(bobDisp.ok, true)
+      const starTaskId = bobDisp.tasks[0].id
+      assert.equal(charlie.store.getTask(starRoomId, starTaskId)?.title, 'Charlie QA Smoke Check')
+      await new Promise((r) => setTimeout(r, 30))
+      assert.equal(wokeNodes.some((w) => w.node === 'charlie' && w.taskId === starTaskId), true)
+
+      // Charlie reports back to unpaired Moderator Bob
+      const charlieReply = await charlie.updateTask({
+        roomId: starRoomId,
+        taskId: starTaskId,
+        status: 'done',
+        summary: 'Smoke checks 100% green',
+        actor: 'agent',
+        notifyModerator: true,
+      })
+      assert.equal(charlieReply.ok, true)
+      assert.equal(bob.store.getTask(starRoomId, starTaskId)?.status, 'done')
+
+      // Unpaired Moderator Bob renames the group -> synced cleanly to both Alice and Charlie, without rotating groupSecret
+      const secretBeforeRename = charlie.store.getRoom(starRoomId).groupSecret
+      const bobRename = await bob.renameGroup({ roomId: starRoomId, name: 'Star Squad v2' })
+      assert.equal(bobRename.ok, true)
+      assert.equal(alice.store.getRoom(starRoomId)?.name, 'Star Squad v2')
+      assert.equal(charlie.store.getRoom(starRoomId)?.name, 'Star Squad v2')
+      assert.equal(charlie.store.getRoom(starRoomId)?.groupSecret, secretBeforeRename)
+
       await aliceCtx.fiber.dispose()
       await bobCtx.fiber.dispose()
     }

@@ -1665,7 +1665,7 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
       if (!workspaceRegistry || !cwdPath) return null
       try {
         if (typeof workspaceRegistry.create === 'function') {
-          return await workspaceRegistry.create(cwdPath, '沙箱互联 (Sandbox Mesh)')
+          return await workspaceRegistry.create(cwdPath, '协同空间 (Collab Space)')
         }
         if (typeof workspaceRegistry.resolveByPath === 'function') {
           return await workspaceRegistry.resolveByPath(cwdPath)
