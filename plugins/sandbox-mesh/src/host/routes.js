@@ -655,6 +655,7 @@ export function createIncomingMeshHandler({
           status: body.status,
           summary: body.summary,
           artifacts: body.artifacts,
+          shareFiles: body.shareFiles,
           mergeArtifacts: true,
           actor: 'agent',
           notifyModerator: body.notifyModerator !== false,

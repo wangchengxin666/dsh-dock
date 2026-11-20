@@ -224,7 +224,7 @@ export function buildAgentWakePrompt({
     ].join('\n')
   } else if (isGroup && message.phase === 'turn') {
     const taskHint = message.taskId
-      ? ` This assignment is tracked as taskId="${message.taskId}" — mark progress/completion via \`mesh_task_update\` (with \`status="in_progress"\`, then \`status="done"\` or \`"in_review"\` / \`"blocked"\`, plus \`summary\` and \`artifacts\` such as branch names, PR links, or file paths).`
+      ? ` This assignment is tracked as taskId="${message.taskId}" — mark \`status="in_progress"\` when starting; finish ALL code edits, tests, and file sharing FIRST (or pass \`shareFiles: [...]\` directly inside \`mesh_task_update\`), then call \`mesh_task_update\` with \`status="done"\` (or \`"in_review"\` / \`"blocked"\`), \`summary\`, and \`artifacts\` as the FINAL step and end your turn immediately (handoff to Moderator & downstream tasks commits automatically once your turn ends).`
       : ''
     roleDirective = [
       'CALLED BY GROUP MODERATOR:',
@@ -1480,7 +1480,7 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
           defineTool({
             name: 'mesh_task_update',
             description:
-              'Update a task on the shared Sandbox Mesh Task Board (status, progress summary, deliverable artifacts such as git branches / PR URLs / preview URLs / file paths, or reassignment). Syncs to all room sandboxes and notifies the group Moderator when marked done, in_review, or blocked. Agents cannot approve/reject human approval gates.',
+              'Update a task on the shared Sandbox Mesh Task Board (status, progress summary, deliverable artifacts, or atomic file sharing via `shareFiles`). Finish all edits/tests before marking `done` (or pass `shareFiles` here so files are shared BEFORE status updates). During a woken turn, Moderator notification and downstream DAG unblocking commit atomically when your turn ends so late file uploads never race ahead of handoff. Agents cannot approve/reject human approval gates.',
             parameters: {
               roomId: {
                 type: 'string',
@@ -1504,6 +1504,11 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
                 type: 'array',
                 items: { type: 'string' },
                 description: 'Deliverable references to attach (e.g. "branch:feat/auth", "https://...", "/home/workspace/report.md").',
+              },
+              shareFiles: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional workspace file paths to share into the room atomically BEFORE marking the task updated/done (also recorded in artifacts).',
               },
               assigneeSlug: {
                 type: 'string',
@@ -1532,10 +1537,15 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
                 }
                 const t = val.task || {}
                 const unblocked = (val.unblockedDependents || []).length
+                const sharedCount = (val.sharedFiles || []).length
+                const sharedNote = sharedCount > 0 ? ` (shared ${sharedCount} file(s) first)` : ''
+                const deferNote = val.handoffDeferred
+                  ? ' [handoff queued — will notify moderator/downstream automatically as soon as your turn ends]'
+                  : ''
                 return [
                   {
                     type: 'text',
-                    text: `Updated task [${t.id}] "${t.title}" -> ${t.status}${t.summary ? `: ${t.summary}` : ''}${unblocked > 0 ? ` (${unblocked} downstream task(s) unblocked)` : ''}`,
+                    text: `Updated task [${t.id}] "${t.title}" -> ${t.status}${sharedNote}${t.summary ? `: ${t.summary}` : ''}${unblocked > 0 ? ` (${unblocked} downstream task(s) unblocked)` : ''}${deferNote}`,
                   },
                 ]
               },
@@ -1547,6 +1557,7 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
                 status: args.status,
                 summary: args.summary,
                 artifacts: args.artifacts,
+                shareFiles: args.shareFiles,
                 mergeArtifacts: true,
                 assigneeSlug: args.assigneeSlug,
                 priority: args.priority,
@@ -1560,6 +1571,8 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
               return {
                 ok: true,
                 task: res.task,
+                sharedFiles: res.sharedFiles || [],
+                handoffDeferred: Boolean(res.handoffDeferred),
                 unblockedDependents: (res.unblockedDependents || []).map((t) => ({
                   id: t.id,
                   title: t.title,
@@ -1929,7 +1942,8 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
             // Advance incremental cursor only after the native DSH session successfully processed this message
             service.store.setRoomThreadCursor?.(room.id, message.id, effectiveThreadId)
 
-            // Check if the Agent already sent a reply (for moderator duty, turn-calling messages with phase='turn' do not suppress the final synthesis reply)
+            // Check if the Agent already sent a reply (or queued a deferred [Task · DONE/IN_REVIEW/BLOCKED]
+            // Moderator notification that will flush at turn-end)
             const isGroupTurn = room.type === 'group' && !isModeratorDuty
             const afterRoomMsgs = service.store.getSnapshot().messages?.[room.id] || []
             const alreadyReplied = afterRoomMsgs.some(
@@ -1942,7 +1956,8 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
                 && m.createdAt >= turnStartedAt
                 && (!isModeratorDuty || m.phase !== 'turn'),
             )
-            if (alreadyReplied) return
+            const hasDeferredModNotify = !isModeratorDuty && Boolean(service.hasPendingTurnNotification?.(room.id))
+            if (alreadyReplied || hasDeferredModNotify) return
 
             // Otherwise, extract the assistant's text reply from the session log and forward it to the Mesh room
             const afterEvents = typeof agent.session?.snapshotEvents === 'function'
@@ -1978,7 +1993,8 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
             }
           } finally {
             if (activityHeartbeat) clearInterval(activityHeartbeat)
-            endTurn?.()
+            // Flush deferred task handoffs (DONE -> UNBLOCKED) AFTER all files & replies in this turn have landed
+            await endTurn?.()
           }
         }
 

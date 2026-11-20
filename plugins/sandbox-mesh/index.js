@@ -180,18 +180,73 @@ export function createMeshService({
   let hasRuntimeSkillProvider = false
   let outboxFlushPromise = null
 
-  // Tracks active mesh-woken Agent turns so tools/CLI cannot lower `hop` below the turn's hop.
+  // Tracks active mesh-woken Agent turns so tools/CLI cannot lower `hop` below the turn's hop,
+  // and so terminal task handoffs (Moderator notification + downstream DAG wakes) commit atomically
+  // at turn end AFTER all files and replies in the turn have finished delivering.
   const activeAgentTurns = new Map()
   let agentTurnSeq = 0
 
+  function findActiveAgentTurn(roomId = '') {
+    const cleanRoom = String(roomId || '').trim()
+    if (!cleanRoom) return null
+    let latest = null
+    for (const entry of activeAgentTurns.values()) {
+      if (entry.roomId === cleanRoom) latest = entry
+    }
+    return latest
+  }
+
+  function hasPendingTurnNotification(roomId = '') {
+    const turn = findActiveAgentTurn(roomId)
+    if (!turn || turn.deferredTaskHandoffs.size === 0) return false
+    const self = store.getSelf()
+    const room = store.getRoom(turn.roomId)
+    if (!room || room.type !== 'group') return false
+    const modSlug = sanitizeSlug(room.moderatorSlug || room.createdBy || '')
+    if (!modSlug || modSlug === self.slug) return false
+    for (const item of turn.deferredTaskHandoffs.values()) {
+      if (item.notifyModerator === false) continue
+      const latest = store.getTask(item.roomId, item.taskId)
+      if (!latest) continue
+      if (
+        latest.status !== item.initialPrevStatus
+        && ['done', 'in_review', 'blocked'].includes(latest.status)
+      ) {
+        return true
+      }
+    }
+    return false
+  }
+
   function beginAgentTurn({ roomId = '', sessionId = '', hop = 1 } = {}) {
     const id = ++agentTurnSeq
-    activeAgentTurns.set(id, {
+    const turnEntry = {
+      id,
       roomId: String(roomId || '').trim(),
       sessionId: String(sessionId || '').trim(),
       hop: Math.max(1, Math.trunc(Number(hop) || 1)),
-    })
-    return () => { activeAgentTurns.delete(id) }
+      deferredTaskHandoffs: new Map(),
+      ended: false,
+    }
+    activeAgentTurns.set(id, turnEntry)
+    return async () => {
+      if (turnEntry.ended) return []
+      turnEntry.ended = true
+      activeAgentTurns.delete(id)
+      if (turnEntry.deferredTaskHandoffs.size === 0) return []
+      const queued = Array.from(turnEntry.deferredTaskHandoffs.values())
+      turnEntry.deferredTaskHandoffs.clear()
+      const flushed = []
+      for (const item of queued) {
+        try {
+          const res = await dispatchTaskHandoff(item)
+          flushed.push({ taskId: item.taskId, ...res })
+        } catch (err) {
+          logger?.warn?.(`Deferred task handoff failed for ${item.taskId}: ${err?.message || err}`)
+        }
+      }
+      return flushed
+    }
   }
 
   function getActiveAgentHop(roomId = '', sessionId = '') {
@@ -1490,6 +1545,104 @@ export function createMeshService({
     }
   }
 
+  function computeUnblockedDependents(roomId, task, prevStatus) {
+    if (!task || task.status !== 'done' || prevStatus === 'done') return []
+    const allRoomTasks = store.listRoomTasks(roomId)
+    return allRoomTasks.filter(
+      (t) =>
+        t.id !== task.id
+        && t.status === 'todo'
+        && !(t.approvalRequired && t.approvalStatus === 'pending')
+        && Array.isArray(t.dependsOn)
+        && t.dependsOn.includes(task.id)
+        && areTaskDependenciesMet(t, allRoomTasks),
+    )
+  }
+
+  async function dispatchTaskHandoff({
+    roomId,
+    taskId,
+    initialPrevStatus,
+    notifyModerator = true,
+    actor = 'agent',
+  }) {
+    const self = store.getSelf()
+    const cleanRoomId = String(roomId || '').trim()
+    const room = store.getRoom(cleanRoomId)
+    const latest = room && !room.unpaired ? store.getTask(cleanRoomId, taskId) : null
+    if (!room || !latest) {
+      return { notifiedModerator: false, autoDispatchedIds: [], unblockedDependents: [] }
+    }
+
+    const transitionedToTerminal = latest.status !== initialPrevStatus
+      && ['done', 'in_review', 'blocked'].includes(latest.status)
+    const unblockedDependents = computeUnblockedDependents(cleanRoomId, latest, initialPrevStatus)
+    const dispatchable = unblockedDependents.filter(
+      (d) => d.assigneeSlug && (!d.approvalRequired || d.approvalStatus === 'approved'),
+    )
+    const autoDispatchedIds = dispatchable.map((d) => d.id)
+
+    // 1. ALWAYS notify group Moderator with [Task · DONE / READY FOR REVIEW / BLOCKED] FIRST,
+    //    so chat history preserves strict causal order (files -> DONE -> UNBLOCKED).
+    let notifiedModerator = false
+    const shouldNotifyMod = (
+      actor === 'agent'
+      && notifyModerator !== false
+      && transitionedToTerminal
+    )
+    if (shouldNotifyMod) {
+      const modSlug = room.type === 'group' ? sanitizeSlug(room.moderatorSlug || room.createdBy || '') : ''
+      const targetMention = modSlug && modSlug !== self.slug ? [modSlug] : []
+      if (targetMention.length > 0) {
+        const artifactLine = latest.artifacts?.length
+          ? `\nArtifacts: ${latest.artifacts.map((a) => `\`${a}\``).join(', ')}`
+          : ''
+        const unlockLine = unblockedDependents.length > 0
+          ? `\nUnblocked downstream tasks (${autoDispatchedIds.length > 0 ? 'auto-dispatched to assignees' : 'ready to dispatch'}): ${unblockedDependents.map((d) => `\`${d.id}\` (${d.title}${d.assigneeSlug ? ` -> @${d.assigneeSlug}` : ''})`).join(', ')}`
+          : ''
+        const statusLabel = latest.status === 'done'
+          ? 'DONE'
+          : latest.status === 'in_review'
+            ? 'READY FOR REVIEW'
+            : 'BLOCKED'
+        await sendMessage({
+          roomId: cleanRoomId,
+          threadId: latest.threadId || room.activeThreadId || '',
+          phase: 'turn',
+          kind: 'task',
+          taskId: latest.id,
+          actor: 'agent',
+          hop: 1,
+          mentionsOverride: targetMention,
+          text: `**[Task \`${latest.id}\` · ${statusLabel}]** ${latest.title}\n${latest.summary || '(no summary)'}${artifactLine}${unlockLine}`,
+        })
+        notifiedModerator = true
+      }
+    }
+
+    // 2. THEN automatically wake newly unblocked downstream DAG tasks in parallel.
+    if (dispatchable.length > 0) {
+      await Promise.all(
+        dispatchable.map(async (d) => {
+          const descBlock = d.description ? `\n\n${d.description}` : ''
+          await sendMessage({
+            roomId: cleanRoomId,
+            threadId: d.threadId || latest.threadId || room.activeThreadId || '',
+            phase: 'turn',
+            kind: 'task',
+            taskId: d.id,
+            actor: 'agent',
+            hop: 1,
+            mentionsOverride: [d.assigneeSlug],
+            text: `@${d.assigneeSlug} **[Task \`${d.id}\` · UNBLOCKED]** ${d.title}\nUpstream dependency \`${latest.id}\` (${latest.title}) is now DONE — please begin executing this task now.${descBlock}`,
+          })
+        }),
+      )
+    }
+
+    return { notifiedModerator, autoDispatchedIds, unblockedDependents }
+  }
+
   async function updateTask({
     roomId,
     taskId,
@@ -1500,6 +1653,7 @@ export function createMeshService({
     priority,
     summary,
     artifacts,
+    shareFiles = [],
     mergeArtifacts = true,
     dependsOn,
     approvalRequired,
@@ -1532,6 +1686,54 @@ export function createMeshService({
       }
     }
 
+    // Atomic file delivery: validate and share all requested `shareFiles` BEFORE committing
+    // the task status update, so downstream peers never wake before deliverables exist.
+    const cleanShareFiles = Array.isArray(shareFiles)
+      ? shareFiles.map((f) => String(f || '').trim()).filter(Boolean)
+      : []
+    const sharedFileResults = []
+    if (cleanShareFiles.length > 0) {
+      const validatedPaths = []
+      for (const fp of cleanShareFiles) {
+        const resolved = resolveShareableFile(fp, actor === 'agent' ? 'agent' : 'human')
+        if (!resolved.ok) {
+          return {
+            ok: false,
+            status: resolved.status || 400,
+            error: `Cannot share file "${fp}" before updating task: ${resolved.error}`,
+          }
+        }
+        validatedPaths.push({ raw: fp, resolvedPath: resolved.path })
+      }
+      for (const item of validatedPaths) {
+        const fileRes = await sendFile({
+          roomId: cleanRoomId,
+          threadId: prevTask.threadId || room.activeThreadId || '',
+          filePath: item.resolvedPath,
+          text: `Deliverable for task \`${prevTask.id}\` (${prevTask.title}): ${item.raw}`,
+          actor: actor === 'agent' ? 'agent' : 'human',
+          headers,
+        })
+        if (!fileRes.ok) {
+          return {
+            ok: false,
+            status: fileRes.status || 400,
+            error: `Failed to share file "${item.raw}" before updating task: ${fileRes.error || 'send failed'}`,
+          }
+        }
+        sharedFileResults.push(item.raw)
+      }
+    }
+
+    const combinedArtifacts = (() => {
+      if (artifacts === undefined && sharedFileResults.length === 0) return undefined
+      const base = Array.isArray(artifacts) ? artifacts.map((a) => String(a || '').trim()).filter(Boolean) : []
+      for (const sf of sharedFileResults) {
+        if (!base.includes(sf)) base.push(sf)
+      }
+      return base
+    })()
+
     const prevStatus = prevTask.status
     let updated
     try {
@@ -1545,7 +1747,7 @@ export function createMeshService({
           status,
           priority,
           summary,
-          artifacts,
+          artifacts: combinedArtifacts,
           mergeArtifacts,
           dependsOn,
           approvalRequired,
@@ -1565,85 +1767,51 @@ export function createMeshService({
 
     const sync = await broadcastTaskSync(room, [updated])
 
-    // Detect downstream tasks newly unblocked by this task completing
-    const allRoomTasks = store.listRoomTasks(cleanRoomId)
-    const unblockedDependents = updated.status === 'done' && prevStatus !== 'done'
-      ? allRoomTasks.filter(
-          (t) =>
-            t.id !== updated.id
-            && t.status === 'todo'
-            && !(t.approvalRequired && t.approvalStatus === 'pending')
-            && Array.isArray(t.dependsOn)
-            && t.dependsOn.includes(updated.id)
-            && areTaskDependenciesMet(t, allRoomTasks),
-        )
-      : []
-
-    // Automatically wake newly unblocked downstream DAG tasks in parallel
-    const autoDispatchedIds = []
-    if (updated.status === 'done' && prevStatus !== 'done' && unblockedDependents.length > 0) {
-      const dispatchable = unblockedDependents.filter(
-        (d) => d.assigneeSlug && (!d.approvalRequired || d.approvalStatus === 'approved'),
-      )
-      await Promise.all(
-        dispatchable.map(async (d) => {
-          autoDispatchedIds.push(d.id)
-          const descBlock = d.description ? `\n\n${d.description}` : ''
-          await sendMessage({
-            roomId: cleanRoomId,
-            threadId: d.threadId || updated.threadId || room.activeThreadId || '',
-            phase: 'turn',
-            kind: 'task',
-            taskId: d.id,
-            actor: 'agent',
-            hop: 1,
-            mentionsOverride: [d.assigneeSlug],
-            text: `@${d.assigneeSlug} **[Task \`${d.id}\` · UNBLOCKED]** ${d.title}\nUpstream dependency \`${updated.id}\` (${updated.title}) is now DONE — please begin executing this task now.${descBlock}`,
-          })
-        }),
-      )
-    }
-
-    // Notify group Moderator when a non-moderator Agent marks a task done / in_review / blocked
-    const shouldNotifyMod = (
-      actor === 'agent'
-      && notifyModerator !== false
-      && updated.status !== prevStatus
+    const activeTurn = actor === 'agent' ? findActiveAgentTurn(cleanRoomId) : null
+    const isHandoffCandidate = (
+      updated.status !== prevStatus
       && ['done', 'in_review', 'blocked'].includes(updated.status)
     )
-    if (shouldNotifyMod) {
-      const modSlug = room.type === 'group' ? sanitizeSlug(room.moderatorSlug || room.createdBy || '') : ''
-      const targetMention = modSlug && modSlug !== self.slug ? [modSlug] : []
-      if (targetMention.length > 0) {
-        const artifactLine = updated.artifacts?.length
-          ? `\nArtifacts: ${updated.artifacts.map((a) => `\`${a}\``).join(', ')}`
-          : ''
-        const unlockLine = unblockedDependents.length > 0
-          ? `\nUnblocked downstream tasks (${autoDispatchedIds.length > 0 ? 'auto-dispatched to assignees' : 'ready to dispatch'}): ${unblockedDependents.map((d) => `\`${d.id}\` (${d.title}${d.assigneeSlug ? ` -> @${d.assigneeSlug}` : ''})`).join(', ')}`
-          : ''
-        const statusLabel = updated.status === 'done'
-          ? 'DONE'
-          : updated.status === 'in_review'
-            ? 'READY FOR REVIEW'
-            : 'BLOCKED'
-        await sendMessage({
+    const alreadyQueued = activeTurn ? activeTurn.deferredTaskHandoffs.get(updated.id) : null
+    let unblockedDependents = computeUnblockedDependents(
+      cleanRoomId,
+      updated,
+      alreadyQueued ? alreadyQueued.initialPrevStatus : prevStatus,
+    )
+    let handoffDeferred = false
+
+    if (activeTurn && (isHandoffCandidate || alreadyQueued)) {
+      // Defer Moderator wake & downstream DAG dispatch until the Agent's current turn finishes,
+      // guaranteeing late file uploads or revisions in the same turn always land BEFORE handoff.
+      if (!alreadyQueued) {
+        activeTurn.deferredTaskHandoffs.set(updated.id, {
           roomId: cleanRoomId,
-          threadId: updated.threadId || room.activeThreadId || '',
-          phase: 'turn',
-          kind: 'task',
           taskId: updated.id,
+          initialPrevStatus: prevStatus,
+          notifyModerator: notifyModerator !== false,
           actor: 'agent',
-          hop: 1,
-          mentionsOverride: targetMention,
-          text: `**[Task \`${updated.id}\` · ${statusLabel}]** ${updated.title}\n${updated.summary || '(no summary)'}${artifactLine}${unlockLine}`,
         })
+      } else if (notifyModerator === false) {
+        alreadyQueued.notifyModerator = false
       }
+      handoffDeferred = true
+    } else if (isHandoffCandidate) {
+      const handoff = await dispatchTaskHandoff({
+        roomId: cleanRoomId,
+        taskId: updated.id,
+        initialPrevStatus: prevStatus,
+        notifyModerator,
+        actor,
+      })
+      unblockedDependents = handoff.unblockedDependents
     }
 
     return {
       ok: true,
       task: updated,
       unblockedDependents,
+      sharedFiles: sharedFileResults,
+      handoffDeferred,
       sync,
       state: getStateSnapshot(),
     }
@@ -1935,6 +2103,7 @@ export function createMeshService({
     setHasRuntimeSkillProvider,
     beginAgentTurn,
     getActiveAgentHop,
+    hasPendingTurnNotification,
     listFiles,
     updateProfile,
     claimPairInvite,

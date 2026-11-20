@@ -1585,6 +1585,119 @@ try {
         await wsCtx2.fiber.dispose()
       }
 
+      // 14h. Turn-End Commit Barrier (deferred handoff), strict DONE->UNBLOCKED ordering, reopen cancel, and atomic shareFiles
+      {
+        const orderGrp = await alice.createGroup({
+          name: 'Strict Ordering Squad',
+          memberSlugs: ['bob', 'charlie'],
+          moderatorSlug: 'alice',
+        })
+        assert.equal(orderGrp.ok, true)
+        const orderRoomId = orderGrp.room.id
+
+        const dagBatch = await alice.createTasks({
+          roomId: orderRoomId,
+          tasks: [
+            { title: 'Build Artifact', assigneeSlug: 'bob', priority: 'high' },
+            { title: 'Verify Artifact', assigneeSlug: 'charlie', dependsOnIndices: [0] },
+            { title: 'Reopenable Task', assigneeSlug: 'bob' },
+            { title: 'Atomic Share Task', assigneeSlug: 'bob' },
+          ],
+          notifyAssignees: false,
+          actor: 'agent',
+        })
+        assert.equal(dagBatch.ok, true)
+        const [tBuild, tVerify, tReopen, tAtomic] = dagBatch.tasks
+
+        // A. Inside an active Agent turn: updateTask(done) defers DONE & UNBLOCKED until endTurn()
+        const endBobTurn = bob.beginAgentTurn({ roomId: orderRoomId, sessionId: 'sess-bob-order', hop: 1 })
+        const earlyDone = await bob.updateTask({
+          roomId: orderRoomId,
+          taskId: tBuild.id,
+          status: 'done',
+          summary: 'draft summary v1',
+          actor: 'agent',
+        })
+        assert.equal(earlyDone.ok, true)
+        assert.equal(earlyDone.handoffDeferred, true, 'Handoff must be deferred while Agent turn is still active')
+        assert.equal(bob.hasPendingTurnNotification(orderRoomId), true)
+
+        // Confirm neither DONE nor UNBLOCKED has been sent yet!
+        const msgsBeforeEnd = alice.store.getSnapshot().messages[orderRoomId] || []
+        assert.equal(msgsBeforeEnd.some((m) => String(m.text || '').includes('DONE')), false, 'Moderator must not be woken mid-turn')
+        assert.equal(msgsBeforeEnd.some((m) => String(m.text || '').includes('UNBLOCKED')), false, 'Downstream peer must not be woken mid-turn')
+
+        // Bob shares a late/revised deliverable file AFTER calling updateTask(done), then revises summary
+        const lateFile = join(bobDir, 'late-report.md')
+        writeFileSync(lateFile, '# Final Revised Report\nAll checks passed.\n', 'utf8')
+        const sharedLate = await bob.sendFile({
+          roomId: orderRoomId,
+          filePath: lateFile,
+          text: 'late revised report',
+          actor: 'agent',
+        })
+        assert.equal(sharedLate.ok, true)
+        const revisedDone = await bob.updateTask({
+          roomId: orderRoomId,
+          taskId: tBuild.id,
+          status: 'done',
+          summary: 'final summary v2 after late file',
+          artifacts: ['late-report.md'],
+          actor: 'agent',
+        })
+        assert.equal(revisedDone.ok, true)
+        assert.equal(revisedDone.handoffDeferred, true)
+
+        // Also test reopen cancellation within the same turn: done -> in_progress must NOT emit handoff!
+        await bob.updateTask({ roomId: orderRoomId, taskId: tReopen.id, status: 'done', summary: 'oops premature', actor: 'agent' })
+        await bob.updateTask({ roomId: orderRoomId, taskId: tReopen.id, status: 'in_progress', summary: 'still working', actor: 'agent' })
+
+        // End Bob's turn -> flushes in strict causal order: FILE -> DONE (with v2 summary) -> UNBLOCKED
+        await endBobTurn()
+        const msgsAfterEnd = alice.store.getSnapshot().messages[orderRoomId] || []
+        const fileIdx = msgsAfterEnd.findIndex((m) => m.kind === 'file' && m.attachment?.name === 'late-report.md')
+        const doneIdx = msgsAfterEnd.findIndex((m) => m.taskId === tBuild.id && String(m.text || '').includes('· DONE]'))
+        const unblockedIdx = msgsAfterEnd.findIndex((m) => m.taskId === tVerify.id && String(m.text || '').includes('· UNBLOCKED]'))
+        assert.ok(fileIdx >= 0, 'Late file must be present')
+        assert.ok(doneIdx > fileIdx, 'Task DONE notice must appear strictly AFTER late file upload')
+        assert.ok(unblockedIdx > doneIdx, 'Downstream UNBLOCKED wake must appear strictly AFTER upstream DONE notice')
+        assert.ok(String(msgsAfterEnd[doneIdx].text || '').includes('final summary v2 after late file'), 'Flushed DONE notice must carry the coalesced latest summary')
+        assert.equal(
+          msgsAfterEnd.some((m) => m.taskId === tReopen.id && String(m.text || '').includes('· DONE]')),
+          false,
+          'Reopened task must NOT emit stale DONE notification at turn end',
+        )
+
+        // B. Atomic shareFiles on updateTask: invalid file fails BEFORE mutating status; valid file shares BEFORE DONE
+        const badAtomic = await bob.updateTask({
+          roomId: orderRoomId,
+          taskId: tAtomic.id,
+          status: 'done',
+          shareFiles: ['does-not-exist-anywhere.txt'],
+          actor: 'agent',
+        })
+        assert.equal(badAtomic.ok, false, 'Missing shareFiles path must fail before mutating task status')
+        assert.equal(bob.store.getTask(orderRoomId, tAtomic.id)?.status, 'todo', 'Task status must remain unchanged when shareFiles fails')
+
+        const atomicFile = join(bobDir, 'atomic-deliverable.txt')
+        writeFileSync(atomicFile, 'atomic payload ok', 'utf8')
+        const okAtomic = await bob.updateTask({
+          roomId: orderRoomId,
+          taskId: tAtomic.id,
+          status: 'done',
+          summary: 'atomic done with file',
+          shareFiles: ['atomic-deliverable.txt'],
+          actor: 'agent',
+        })
+        assert.equal(okAtomic.ok, true)
+        assert.deepEqual(okAtomic.sharedFiles, ['atomic-deliverable.txt'])
+        assert.ok(okAtomic.task.artifacts.includes('atomic-deliverable.txt'), 'Shared file must be auto-recorded in artifacts')
+        const msgsFinal = alice.store.getSnapshot().messages[orderRoomId] || []
+        const atomicFileIdx = msgsFinal.findIndex((m) => m.kind === 'file' && m.attachment?.name === 'atomic-deliverable.txt')
+        const atomicDoneIdx = msgsFinal.findIndex((m) => m.taskId === tAtomic.id && String(m.text || '').includes('· DONE]'))
+        assert.ok(atomicFileIdx >= 0 && atomicDoneIdx > atomicFileIdx, 'Atomic shareFiles upload must land strictly before DONE notice')
+      }
+
       await aliceCtx.fiber.dispose()
       await bobCtx.fiber.dispose()
     }
