@@ -265,11 +265,32 @@ if [ -n "${SANDBOX_INIT_REPO_URL:-}" ]; then
   fi
 fi
 
-# Record self-hosted plugin index URL and auto-install configured plugins
+# Record self-hosted plugin index URL / npm registry and auto-install configured plugins
+npm_registry="${DSH_PLUGIN_NPM_REGISTRY:-}"
+if [ -z "${npm_registry}" ] && [[ "${DSH_PLUGIN_INDEX_URL:-}" == */index.json ]]; then
+  npm_registry="${DSH_PLUGIN_INDEX_URL%/index.json}/npm"
+fi
 if [ -n "${DSH_PLUGIN_INDEX_URL:-}" ]; then
   printf '%s\n' "${DSH_PLUGIN_INDEX_URL}" >/home/workspace/.dsh-sandbox/plugin-index-url.txt
   chown "${WORKSPACE_USER}:${WORKSPACE_USER}" /home/workspace/.dsh-sandbox/plugin-index-url.txt
   log "plugin index URL configured: ${DSH_PLUGIN_INDEX_URL}"
+fi
+if [ -n "${npm_registry}" ]; then
+  printf '%s\n' "${npm_registry}" >/home/workspace/.dsh-sandbox/plugin-npm-registry.txt
+  chown "${WORKSPACE_USER}:${WORKSPACE_USER}" /home/workspace/.dsh-sandbox/plugin-npm-registry.txt
+  web_profile_dir="/home/workspace/.dsh/profiles/web"
+  if [ -d "${web_profile_dir}" ]; then
+    NPM_REGISTRY="${npm_registry}" WEB_NPMRC="${web_profile_dir}/.npmrc" node -e '
+      const fs = require("fs");
+      const p = process.env.WEB_NPMRC;
+      const reg = process.env.NPM_REGISTRY;
+      const cur = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "";
+      const lines = cur.split(/\r?\n/).filter((l) => l.trim() !== "" && !/^registry\s*=/.test(l.trim()));
+      lines.unshift("registry=" + reg);
+      fs.writeFileSync(p, lines.join("\n") + "\n");
+    ' || true
+    chown "${WORKSPACE_USER}:${WORKSPACE_USER}" "${web_profile_dir}/.npmrc" 2>/dev/null || true
+  fi
 fi
 
 if [ -n "${DSH_AUTO_INSTALL_PLUGINS:-}" ] && [ "${SANDBOX_TEMPLATE}" != "minimal" ]; then
@@ -282,11 +303,6 @@ if [ -n "${DSH_AUTO_INSTALL_PLUGINS:-}" ] && [ "${SANDBOX_TEMPLATE}" != "minimal
   if [ -f "${web_lock}" ] && grep -qE 'resolution: \{tarball:' "${web_lock}" 2>/dev/null; then
     log "cleaning legacy tarball-only pnpm lockfile without integrity hashes"
     rm -f "${web_lock}" /home/workspace/.dsh/profiles/web/node_modules/.pnpm/lock.yaml
-  fi
-
-  npm_registry="${DSH_PLUGIN_NPM_REGISTRY:-}"
-  if [ -z "${npm_registry}" ] && [[ "${DSH_PLUGIN_INDEX_URL:-}" == */index.json ]]; then
-    npm_registry="${DSH_PLUGIN_INDEX_URL%/index.json}/npm"
   fi
 
   IFS=',' read -r -a plugin_specs <<<"${DSH_AUTO_INSTALL_PLUGINS}"

@@ -144,9 +144,9 @@ export function buildSkillSummaryMeta(snapshot = null) {
   return {
     name: 'sandbox-peer',
     description:
-      `Collaborate with paired remote DSH sandboxes as remote subagents (1-on-1 delegation, LLM-moderated team groups, and file transfer). ${peerBrief}${groupBrief}`,
+      `Collaborate with paired remote DSH sandboxes as remote subagents (1-on-1 delegation, automatic task-based group creation & LLM-moderated team rooms, and file transfer). Handles @[slug](dsh-mesh:slug) and @[group](dsh-mesh-group:roomId) mentions directly. ${peerBrief}${groupBrief}`,
     whenToUse:
-      `Use when the user asks to consult, ask, delegate work to, or discuss with another sandbox/agent (such as ${peers.map((p) => `@${p.slug}${p.role ? ` / ${p.role}` : ''}`).join(', ') || 'a peer sandbox'}), coordinate a multi-sandbox team group, or share files across sandboxes.`,
+      `Use IMMEDIATELY whenever: (1) the user mentions @[slug](dsh-mesh:slug) or @[group](dsh-mesh-group:roomId); (2) the user asks to consult, delegate to, or collaborate with another sandbox/agent (${peers.map((p) => `@${p.slug}${p.role ? ` / ${p.role}` : ''}`).join(', ') || 'peer sandboxes'}); or (3) a complex task in the conversation spans multiple paired sandboxes' specialties or requires multi-container checks/discussion — proactively select the relevant sandboxes and auto-create a task-named group via \`mesh_discuss_group\`.`,
   }
 }
 
@@ -193,15 +193,25 @@ ${peerRows}
 
 ${groupRows}
 
-## 3. Native Harness Tools
+## 3. Auto-Creating Task Groups vs 1-on-1 Delegation
+
+Choose the right collaboration mode automatically from the user's conversation task:
+- **1-on-1 (\`mesh_ask_peer\`)**: Use when the user mentions \`@[slug](dsh-mesh:<slug>)\` or when only **one** remote sandbox's specialty/container is needed. Do not create unnecessary 2-node groups for simple 1-on-1 lookups.
+- **Auto-Create / Reuse Task Group (\`mesh_discuss_group\`)**: Use when the user mentions \`@[name](dsh-mesh-group:<roomId>)\`, asks to form a group/discussion, OR when a task naturally requires **multiple sandboxes** (e.g., frontend + backend + QA, cross-container verification, joint review):
+  1. Match connected sandboxes above by their **Role / Specialty** and pass only the relevant \`memberSlugs\` (or omit to include all paired sandboxes for cluster-wide tasks).
+  2. Omit \`roomId\` and give a concise task-focused \`groupName\` (or omit \`groupName\` to auto-derive it from \`topic\`). By default (\`reuseExisting: true\`), an active group with the same name & members is reused with a fresh isolated topic; pass \`reuseExisting: false\` to force a dedicated new group.
+  3. As local Moderator, \`mesh_discuss_group\` posts the task brief into the room and returns \`roomId\` + \`threadId\`. Call each needed member selectively via \`mesh_ask_peer(roomId, threadId, targetSlug, question)\`, then post your synthesized conclusion via \`mesh_send_message(roomId, threadId, text)\` and report the outcome to the user.
+
+## 4. Native Harness Tools
 
 1. **\`mesh_ask_peer\`** — Call a specific remote sandbox Agent (1-on-1 OR inside a group room):
-   - Pass \`targetSlug\`, \`question\`, optional \`roomId\` (pair room or \`grp_...\`), optional \`threadId\`, and optional \`files\`.
+   - Pass \`targetSlug\`, \`question\` (write clear natural-language goals; avoid pasting long raw shell one-liners), optional \`roomId\` (pair room or \`grp_...\`), optional \`threadId\`, and optional \`files\`.
    - Omit \`threadId\` on 1-on-1 tasks to start a clean isolated Session on the remote container; pass the returned \`threadId\` for multi-turn follow-ups on the same topic.
    - Inside a group room, calling \`mesh_ask_peer(roomId="grp_...", targetSlug=...)\` wakes ONLY that member without disturbing others.
-2. **\`mesh_discuss_group\`** — Create/open a team group room for LLM-moderated collaboration:
-   - If you (self) are Moderator, it returns the group \`roomId\`, \`threadId\`, and member roster so your LLM decides dynamically whom to call via \`mesh_ask_peer\` and posts the summary via \`mesh_send_message\`.
-   - If a remote sandbox is Moderator, it delegates the topic to \`@moderator\` and returns its synthesized conclusion.
+2. **\`mesh_discuss_group\`** — Auto-create or reuse a task-focused group room for LLM-moderated collaboration:
+   - Parameters: \`topic\`, optional \`roomId\`, optional \`groupName\`, optional \`memberSlugs\`, optional \`moderatorSlug\`, optional \`reuseExisting\` (default \`true\`), optional \`threadId\`.
+   - If you (self) are Moderator, posts the opening brief and returns \`roomId\`, \`threadId\`, and member specialties so you decide dynamically whom to consult via \`mesh_ask_peer\`.
+   - If a remote sandbox is Moderator, delegates the topic to \`@moderator\` and returns its synthesized conclusion.
 3. **\`mesh_share_file\`** — Send a workspace file (\`roomId\`, \`filePath\`, \`caption\`).
 4. **\`mesh_list_peers\`** — Refresh connected sandboxes, specialties, and groups.
 `

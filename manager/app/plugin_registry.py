@@ -9,6 +9,7 @@ import json
 import tarfile
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
@@ -161,11 +162,21 @@ class PluginRegistryService:
             "shasum": pkg.shasum,
             "integrity": pkg.integrity,
         }
+        pub_sec = (pkg.mtime_ns / 1_000_000_000) if pkg.mtime_ns > 0 else time.time()
+        published_iso = (
+            datetime.fromtimestamp(pub_sec, tz=timezone.utc)
+            .strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        )
         return {
             "_id": pkg.name,
             "name": pkg.name,
             "description": pkg.description,
             "dist-tags": {"latest": pkg.version},
+            "time": {
+                "created": published_iso,
+                "modified": published_iso,
+                pkg.version: published_iso,
+            },
             "versions": {pkg.version: version_meta},
         }
 
@@ -276,13 +287,19 @@ class PluginRegistryService:
             )
 
             if self.settings.plugin_git_url:
-                entry["repository"] = {"url": self.settings.plugin_git_url}
+                entry["repository"] = {
+                    "url": self.settings.plugin_git_url,
+                    "directory": f"plugins/{pkg_obj.slug}",
+                }
                 entry["homepage"] = (
                     f"{self.settings.plugin_git_url.rstrip('/')}/tree/main/plugins/{pkg_obj.slug}"
                 )
             else:
                 entry["homepage"] = f"{base_url}/plugins/index.json"
-                entry["repository"] = {"url": f"{base_url}/plugins/index.json"}
+                # Never emit a non-Git URL (like /plugins/index.json) as `repository`:
+                # DSH Plugin Market parses `repository.url` as a Git remote and attempts
+                # to clone it for README details, failing with `detailNetwork`.
+                entry.pop("repository", None)
 
             # Ensure keywords are placed under metadata.keywords per DSH format 1
             keywords = (

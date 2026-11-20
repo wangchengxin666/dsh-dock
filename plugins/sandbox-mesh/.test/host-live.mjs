@@ -47,6 +47,8 @@ try {
       hostPlugin.STATE_ENDPOINT,
       hostPlugin.PROFILE_ENDPOINT,
       hostPlugin.FILES_ENDPOINT,
+      hostPlugin.FILE_DOWNLOAD_ENDPOINT,
+      hostPlugin.FILE_UPLOAD_ENDPOINT,
       hostPlugin.PAIR_CODE_ENDPOINT,
       hostPlugin.PAIR_CLAIM_ENDPOINT,
       hostPlugin.GROUP_CREATE_ENDPOINT,
@@ -54,6 +56,7 @@ try {
       hostPlugin.GROUP_MODERATE_ENDPOINT,
       hostPlugin.GROUP_REMOVE_ENDPOINT,
       hostPlugin.GROUP_LEAVE_ENDPOINT,
+      hostPlugin.GROUP_RENAME_ENDPOINT,
       hostPlugin.NEW_TOPIC_ENDPOINT,
       hostPlugin.SEND_ENDPOINT,
       hostPlugin.SEND_FILE_ENDPOINT,
@@ -805,10 +808,156 @@ try {
       assert.equal(pingOnline.ok, true)
       assert.equal(pingOnline.reachable, true)
       assert.equal(pingOnline.status, 'online')
+      assert.equal(typeof alice.store.getSnapshot().peers.find((p) => p.slug === 'bob')?.lastLatencyMs, 'number')
 
-      // Charlie leaves Core Platform Group -> Alice (creator) rotates groupSecret & removes Charlie
+      // Group rename syncs across peers and rejects unauthorized members
       const coreGrp = alice.store.getSnapshot().rooms.find((r) => r.name === 'Core Platform Group')
       assert.ok(coreGrp)
+      const unauthRename = await charlie.renameGroup({ roomId: coreGrp.id, name: 'Hacked' })
+      assert.equal(unauthRename.ok, false)
+      const renameRes = await alice.renameGroup({ roomId: coreGrp.id, name: 'Platform Sync Hub' })
+      assert.equal(renameRes.ok, true)
+      assert.equal(bob.store.getRoom(coreGrp.id).name, 'Platform Sync Hub')
+
+      // Browser file upload + secure inline preview/download (HTML forced to text/plain inline!)
+      const uploadHtml = await alice.uploadAndSendFile({
+        roomId: 'pair:alice:bob',
+        fileName: 'report.html',
+        contentBase64: Buffer.from('<h1>Hi</h1><script>alert(1)</script>', 'utf8').toString('base64'),
+        text: 'Uploaded HTML report',
+      })
+      assert.equal(uploadHtml.ok, true)
+      const bobReceivedHtml = bob.store.getSnapshot().messages['pair:alice:bob']
+        .find((m) => m.id === uploadHtml.message.id)
+      assert.ok(bobReceivedHtml?.attachment?.savedPath)
+      const previewInfo = await bob.readAttachmentFile({ roomId: 'pair:alice:bob', msgId: bobReceivedHtml.id })
+      assert.equal(previewInfo.ok, true)
+      assert.equal(previewInfo.kind, 'text')
+      assert.equal(previewInfo.inlineMimeType, 'text/plain; charset=utf-8', 'HTML inline preview must force text/plain')
+      const missingAtt = await bob.readAttachmentFile({ roomId: 'pair:alice:bob', msgId: 'nonexistent' })
+      assert.equal(missingAtt.ok, false)
+      assert.equal(missingAtt.status, 404)
+
+      // Clock-skew resilience: remote reply stamped 60s in the past must STILL satisfy mesh_ask_peer!
+      {
+        const skewCtx = new Context()
+        const skewTools = new Map()
+        skewCtx.provide('tools', {
+          register(def) {
+            skewTools.set(def.name, def)
+            return () => { skewTools.delete(def.name) }
+          },
+        })
+        const { wireHarnessRuntime } = await import('../src/host/harness-bridge.js')
+        wireHarnessRuntime(skewCtx, alice)
+        await new Promise((r) => setTimeout(r, 20))
+
+        // Verify mesh_list_peers renders human-readable text rather than raw JSON
+        const listTool = skewTools.get('mesh_list_peers')
+        const listVal = await listTool.execute({})
+        const renderedList = listTool.output.render({}, listVal)[0]?.text || ''
+        assert.ok(renderedList.includes('Connected Sandboxes'), 'mesh_list_peers render should be readable text')
+        assert.ok(!renderedList.trim().startsWith('{'), 'mesh_list_peers render must not dump raw JSON')
+
+        bob.setAgentWakeHandler(({ room, message }) => {
+          // Simulate Bob's container clock running 60 seconds behind Alice
+          const skewedMsg = {
+            id: `msg_skew_${Date.now()}`,
+            roomId: room.id,
+            threadId: message.threadId,
+            sender: { slug: 'bob', ownerName: 'Bob', actor: 'agent' },
+            kind: 'chat',
+            text: 'Skewed-clock reply received cleanly!',
+            createdAt: Date.now() - 60_000,
+          }
+          alice.store.recordMessage(skewedMsg, { isIncoming: true })
+        })
+
+        const askTool = skewTools.get('mesh_ask_peer')
+        const skewReply = await askTool.execute({
+          targetSlug: 'bob',
+          roomId: 'pair:alice:bob',
+          question: 'Test clock skew handling',
+          timeoutSeconds: 5,
+        })
+        assert.equal(skewReply.ok, true, 'mesh_ask_peer must not time out when peer clock lags behind')
+        assert.equal(skewReply.reply, 'Skewed-clock reply received cleanly!')
+
+        // Auto-creating task groups from conversation: derived groupName, aligned initial threadId, opening task brief, smart reuse & unpaired validation
+        const { deriveTaskGroupName } = await import('../src/host/harness-bridge.js')
+        assert.equal(deriveTaskGroupName('', '请帮我联调登录鉴权接口。检查 OIDC 回调'), '联调登录鉴权接口')
+        assert.equal(deriveTaskGroupName('Custom Name', 'anything'), 'Custom Name')
+
+        const discussTool = skewTools.get('mesh_discuss_group')
+        const prematureWakes = []
+        bob.setAgentWakeHandler(({ message }) => { prematureWakes.push(message.id) })
+        charlie.setAgentWakeHandler(({ message }) => { prematureWakes.push(message.id) })
+
+        // Unpaired-only memberSlugs must fail cleanly instead of creating an empty 1-node group
+        const badMembers = await discussTool.execute({
+          topic: 'Check unknown peer',
+          memberSlugs: ['ghost-node'],
+        })
+        assert.equal(badMembers.ok, false)
+
+        // Auto-create task group without roomId or groupName -> derives name, aligns threadId, posts brief without waking peers
+        const autoGrp = await discussTool.execute({
+          topic: '请帮我联调登录鉴权接口。检查 OIDC 回调与 session 续期',
+          memberSlugs: ['bob', 'charlie'],
+        })
+        assert.equal(autoGrp.ok, true)
+        assert.equal(autoGrp.createdNewGroup, true)
+        assert.equal(autoGrp.reusedGroup, false)
+        assert.equal(autoGrp.groupName, '联调登录鉴权接口')
+        assert.equal(autoGrp.threadId, alice.store.getRoom(autoGrp.roomId).activeThreadId, 'New group must reuse initial activeThreadId')
+        const autoMsgs = alice.store.getSnapshot().messages[autoGrp.roomId] || []
+        assert.ok(autoMsgs.some((m) => m.kind === 'chat' && m.text.includes('检查 OIDC 回调与 session 续期')), 'Opening task brief must be posted to group')
+        await new Promise((r) => setTimeout(r, 30))
+        assert.equal(prematureWakes.length, 0, 'Opening task brief must not wake peer agents prematurely')
+
+        // Re-running with same task name reuses the group and rotates to a clean fresh topic thread
+        const reusedGrp = await discussTool.execute({
+          topic: '二期补充检查：验证登出逻辑',
+          groupName: '联调登录鉴权接口',
+          memberSlugs: ['bob', 'charlie'],
+        })
+        assert.equal(reusedGrp.ok, true)
+        assert.equal(reusedGrp.createdNewGroup, false)
+        assert.equal(reusedGrp.reusedGroup, true)
+        assert.equal(reusedGrp.roomId, autoGrp.roomId)
+        assert.notEqual(reusedGrp.threadId, autoGrp.threadId)
+
+        // Explicit reuseExisting: false forces a brand-new separate task group
+        const forcedNew = await discussTool.execute({
+          topic: '独立复盘',
+          groupName: '联调登录鉴权接口',
+          memberSlugs: ['bob', 'charlie'],
+          reuseExisting: false,
+        })
+        assert.equal(forcedNew.ok, true)
+        assert.equal(forcedNew.createdNewGroup, true)
+        assert.notEqual(forcedNew.roomId, autoGrp.roomId)
+
+        // Node with zero paired sandboxes must refuse to create an empty 1-node group
+        const { svc: solo } = createSandboxNode('solo', 'Solo')
+        const soloCtx = new Context()
+        const soloTools = new Map()
+        soloCtx.provide('tools', {
+          register(def) {
+            soloTools.set(def.name, def)
+            return () => { soloTools.delete(def.name) }
+          },
+        })
+        wireHarnessRuntime(soloCtx, solo)
+        await new Promise((r) => setTimeout(r, 20))
+        const soloRes = await soloTools.get('mesh_discuss_group').execute({ topic: 'Do solo task' })
+        assert.equal(soloRes.ok, false)
+        await soloCtx.fiber.dispose()
+
+        await skewCtx.fiber.dispose()
+      }
+
+      // Charlie leaves Platform Sync Hub -> Alice (creator) rotates groupSecret & removes Charlie
       const oldSec = alice.store.getRoom(coreGrp.id).groupSecret
       const leaveRes = await charlie.leaveGroup({ roomId: coreGrp.id })
       assert.equal(leaveRes.ok, true)
@@ -827,6 +976,205 @@ try {
       assert.equal(lanStore.getSelf().endpointUrl, 'http://192.168.1.50:9000/s/lan1/p/4090')
       lanStore.updateSelf(null, 4090)
       assert.equal(lanStore.getSelf().endpointUrl, 'http://192.168.1.50:9000/s/lan1/p/4090')
+    }
+
+    // 13. Incremental Context Deduplication (threadCursors + DSH native session history)
+    {
+      const { buildAgentWakePrompt, wireHarnessRuntime } = await import('../src/host/harness-bridge.js')
+      const pairRoom = bob.store.getRoom('pair:alice:bob')
+      const bobSelf = bob.store.getSelf()
+
+      // 13a. Unit tests on buildAgentWakePrompt
+      const thr = 'thr_delta_unit'
+      const longBody = `${'X'.repeat(2500)}__TAIL_MARKER__`
+      const msgs = [
+        { id: 'u1', threadId: thr, kind: 'chat', sender: { slug: 'alice', ownerName: 'Alice', actor: 'human' }, text: `Initial requirement: ${longBody}` },
+        { id: 'u2', threadId: thr, kind: 'chat', sender: { slug: 'bob', ownerName: 'Bob', actor: 'agent' }, text: 'Bob Turn 1 answer' },
+        { id: 'u3', threadId: thr, kind: 'chat', sender: { slug: 'alice', ownerName: 'Alice', actor: 'human' }, text: 'Unseen bystander note before wake' },
+        { id: 'u4', threadId: thr, kind: 'chat', sender: { slug: 'alice', ownerName: 'Alice', actor: 'human' }, text: '@bob Follow-up question' },
+        { id: 'u5', threadId: thr, kind: 'chat', sender: { slug: 'alice', ownerName: 'Alice', actor: 'human' }, text: 'Queued later message' },
+      ]
+
+      // Fresh session (no cursor): includes full prior messages losslessly (no hard truncation)
+      const pFresh = buildAgentWakePrompt({
+        self: bobSelf,
+        room: pairRoom,
+        message: msgs[3],
+        recentMessages: msgs,
+        lastSeenMessageId: '',
+      })
+      assert.ok(pFresh.includes('Current Thread Context'))
+      assert.ok(pFresh.includes('<remote-mesh-context>'))
+      assert.ok(pFresh.includes('Initial requirement:'))
+      assert.ok(pFresh.includes('__TAIL_MARKER__'), 'Long context messages must be passed losslessly to DSH native session')
+      assert.ok(!pFresh.includes('[truncated]'), 'Context messages must not be hard-truncated')
+      assert.ok(!pFresh.includes('Queued later message'), 'Messages after current message must never appear in context')
+
+      // Resumed session with NO unseen external messages (only self agent reply between u1 and u3-as-current)
+      const pNoDelta = buildAgentWakePrompt({
+        self: bobSelf,
+        room: pairRoom,
+        message: msgs[2],
+        recentMessages: msgs,
+        lastSeenMessageId: 'u1',
+      })
+      assert.ok(!pNoDelta.includes('<remote-mesh-context>'), 'Context block must be omitted when DSH session is already up to date')
+      assert.ok(!pNoDelta.includes('Bob Turn 1 answer'), 'Own prior agent reply must not be re-injected')
+      assert.ok(pNoDelta.includes('Unseen bystander note before wake'))
+
+      // Resumed session WITH unseen bystander message (u3) after cursor u1
+      const pWithDelta = buildAgentWakePrompt({
+        self: bobSelf,
+        room: pairRoom,
+        message: msgs[3],
+        recentMessages: msgs,
+        lastSeenMessageId: 'u1',
+      })
+      assert.ok(pWithDelta.includes('Unseen Room Messages Since Your Last Turn'))
+      assert.ok(pWithDelta.includes('Unseen bystander note before wake'))
+      assert.ok(!pWithDelta.includes('Initial requirement:'), 'Already-seen messages at/before cursor must not repeat')
+      assert.ok(!pWithDelta.includes('Bob Turn 1 answer'), 'Own prior agent reply must not repeat in delta')
+      assert.ok(!pWithDelta.includes('Queued later message'), 'Queued later messages must not leak into current turn context')
+
+      // Stale/pruned cursor (not in recentMessages): falls back cleanly to recent thread context
+      const pStaleCursor = buildAgentWakePrompt({
+        self: bobSelf,
+        room: pairRoom,
+        message: msgs[3],
+        recentMessages: msgs,
+        lastSeenMessageId: 'msg_pruned_old',
+      })
+      assert.ok(pStaleCursor.includes('Current Thread Context'))
+      assert.ok(pStaleCursor.includes('Initial requirement:'))
+
+      // 13b. End-to-end multi-turn harness lifecycle: reuse session (zero dup), unseen delta, and session-recreation fallback
+      const deltaTopic = await alice.startNewTopic({ roomId: 'pair:alice:bob' })
+      assert.equal(deltaTopic.ok, true)
+      const deltaTid = deltaTopic.threadId
+
+      const deltaCtx = new Context()
+      const deltaPrompts = []
+      const deltaEvents = []
+      let sessionAlive = false
+      let sessionCreateCount = 0
+
+      deltaCtx.provide('agents', { withoutInitiator: (fn) => fn() })
+      deltaCtx.provide('sessions', { flush: async () => true })
+      deltaCtx.provide('sessionController', {
+        async create() {
+          sessionCreateCount += 1
+          sessionAlive = true
+        },
+        async resolveAgent() {
+          if (!sessionAlive) return { error: new Error('session missing') }
+          return {
+            agent: {
+              id: `session-delta-${sessionCreateCount}`,
+              session: {
+                id: `session-delta-${sessionCreateCount}`,
+                snapshotEvents: () => [...deltaEvents],
+              },
+              followup(userMsg) {
+                deltaPrompts.push(userMsg?.content?.[0]?.text || '')
+                deltaEvents.push({
+                  seq: deltaEvents.length + 1,
+                  type: 'assistant/message',
+                  data: { message: { content: [{ type: 'text', text: `Bob reply #${deltaPrompts.length}` }] } },
+                })
+                deltaEvents.push({
+                  seq: deltaEvents.length + 1,
+                  type: 'turn/end',
+                  data: { turn: deltaPrompts.length, reason: { kind: 'completed' } },
+                })
+              },
+              whenIdle: async () => {},
+            },
+          }
+        },
+      })
+
+      wireHarnessRuntime(deltaCtx, bob)
+      await new Promise((r) => setTimeout(r, 30))
+
+      const waitPrompts = async (expectedCount) => {
+        const deadline = Date.now() + 2000
+        while (Date.now() < deadline && deltaPrompts.length < expectedCount) {
+          await new Promise((r) => setTimeout(r, 20))
+        }
+        // Let post-idle cursor update & auto-reply finish
+        await new Promise((r) => setTimeout(r, 40))
+      }
+
+      // Turn 1: fresh session created -> cursor advances to t1.message.id
+      const t1 = await alice.sendMessage({
+        roomId: 'pair:alice:bob',
+        threadId: deltaTid,
+        text: '@bob Turn1 unique payload alpha',
+        actor: 'human',
+      })
+      await waitPrompts(1)
+      assert.equal(sessionCreateCount, 1)
+      assert.equal(deltaPrompts.length, 1)
+      assert.ok(deltaPrompts[0].includes('Current Thread Context'))
+      assert.equal(bob.store.getRoomThreadCursor('pair:alice:bob', deltaTid), t1.message.id)
+
+      // Turn 2: same thread, no unseen messages -> reuses session & completely omits <remote-mesh-context>
+      const t2 = await alice.sendMessage({
+        roomId: 'pair:alice:bob',
+        threadId: deltaTid,
+        text: '@bob Turn2 follow-up beta',
+        actor: 'human',
+      })
+      await waitPrompts(2)
+      assert.equal(sessionCreateCount, 1, 'Turn 2 must reuse existing DSH session')
+      assert.equal(deltaPrompts.length, 2)
+      assert.ok(!deltaPrompts[1].includes('<remote-mesh-context>'), 'Turn 2 must omit <remote-mesh-context> when no unseen messages exist')
+      assert.ok(!deltaPrompts[1].includes('Turn1 unique payload alpha'), 'Turn 2 must not re-inject Turn 1 text')
+      assert.ok(!deltaPrompts[1].includes('Bob reply #1'), 'Turn 2 must not re-inject own Turn 1 reply')
+      assert.equal(bob.store.getRoomThreadCursor('pair:alice:bob', deltaTid), t2.message.id)
+
+      // Turn 3: inject a non-waking bystander message on Bob's room, then send Turn 3 wake -> ONLY bystander message appears in delta
+      bob.store.recordMessage({
+        id: 'msg_bystander_delta',
+        roomId: 'pair:alice:bob',
+        threadId: deltaTid,
+        sender: { slug: 'alice', ownerName: 'Alice', actor: 'human' },
+        kind: 'chat',
+        mentions: [],
+        text: 'Side note gamma without waking Bob',
+        hop: 0,
+      }, { isIncoming: true })
+      const t3 = await alice.sendMessage({
+        roomId: 'pair:alice:bob',
+        threadId: deltaTid,
+        text: '@bob Turn3 check gamma',
+        actor: 'human',
+      })
+      await waitPrompts(3)
+      assert.equal(deltaPrompts.length, 3)
+      assert.ok(deltaPrompts[2].includes('Unseen Room Messages Since Your Last Turn'))
+      assert.ok(deltaPrompts[2].includes('Side note gamma without waking Bob'))
+      assert.ok(!deltaPrompts[2].includes('Turn1 unique payload alpha'))
+      assert.ok(!deltaPrompts[2].includes('Turn2 follow-up beta'))
+      assert.equal(bob.store.getRoomThreadCursor('pair:alice:bob', deltaTid), t3.message.id)
+
+      // Turn 4: simulate DSH session deleted/lost -> sessionController.create runs -> restores recent thread context cleanly
+      sessionAlive = false
+      const t4 = await alice.sendMessage({
+        roomId: 'pair:alice:bob',
+        threadId: deltaTid,
+        text: '@bob Turn4 after session reset',
+        actor: 'human',
+      })
+      await waitPrompts(4)
+      assert.equal(sessionCreateCount, 2, 'Expected DSH session to be recreated after loss')
+      assert.equal(deltaPrompts.length, 4)
+      assert.ok(deltaPrompts[3].includes('Current Thread Context'), 'Recreated session must restore full recent thread context')
+      assert.ok(deltaPrompts[3].includes('Turn1 unique payload alpha'))
+      assert.ok(deltaPrompts[3].includes('Turn3 check gamma'))
+      assert.equal(bob.store.getRoomThreadCursor('pair:alice:bob', deltaTid), t4.message.id)
+
+      await deltaCtx.fiber.dispose()
     }
   }
 

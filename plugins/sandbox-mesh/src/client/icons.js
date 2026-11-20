@@ -301,3 +301,267 @@ export function ClipIcon({ React, size = 13 }) {
     H('path', { d: 'M11.6 6.2L7 10.8C5.9 11.9 4.2 11.9 3.1 10.8C2 9.7 2 8 3.1 6.9L8.2 1.8C9 1 10.3 1 11.1 1.8C11.9 2.6 11.9 3.9 11.1 4.7L6.2 9.6C5.8 10 5.1 10 4.7 9.6C4.3 9.2 4.3 8.5 4.7 8.1L8.9 3.9' }),
   )
 }
+
+export function CopyIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('rect', { x: 5.5, y: 5.5, width: 8, height: 8, rx: 1.6 }),
+    H('path', { d: 'M10.5 5.5V3.6C10.5 2.9 10 2.5 9.3 2.5H3.7C3 2.5 2.5 3 2.5 3.7V9.3C2.5 10 3 10.5 3.7 10.5H5.5' }),
+  )
+}
+
+export function CheckIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.7,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M3.2 8.4L6.4 11.6L12.8 4.8' }),
+  )
+}
+
+export function DownloadIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M8 2.4V10.2M5.2 7.5L8 10.4L10.8 7.5' }),
+    H('path', { d: 'M2.8 12.6H13.2' }),
+  )
+}
+
+export function EyeIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M1.8 8C3.1 5.2 5.4 3.8 8 3.8C10.6 3.8 12.9 5.2 14.2 8C12.9 10.8 10.6 12.2 8 12.2C5.4 12.2 3.1 10.8 1.8 8Z' }),
+    H('circle', { cx: 8, cy: 8, r: 2 }),
+  )
+}
+
+export function UploadIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M8 10.6V2.8M5.2 5.5L8 2.6L10.8 5.5' }),
+    H('path', { d: 'M2.8 12.6H13.2' }),
+  )
+}
+
+export function ReplyIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M6.2 4.2L2.8 7.5L6.2 10.8' }),
+    H('path', { d: 'M3.2 7.5H9.6C11.6 7.5 13.2 9.1 13.2 11.1V12.4' }),
+  )
+}
+
+export function ChevronIcon({ React, size = 12, rotated = false }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.6,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      style: {
+        transition: 'transform 0.15s ease',
+        transform: rotated ? 'rotate(90deg)' : 'rotate(0deg)',
+      },
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M6 4L10 8L6 12' }),
+  )
+}
+
+export function SlidersIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M2.5 4.5H13.5M2.5 8H13.5M2.5 11.5H13.5' }),
+    H('circle', { cx: 5.5, cy: 4.5, r: 1.3, fill: 'currentColor' }),
+    H('circle', { cx: 10.5, cy: 8, r: 1.3, fill: 'currentColor' }),
+    H('circle', { cx: 6.5, cy: 11.5, r: 1.3, fill: 'currentColor' }),
+  )
+}
+
+export function TopicIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M3 8H13M8 3V13' }),
+  )
+}
+
+export function RefreshIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M13 8A5 5 0 1 1 11.4 4.3' }),
+    H('path', { d: 'M11.6 2.2V4.8H9' }),
+  )
+}
+
+export function EditIcon({ React, size = 12 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M11.2 2.4L13.6 4.8L5.6 12.8H3.2V10.4L11.2 2.4Z' }),
+  )
+}
+
+export function CloseIcon({ React, size = 13 }) {
+  const H = React.createElement
+  return H(
+    'svg',
+    {
+      xmlns: 'http://www.w3.org/2000/svg',
+      viewBox: '0 0 16 16',
+      width: size,
+      height: size,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.6,
+      strokeLinecap: 'round',
+      className: 'sm-icon',
+      'aria-hidden': 'true',
+    },
+    H('path', { d: 'M4 4L12 12M12 4L4 12' }),
+  )
+}

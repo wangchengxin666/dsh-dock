@@ -360,6 +360,88 @@ window.__ModuleLoader__.load({
       stagePreparing: 'is preparing reply…',
       stageAnswering: 'is responding…',
       stageWaitingPeer: 'is waiting for peer',
+      // Upgraded Chat UI, Markdown, Delegation Cards, File Preview, Topology, Room Inspector & Native Tool Views
+      copyCodeBtn: 'Copy',
+      copiedCodeBtn: 'Copied',
+      copyMsgBtn: 'Copy',
+      replyMsgBtn: 'Reply',
+      replyingToLabel: 'Replying to',
+      clearReplyBtn: 'Cancel reply',
+      uploadFileTitle: 'Upload local file to room',
+      dropFilesHint: 'Drop a file to send to this room (max 10 MB)',
+      fileTooLargeError: 'File exceeds the 10 MB transfer limit.',
+      previewBtn: 'Preview',
+      downloadBtn: 'Download',
+      copyPathBtn: 'Copy path',
+      previewTitle: 'File Preview',
+      previewRawBtn: 'Raw',
+      previewRenderedBtn: 'Rendered',
+      previewLoading: 'Loading preview…',
+      previewUnavailable: 'Binary file — click Download to inspect locally.',
+      filesDrawerBtn: 'Files',
+      filesDrawerTitle: 'Shared Files',
+      noSharedFilesYet: 'No files shared in this room yet.',
+      roomDetailsBtn: 'Details',
+      roomDetailsTitle: 'Room Details',
+      topicsSectionTitle: 'Topic History',
+      topicItemLabel: 'Topic',
+      renameGroupLabel: 'Group Name',
+      renameGroupBtn: 'Rename',
+      saveBtn: 'Save',
+      statusGroupRenamed: 'Group renamed.',
+      collabStepsTitle: 'Collaboration Process',
+      collabStepsCount: 'steps',
+      collabStepDispatch: 'dispatched to',
+      collabStepReport: 'reported back',
+      collabActiveLabel: 'Live Mesh Topology',
+      pingAllBtn: 'Test All',
+      pingingAllBtn: 'Testing All…',
+      latencyUnit: 'ms',
+      roleTemplatesLabel: 'Quick presets:',
+      tplFrontendRole: 'Frontend UI Specialist',
+      tplFrontendDesc: 'Owns React/CSS components, browser UX, and client state.',
+      tplBackendRole: 'Backend & DB Specialist',
+      tplBackendDesc: 'Owns API routes, database schema, auth, and server performance.',
+      tplQaRole: 'QA & Verification Engineer',
+      tplQaDesc: 'Owns automated tests, E2E verification, bug reproduction, and release checks.',
+      tplDataRole: 'Data & Research Analyst',
+      tplDataDesc: 'Owns data collection, pricing/market analysis, spreadsheets, and reports.',
+      tplArchRole: 'System Architect & Reviewer',
+      tplArchDesc: 'Owns design reviews, security audits, and cross-service coordination.',
+      timeJustNow: 'just now',
+      timeMinsAgo: 'm ago',
+      timeHoursAgo: 'h ago',
+      sysPairedWith: 'Paired with',
+      sysPairedSelf: 'paired with this sandbox',
+      sysUnpairedBy: 'disconnected pairing',
+      sysGroupCreated: 'Created group',
+      sysGroupInvited: 'invited',
+      sysGroupRemoved: 'Removed from group',
+      sysGroupLeft: 'left the group',
+      sysGroupDissolved: 'dissolved the group — connection closed',
+      sysGroupRenamed: 'Renamed group to',
+      // Native DSH Tool Cards & Incoming Wake Prompt Card
+      toolAskPeerTitle: 'Sandbox Collaboration',
+      toolDiscussGroupTitle: 'Group Collaboration',
+      toolListPeersTitle: 'Inspect Mesh Nodes',
+      toolSendMsgTitle: 'Send Mesh Message',
+      toolShareFileTitle: 'Share Mesh File',
+      toolStateRunning: 'Collaborating…',
+      toolStateDone: 'Done',
+      toolStateReplied: 'Replied',
+      toolStateError: 'Failed',
+      toolRequestLabel: 'Request',
+      toolReplyLabel: 'Reply',
+      toolSharedFilesLabel: 'Shared files',
+      toolConnectedNodes: 'connected nodes',
+      toolNoNodes: 'No paired sandboxes',
+      toolModeratorLabel: 'Moderator',
+      wakeCardTitle: 'Incoming Mesh Request',
+      wakeCardFrom: 'From',
+      wakeCardRoom: 'Room',
+      wakeCardShowRaw: 'Show full prompt',
+      wakeCardHideRaw: 'Hide full prompt',
+      legacyPeerChipDesc: 'Mentioned remote sandbox',
     }
 
     const zh = {
@@ -480,6 +562,88 @@ window.__ModuleLoader__.load({
       stagePreparing: '正在准备思考中…',
       stageAnswering: '正在组织回答…',
       stageWaitingPeer: '正在协同等待',
+      // Upgraded Chat UI, Markdown, Delegation Cards, File Preview, Topology, Room Inspector & Native Tool Views
+      copyCodeBtn: '复制',
+      copiedCodeBtn: '已复制',
+      copyMsgBtn: '复制',
+      replyMsgBtn: '引用',
+      replyingToLabel: '引用回复',
+      clearReplyBtn: '取消引用',
+      uploadFileTitle: '从本地上传文件到会话',
+      dropFilesHint: '松开鼠标即可上传并发送文件（最大 10 MB）',
+      fileTooLargeError: '文件超过 10 MB 传输上限。',
+      previewBtn: '预览',
+      downloadBtn: '下载',
+      copyPathBtn: '复制路径',
+      previewTitle: '文件预览',
+      previewRawBtn: '源码',
+      previewRenderedBtn: '渲染',
+      previewLoading: '正在加载预览…',
+      previewUnavailable: '暂不支持在线预览该二进制格式，请点击「下载」查看。',
+      filesDrawerBtn: '文件箱',
+      filesDrawerTitle: '房间共享文件',
+      noSharedFilesYet: '本会话暂未互传文件。',
+      roomDetailsBtn: '管理',
+      roomDetailsTitle: '会话与成员设置',
+      topicsSectionTitle: '话题目录',
+      topicItemLabel: '话题',
+      renameGroupLabel: '群名称',
+      renameGroupBtn: '改名',
+      saveBtn: '保存',
+      statusGroupRenamed: '群名称已更新。',
+      collabStepsTitle: '协同调度过程',
+      collabStepsCount: '步',
+      collabStepDispatch: '派发任务给',
+      collabStepReport: '完成并回报',
+      collabActiveLabel: '实时互联协同',
+      pingAllBtn: '检测全部',
+      pingingAllBtn: '检测中…',
+      latencyUnit: 'ms',
+      roleTemplatesLabel: '快捷名片模板：',
+      tplFrontendRole: '前端 UI 工程师',
+      tplFrontendDesc: '负责 React/CSS 组件、页面交互与客户端状态管理。',
+      tplBackendRole: '后端与数据库专家',
+      tplBackendDesc: '负责 API 接口、数据库结构、鉴权与服务端性能。',
+      tplQaRole: '测试与质量保障专家',
+      tplQaDesc: '负责自动化测试、联调验证、缺陷复现与上线验收。',
+      tplDataRole: '数据分析与行业研判',
+      tplDataDesc: '负责资料调研、数据整理、价格与市场研判及报表输出。',
+      tplArchRole: '系统架构与评审顾问',
+      tplArchDesc: '负责架构设计评审、安全检查与跨模块方案统筹。',
+      timeJustNow: '刚刚',
+      timeMinsAgo: '分钟前',
+      timeHoursAgo: '小时前',
+      sysPairedWith: '已成功配对',
+      sysPairedSelf: '已与本沙箱配对成功',
+      sysUnpairedBy: '已解除与本沙箱的配对',
+      sysGroupCreated: '已创建群聊',
+      sysGroupInvited: '邀请加入群聊：',
+      sysGroupRemoved: '已移出群聊（群密钥已轮换）',
+      sysGroupLeft: '已退出群聊',
+      sysGroupDissolved: '已解散/离开群聊，连接已断开',
+      sysGroupRenamed: '已将群名修改为',
+      // Native DSH Tool Cards & Incoming Wake Prompt Card
+      toolAskPeerTitle: '跨沙箱协作',
+      toolDiscussGroupTitle: '跨沙箱群聊协同',
+      toolListPeersTitle: '查看互联节点',
+      toolSendMsgTitle: '发送互联消息',
+      toolShareFileTitle: '跨沙箱共享文件',
+      toolStateRunning: '协同处理中…',
+      toolStateDone: '已完成',
+      toolStateReplied: '已回复',
+      toolStateError: '失败',
+      toolRequestLabel: '协作请求',
+      toolReplyLabel: '远端回复',
+      toolSharedFilesLabel: '附带共享文件',
+      toolConnectedNodes: '个已连接节点',
+      toolNoNodes: '暂无已配对沙箱',
+      toolModeratorLabel: '主持人',
+      wakeCardTitle: '沙箱互联协作请求',
+      wakeCardFrom: '来自',
+      wakeCardRoom: '房间',
+      wakeCardShowRaw: '查看完整提示词',
+      wakeCardHideRaw: '收起完整提示词',
+      legacyPeerChipDesc: '跨沙箱远程节点',
     }
 
     function normalizeLang(rawLocale) {
@@ -495,17 +659,54 @@ window.__ModuleLoader__.load({
 
     // --- client/styles.js ---
     const MESH_CSS = `
-    /* --- Shared base, icons & buttons --- */
+    /* --- Shared base, icons, buttons & DSH theme tokens --- */
     .sm-root, .sm-chat-shell {
-      color: var(--dsw-alias-label-pri, #0f172a);
-      background: var(--dsw-alias-bg-base, #f8fafc);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --sm-bg-base: var(--dsw-alias-bg-base, #f8fafc);
+      --sm-bg-layer1: var(--dsw-alias-bg-layer-1, #ffffff);
+      --sm-bg-layer2: var(--dsw-alias-bg-layer-2, #f1f5f9);
+      --sm-bg-sidebar: var(--dsw-specific-sidebar-fill, var(--dsw-alias-bg-layer-1, #ffffff));
+      --sm-bg-input: var(--dsw-specific-input-major, var(--dsw-alias-bg-base, #f8fafc));
+      --sm-bg-code: var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-2, #f1f5f9));
+      --sm-bg-bubble-self: var(--dsw-specific-bubble, rgba(14, 165, 233, 0.11));
+      --sm-fg-primary: var(--dsw-alias-label-primary, #0f172a);
+      --sm-fg-secondary: var(--dsw-alias-label-secondary, #475569);
+      --sm-border-l1: var(--dsw-alias-border-l1, rgba(148, 163, 184, 0.22));
+      --sm-border-l2: var(--dsw-alias-border-l2, rgba(148, 163, 184, 0.36));
+      --sm-accent: var(--dsw-alias-state-business-primary, var(--dsw-alias-link, #0284c7));
+      --sm-brand: var(--dsw-alias-brand-primary, #0284c7);
+      --sm-brand-fg: var(--dsw-alias-bg-base, #ffffff);
+      color: var(--sm-fg-primary);
+      background: var(--sm-bg-base);
+      font-family: inherit, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      box-sizing: border-box;
+    }
+    .sm-root *, .sm-chat-shell * {
       box-sizing: border-box;
     }
     .sm-icon {
       display: inline-block;
       vertical-align: -0.16em;
       flex-shrink: 0;
+    }
+    .sm-nav-icon-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .sm-nav-badge-dot {
+      position: absolute;
+      top: -2px;
+      right: -3px;
+      min-width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #ef4444;
+      border: 1.5px solid var(--dsw-specific-sidebar-fill, var(--dsw-alias-bg-base, #ffffff));
+    }
+    .sm-nav-badge-dot.live {
+      background: var(--dsw-alias-state-business-primary, #0ea5e9);
+      animation: sm-ring-pulse 1.5s infinite;
     }
     .sm-btn {
       display: inline-flex;
@@ -516,38 +717,46 @@ window.__ModuleLoader__.load({
       font-size: 12px;
       font-weight: 500;
       border-radius: 7px;
-      border: 1px solid var(--dsw-alias-border-def, #cbd5e1);
-      background: var(--dsw-alias-bg-elevated, #f1f5f9);
-      color: var(--dsw-alias-label-pri, #0f172a);
+      border: 1px solid var(--sm-border-l2, var(--dsw-alias-border-l2, rgba(148, 163, 184, 0.36)));
+      background: var(--sm-bg-layer1, var(--dsw-alias-bg-layer-1, #ffffff));
+      color: var(--sm-fg-primary, var(--dsw-alias-label-primary, #0f172a));
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
-      transition: all 0.14s ease;
+      transition: background 0.14s ease, border-color 0.14s ease, opacity 0.14s ease;
     }
     .sm-btn:not(.sm-btn-primary):hover:not(:disabled) {
-      background: var(--dsw-alias-bg-hover, #e2e8f0);
+      background: var(--sm-bg-layer2, var(--dsw-alias-bg-layer-2, #f1f5f9));
+      border-color: var(--sm-accent, var(--dsw-alias-link, #0284c7));
     }
     .sm-btn-primary {
-      background: var(--dsw-alias-Interactive-pri, #0284c7);
-      border-color: var(--dsw-alias-Interactive-pri, #0284c7);
-      color: #ffffff;
+      background: var(--sm-brand, var(--dsw-alias-brand-primary, #0284c7));
+      border-color: transparent;
+      color: var(--sm-brand-fg, var(--dsw-alias-bg-base, #ffffff));
     }
     .sm-btn.sm-btn-primary:hover:not(:disabled) {
-      background: var(--dsw-alias-Interactive-pri-hover, #0369a1);
+      opacity: 0.9;
     }
     .sm-btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
       padding: 4px 8px;
       font-size: 11.5px;
-      border-color: transparent;
+      border-radius: 6px;
+      border: 1px solid transparent;
       background: transparent;
-      color: var(--dsw-alias-label-sec, #475569);
+      color: var(--sm-fg-secondary, var(--dsw-alias-label-secondary, #475569));
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.12s ease, color 0.12s ease;
     }
     .sm-btn-ghost:hover:not(:disabled) {
-      background: var(--dsw-alias-bg-elevated, #f1f5f9);
-      color: var(--dsw-alias-label-pri, #0f172a);
+      background: var(--sm-bg-layer2, var(--dsw-alias-bg-layer-2, rgba(148, 163, 184, 0.16)));
+      color: var(--sm-fg-primary, var(--dsw-alias-label-primary, #0f172a));
     }
-    .sm-btn:disabled {
-      opacity: 0.55;
+    .sm-btn:disabled, .sm-btn-ghost:disabled {
+      opacity: 0.48;
       cursor: not-allowed;
     }
     .sm-input {
@@ -556,21 +765,22 @@ window.__ModuleLoader__.load({
       padding: 7px 10px;
       font-size: 12.5px;
       border-radius: 7px;
-      border: 1px solid var(--dsw-alias-border-def, #cbd5e1);
-      background: var(--dsw-alias-bg-base, #f8fafc);
-      color: var(--dsw-alias-label-pri, #0f172a);
+      border: 1px solid var(--sm-border-l2, var(--dsw-alias-border-l2, rgba(148, 163, 184, 0.36)));
+      background: var(--sm-bg-input, var(--dsw-specific-input-major, #f8fafc));
+      color: var(--sm-fg-primary, var(--dsw-alias-label-primary, #0f172a));
       outline: none;
+      transition: border-color 0.14s ease;
     }
     .sm-input:focus {
-      border-color: var(--dsw-alias-Interactive-pri, #0284c7);
+      border-color: var(--sm-accent, var(--dsw-alias-link, #0284c7));
     }
     .sm-code-inline {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 11.5px;
-      padding: 3px 7px;
+      padding: 2.5px 6px;
       border-radius: 5px;
-      background: var(--dsw-alias-bg-elevated, #f1f5f9);
-      color: var(--dsw-alias-label-pri, #0f172a);
+      background: var(--sm-bg-code, var(--dsw-alias-markdown-code-block, rgba(148, 163, 184, 0.14)));
+      color: var(--sm-fg-primary, var(--dsw-alias-label-primary, #0f172a));
     }
     .sm-badge {
       display: inline-flex;
@@ -582,17 +792,19 @@ window.__ModuleLoader__.load({
       font-weight: 600;
       white-space: nowrap;
       flex-shrink: 0;
-      background: rgba(14, 165, 233, 0.13);
-      color: var(--dsw-alias-Interactive-pri, #0284c7);
+      background: rgba(14, 165, 233, 0.14);
+      color: var(--sm-accent, var(--dsw-alias-link, #0284c7));
     }
     .sm-badge-moderator {
-      background: rgba(245, 158, 11, 0.15);
-      color: #b45309;
+      background: rgba(245, 158, 11, 0.16);
+      color: #d97706;
       border: 1px solid rgba(245, 158, 11, 0.34);
     }
     .sm-badge-unread {
       background: #ef4444;
       color: #ffffff;
+      min-width: 18px;
+      justify-content: center;
     }
     .sm-inline-mention {
       display: inline-flex;
@@ -603,9 +815,9 @@ window.__ModuleLoader__.load({
       border-radius: 6px;
       font-size: 12px;
       font-weight: 600;
-      background: rgba(139, 92, 246, 0.14);
-      color: #7c3aed;
-      border: 1px solid rgba(139, 92, 246, 0.28);
+      background: rgba(139, 92, 246, 0.15);
+      color: #8b5cf6;
+      border: 1px solid rgba(139, 92, 246, 0.3);
       vertical-align: baseline;
     }
     .sm-inline-file {
@@ -618,8 +830,8 @@ window.__ModuleLoader__.load({
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 11.5px;
       background: rgba(14, 165, 233, 0.13);
-      color: var(--dsw-alias-Interactive-pri, #0284c7);
-      border: 1px solid rgba(14, 165, 233, 0.28);
+      color: var(--sm-accent, var(--dsw-alias-link, #0284c7));
+      border: 1px solid rgba(14, 165, 233, 0.3);
       vertical-align: baseline;
     }
     .sm-row {
@@ -632,23 +844,68 @@ window.__ModuleLoader__.load({
       border-radius: 8px;
       font-size: 12px;
       background: rgba(239, 68, 68, 0.12);
-      color: #dc2626;
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      color: var(--dsw-alias-state-error-primary, #dc2626);
     }
     .sm-toast {
       padding: 7px 12px;
       border-radius: 8px;
       font-size: 12px;
-      background: rgba(16, 185, 129, 0.14);
-      color: #059669;
+      background: rgba(16, 185, 129, 0.13);
+      border: 1px solid rgba(16, 185, 129, 0.28);
+      color: var(--dsw-alias-state-success-primary, #059669);
     }
 
-    /* --- Left Sidebar Main View: Minimalist IM & Team Groups --- */
+    /* --- Avatars & Status Dots --- */
+    .sm-avatar {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+      border: 1px solid transparent;
+      user-select: none;
+    }
+    .sm-avatar-sm {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      font-size: 11.5px;
+    }
+    .sm-avatar-dot {
+      position: absolute;
+      right: -2px;
+      bottom: -2px;
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      border: 1.8px solid var(--sm-bg-sidebar);
+      background: #10b981;
+    }
+    .sm-avatar-dot.offline {
+      background: #94a3b8;
+    }
+    .sm-avatar-dot.err {
+      background: #ef4444;
+    }
+    .sm-avatar-dot.live {
+      background: var(--sm-accent);
+      animation: sm-ring-pulse 1.5s infinite;
+    }
+
+    /* --- Left Sidebar Main View: Polished IM & Team Groups --- */
     .sm-chat-shell {
       display: grid;
-      grid-template-columns: 268px 1fr;
+      grid-template-columns: 276px 1fr;
       height: 100%;
       min-height: 560px;
       overflow: hidden;
+      position: relative;
     }
     @media (max-width: 860px) {
       .sm-chat-shell {
@@ -658,13 +915,13 @@ window.__ModuleLoader__.load({
     .sm-conv-sidebar {
       display: flex;
       flex-direction: column;
-      border-right: 1px solid var(--dsw-alias-border-def, #e2e8f0);
-      background: var(--dsw-alias-bg-surface, #ffffff);
+      border-right: 1px solid var(--sm-border-l1);
+      background: var(--sm-bg-sidebar);
       overflow: hidden;
     }
     .sm-conv-top {
       padding: 14px 14px 10px;
-      border-bottom: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+      border-bottom: 1px solid var(--sm-border-l1);
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -683,9 +940,9 @@ window.__ModuleLoader__.load({
     }
     .sm-group-drawer {
       padding: 10px 12px;
-      border-radius: 8px;
-      background: var(--dsw-alias-bg-elevated, #f1f5f9);
-      border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+      border-radius: 9px;
+      background: var(--sm-bg-layer2);
+      border: 1px solid var(--sm-border-l1);
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -703,94 +960,318 @@ window.__ModuleLoader__.load({
       border-radius: 6px;
       font-size: 11.5px;
       white-space: nowrap;
-      background: var(--dsw-alias-bg-surface, #ffffff);
-      border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+      background: var(--sm-bg-layer1);
+      border: 1px solid var(--sm-border-l1);
       cursor: pointer;
     }
     .sm-conv-list {
       flex: 1;
       overflow-y: auto;
-      padding: 10px;
+      padding: 8px;
       display: flex;
       flex-direction: column;
-      gap: 5px;
+      gap: 4px;
     }
     .sm-room-item {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 9px 11px;
-      border-radius: 8px;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 10px;
       border: 1px solid transparent;
       background: transparent;
       cursor: pointer;
       text-align: left;
-      transition: background 0.12s ease;
+      transition: background 0.12s ease, border-color 0.12s ease;
     }
     .sm-room-item:hover {
-      background: var(--dsw-alias-bg-elevated, #f1f5f9);
+      background: var(--sm-bg-layer2);
     }
     .sm-room-item.active {
-      border-color: rgba(14, 165, 233, 0.35);
-      background: rgba(14, 165, 233, 0.1);
+      border-color: color-mix(in srgb, var(--sm-accent) 34%, transparent);
+      background: var(--dsw-specific-sidebar-nav-item-active, rgba(14, 165, 233, 0.11));
+    }
+    .sm-room-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .sm-room-top-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .sm-room-name {
+      font-size: 13px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--sm-fg-primary);
+    }
+    .sm-room-time {
+      font-size: 10.5px;
+      color: var(--sm-fg-secondary);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .sm-room-preview-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .sm-room-preview {
+      font-size: 11.5px;
+      color: var(--sm-fg-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sm-room-preview.live {
+      color: var(--sm-accent);
+      font-weight: 500;
+    }
+
+    /* --- Right Chat Workspace (with optional Inspector Drawer) --- */
+    .sm-chat-stage {
+      display: flex;
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+      overflow: hidden;
+      position: relative;
     }
     .sm-chat-main {
       display: flex;
       flex-direction: column;
+      flex: 1;
+      min-width: 0;
       height: 100%;
       min-height: 520px;
-      background: var(--dsw-alias-bg-base, #f8fafc);
+      background: var(--sm-bg-base);
       overflow: hidden;
+      position: relative;
     }
     .sm-chat-header {
-      padding: 12px 18px;
-      background: var(--dsw-alias-bg-surface, #ffffff);
-      border-bottom: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+      padding: 11px 18px;
+      background: var(--sm-bg-layer1);
+      border-bottom: 1px solid var(--sm-border-l1);
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
       flex-wrap: wrap;
+    }
+    .sm-header-left {
+      display: flex;
+      align-items: center;
       gap: 10px;
+      min-width: 0;
+      flex: 1 1 240px;
+    }
+    .sm-header-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 0;
+    }
+    .sm-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
     }
     .sm-member-tag {
       display: inline-flex;
       align-items: center;
       gap: 4.5px;
-      padding: 2.5px 9px;
+      padding: 2px 8.5px;
       border-radius: 999px;
       font-size: 11px;
-      background: var(--dsw-alias-bg-elevated, #f1f5f9);
-      border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
-      color: var(--dsw-alias-label-pri, #0f172a);
+      background: var(--sm-bg-layer2);
+      border: 1px solid var(--sm-border-l1);
+      color: var(--sm-fg-primary);
       cursor: pointer;
       white-space: nowrap;
-      transition: border-color 0.12s ease;
+      transition: border-color 0.12s ease, background 0.12s ease;
     }
     .sm-member-tag.moderator {
-      background: rgba(245, 158, 11, 0.12);
-      border-color: rgba(245, 158, 11, 0.42);
-      color: #b45309;
+      background: rgba(245, 158, 11, 0.13);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #d97706;
       font-weight: 600;
     }
-    .sm-member-tag:hover {
-      border-color: var(--dsw-alias-Interactive-pri, #0284c7);
+    .sm-member-tag:hover:not(:disabled) {
+      border-color: var(--sm-accent);
     }
+    .sm-member-tag.busy {
+      border-color: color-mix(in srgb, var(--sm-accent) 55%, transparent);
+    }
+
+    /* --- Live Multi-Sandbox Collaboration Topology Strip --- */
+    .sm-topology-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 7px 18px;
+      background: color-mix(in srgb, var(--sm-accent) 7%, var(--sm-bg-layer1));
+      border-bottom: 1px solid color-mix(in srgb, var(--sm-accent) 22%, var(--sm-border-l1));
+      font-size: 11.5px;
+      color: var(--sm-fg-primary);
+    }
+    .sm-topo-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: 600;
+      color: var(--sm-accent);
+      white-space: nowrap;
+    }
+    .sm-topo-flow {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .sm-topo-node {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 9px;
+      border-radius: 999px;
+      background: var(--sm-bg-layer1);
+      border: 1px solid color-mix(in srgb, var(--sm-accent) 34%, var(--sm-border-l1));
+      font-weight: 500;
+    }
+    .sm-topo-edge {
+      color: var(--sm-accent);
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      opacity: 0.85;
+    }
+
+    /* --- Message Stream --- */
     .sm-messages {
       flex: 1;
-      padding: 16px 20px;
+      padding: 16px 20px 18px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
     .sm-topic-divider {
-      align-self: center;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      align-self: stretch;
+      margin: 6px 0;
       font-size: 11px;
-      color: var(--dsw-alias-label-sec, #64748b);
-      padding: 4px 12px;
-      opacity: 0.8;
+      color: var(--sm-fg-secondary);
     }
+    .sm-topic-divider::before,
+    .sm-topic-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--sm-border-l1);
+    }
+    .sm-system-pill {
+      align-self: center;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      color: var(--sm-fg-secondary);
+      background: var(--sm-bg-layer2);
+      border: 1px solid var(--sm-border-l1);
+      max-width: 90%;
+      text-align: center;
+    }
+
+    /* --- Collapsible Collaboration / Delegation Group --- */
+    .sm-collab-group {
+      align-self: flex-start;
+      width: min(88%, 720px);
+      border-radius: 10px;
+      border: 1px solid var(--sm-border-l1);
+      background: var(--sm-bg-layer1);
+      overflow: hidden;
+    }
+    .sm-collab-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      color: var(--sm-fg-primary);
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.12s ease;
+    }
+    .sm-collab-toggle:hover {
+      background: var(--sm-bg-layer2);
+    }
+    .sm-collab-summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+    .sm-collab-preview {
+      color: var(--sm-fg-secondary);
+      font-size: 11.5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sm-collab-steps {
+      border-top: 1px solid var(--sm-border-l1);
+      padding: 8px 12px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: var(--sm-bg-base);
+    }
+    .sm-collab-step {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--sm-border-l1);
+      background: var(--sm-bg-layer1);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 12.5px;
+    }
+    .sm-collab-step.dispatch {
+      border-left: 2.5px solid #f59e0b;
+    }
+    .sm-collab-step.report {
+      border-left: 2.5px solid #8b5cf6;
+    }
+    .sm-collab-step-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--sm-fg-secondary);
+    }
+
+    /* --- Typing / Live Indicators --- */
     @keyframes sm-dot-bounce {
       0%, 80%, 100% { transform: translateY(0) scale(0.8); opacity: 0.4; }
       40% { transform: translateY(-3px) scale(1.05); opacity: 1; }
@@ -804,12 +1285,9 @@ window.__ModuleLoader__.load({
       width: 6px;
       height: 6px;
       border-radius: 999px;
-      background: var(--dsw-alias-Interactive-pri, #0ea5e9);
+      background: var(--sm-accent, var(--dsw-alias-link, #0ea5e9));
       animation: sm-ring-pulse 1.5s infinite;
       flex-shrink: 0;
-    }
-    .sm-member-tag.busy {
-      border-color: rgba(14, 165, 233, 0.45);
     }
     .sm-typing-bubble {
       align-self: flex-start;
@@ -818,9 +1296,9 @@ window.__ModuleLoader__.load({
       gap: 8px;
       padding: 8px 13px;
       border-radius: 10px;
-      background: rgba(14, 165, 233, 0.07);
-      border: 1px dashed rgba(14, 165, 233, 0.35);
-      color: var(--dsw-alias-label-sec, #334155);
+      background: color-mix(in srgb, var(--sm-accent) 8%, var(--sm-bg-layer1));
+      border: 1px dashed color-mix(in srgb, var(--sm-accent) 42%, transparent);
+      color: var(--sm-fg-secondary);
       font-size: 12px;
       max-width: 82%;
     }
@@ -834,82 +1312,433 @@ window.__ModuleLoader__.load({
       width: 5px;
       height: 5px;
       border-radius: 999px;
-      background: var(--dsw-alias-Interactive-pri, #0284c7);
+      background: var(--sm-accent);
       animation: sm-dot-bounce 1.2s infinite ease-in-out;
     }
-    .sm-typing-dot:nth-child(2) {
-      animation-delay: 0.16s;
-    }
-    .sm-typing-dot:nth-child(3) {
-      animation-delay: 0.32s;
-    }
+    .sm-typing-dot:nth-child(2) { animation-delay: 0.16s; }
+    .sm-typing-dot:nth-child(3) { animation-delay: 0.32s; }
+
+    /* --- Chat Message Bubbles --- */
     .sm-msg {
-      max-width: 82%;
-      padding: 10px 13px;
-      border-radius: 10px;
-      background: var(--dsw-alias-bg-surface, #ffffff);
-      border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+      position: relative;
+      max-width: 84%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: var(--sm-bg-layer1);
+      border: 1px solid var(--sm-border-l1);
       display: flex;
       flex-direction: column;
-      gap: 5px;
+      gap: 6px;
       font-size: 13px;
       align-self: flex-start;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
     }
     .sm-msg.self {
       align-self: flex-end;
-      border-color: rgba(14, 165, 233, 0.38);
-      background: rgba(14, 165, 233, 0.08);
+      border-color: color-mix(in srgb, var(--sm-accent) 32%, var(--sm-border-l1));
+      background: var(--sm-bg-bubble-self);
     }
     .sm-msg.agent {
       border-left: 3px solid #8b5cf6;
+    }
+    .sm-msg.moderator-agent {
+      border-left: 3px solid #f59e0b;
     }
     .sm-msg-meta {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
+      gap: 12px;
       font-size: 11px;
-      color: var(--dsw-alias-label-sec, #64748b);
+      color: var(--sm-fg-secondary);
     }
     .sm-msg-author {
       display: inline-flex;
       align-items: center;
       gap: 5px;
       font-weight: 600;
-      color: var(--dsw-alias-label-pri, #0f172a);
+      color: var(--sm-fg-primary);
     }
-    .sm-file-card {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding: 7px 10px;
-      border-radius: 7px;
-      background: var(--dsw-alias-bg-elevated, #f1f5f9);
-      border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
-      font-size: 11.5px;
+    .sm-msg-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      opacity: 0;
+      transition: opacity 0.14s ease;
+    }
+    .sm-msg:hover .sm-msg-actions,
+    .sm-msg:focus-within .sm-msg-actions {
+      opacity: 1;
+    }
+    .sm-msg-act-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 6px;
+      border-radius: 5px;
+      border: none;
+      background: transparent;
+      color: var(--sm-fg-secondary);
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .sm-msg-act-btn:hover {
+      background: var(--sm-bg-layer2);
+      color: var(--sm-fg-primary);
     }
 
-    /* --- Unified Single Composer with @ and # Popover --- */
-    .sm-composer-wrap {
-      position: relative;
-      padding: 12px 18px 14px;
-      background: var(--dsw-alias-bg-surface, #ffffff);
-      border-top: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+    /* --- Rich Markdown Typography --- */
+    .sm-md {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      line-height: 1.58;
+      word-break: break-word;
+      color: var(--sm-fg-primary, var(--dsw-alias-label-primary, #0f172a));
+    }
+    .sm-md-p {
+      margin: 0;
+    }
+    .sm-md-h {
+      margin: 4px 0 0;
+      font-weight: 650;
+      line-height: 1.35;
+      color: var(--sm-fg-primary, var(--dsw-alias-label-primary, #0f172a));
+    }
+    .sm-md-h1 { font-size: 15.5px; }
+    .sm-md-h2 { font-size: 14.5px; }
+    .sm-md-h3 { font-size: 13.5px; }
+    .sm-md-h4 { font-size: 13px; }
+    .sm-md-hr {
+      border: none;
+      border-top: 1px solid var(--sm-border-l1, var(--dsw-alias-border-l1, rgba(148, 163, 184, 0.28)));
+      margin: 4px 0;
+    }
+    .sm-md-quote {
+      margin: 0;
+      padding: 5px 10px;
+      border-left: 3px solid var(--sm-accent, var(--dsw-alias-link, #0284c7));
+      background: color-mix(in srgb, var(--sm-accent, #0284c7) 6%, transparent);
+      border-radius: 0 6px 6px 0;
+      color: var(--sm-fg-secondary, var(--dsw-alias-label-secondary, #475569));
+    }
+    .sm-md-list {
+      margin: 0;
+      padding-left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .sm-md-inline-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--sm-bg-code, var(--dsw-alias-markdown-code-block, rgba(148, 163, 184, 0.16)));
+      border: 1px solid var(--sm-border-l1, var(--dsw-alias-border-l1, rgba(148, 163, 184, 0.22)));
+    }
+    .sm-md-codeblock {
+      border-radius: 8px;
+      border: 1px solid var(--sm-border-l1, var(--dsw-alias-border-l1, rgba(148, 163, 184, 0.26)));
+      background: var(--sm-bg-code, var(--dsw-alias-markdown-code-block, #f1f5f9));
+      overflow: hidden;
+    }
+    .sm-md-code-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 10px;
+      border-bottom: 1px solid var(--sm-border-l1, var(--dsw-alias-border-l1, rgba(148, 163, 184, 0.2)));
+      font-size: 11px;
+      color: var(--sm-fg-secondary, var(--dsw-alias-label-secondary, #64748b));
+    }
+    .sm-md-code-lang {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      text-transform: lowercase;
+    }
+    .sm-md-copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border-radius: 5px;
+      border: none;
+      background: transparent;
+      color: var(--sm-fg-secondary, var(--dsw-alias-label-secondary, #475569));
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .sm-md-copy-btn:hover {
+      background: rgba(148, 163, 184, 0.18);
+      color: var(--sm-fg-primary, var(--dsw-alias-label-primary, #0f172a));
+    }
+    .sm-md-pre {
+      margin: 0;
+      padding: 9px 12px;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .sm-md-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid var(--sm-border-l1, var(--dsw-alias-border-l1, rgba(148, 163, 184, 0.26)));
+    }
+    .sm-md-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .sm-md-table th,
+    .sm-md-table td {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--sm-border-l1, var(--dsw-alias-border-l1, rgba(148, 163, 184, 0.2)));
+      text-align: left;
+      vertical-align: top;
+    }
+    .sm-md-table thead th {
+      font-weight: 600;
+      background: var(--sm-bg-layer2, var(--dsw-alias-bg-layer-2, rgba(148, 163, 184, 0.1)));
+      white-space: nowrap;
+    }
+    .sm-md-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    .sm-md-link {
+      color: var(--sm-accent, var(--dsw-alias-link, #0284c7));
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    /* --- File Attachment Card & Preview Modal --- */
+    .sm-file-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      padding: 9px 11px;
+      border-radius: 9px;
+      background: var(--sm-bg-layer2);
+      border: 1px solid var(--sm-border-l1);
+      font-size: 12px;
+    }
+    .sm-file-card-info {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+      flex: 1 1 180px;
+    }
+    .sm-file-icon-box {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--sm-accent) 14%, transparent);
+      color: var(--sm-accent);
+      flex-shrink: 0;
+    }
+    .sm-file-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+    }
+    .sm-file-name {
+      font-weight: 600;
+      font-size: 12.5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sm-file-sub {
+      font-size: 11px;
+      color: var(--sm-fg-secondary);
+    }
+    .sm-file-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+    .sm-preview-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.54);
+      backdrop-filter: blur(2px);
+      z-index: 9000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .sm-preview-modal {
+      width: min(840px, 94vw);
+      max-height: 84vh;
+      display: flex;
+      flex-direction: column;
+      border-radius: 12px;
+      border: 1px solid var(--sm-border-l2);
+      background: var(--sm-bg-layer1);
+      color: var(--sm-fg-primary);
+      box-shadow: 0 20px 56px rgba(0, 0, 0, 0.28);
+      overflow: hidden;
+    }
+    .sm-preview-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--sm-border-l1);
+    }
+    .sm-preview-body {
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+      background: var(--sm-bg-base);
+    }
+    .sm-preview-pre {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .sm-preview-img {
+      max-width: 100%;
+      max-height: 66vh;
+      border-radius: 8px;
+      display: block;
+      margin: 0 auto;
+    }
+
+    /* --- Right Room Inspector & Shared Files Drawer --- */
+    .sm-detail-drawer {
+      width: 288px;
+      flex-shrink: 0;
+      border-left: 1px solid var(--sm-border-l1);
+      background: var(--sm-bg-layer1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    @media (max-width: 980px) {
+      .sm-detail-drawer {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 50;
+        box-shadow: -8px 0 28px rgba(0, 0, 0, 0.16);
+      }
+    }
+    .sm-drawer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--sm-border-l1);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .sm-drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .sm-drawer-section {
       display: flex;
       flex-direction: column;
       gap: 8px;
+    }
+    .sm-drawer-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--sm-fg-secondary);
+    }
+    .sm-topic-jump-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      padding: 6px 9px;
+      border-radius: 7px;
+      border: 1px solid var(--sm-border-l1);
+      background: var(--sm-bg-base);
+      color: var(--sm-fg-primary);
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .sm-topic-jump-btn:hover {
+      border-color: var(--sm-accent);
+    }
+
+    /* --- Drag & Drop Overlay --- */
+    .sm-drop-overlay {
+      position: absolute;
+      inset: 10px;
+      border-radius: 12px;
+      border: 2px dashed var(--sm-accent);
+      background: color-mix(in srgb, var(--sm-accent) 10%, var(--sm-bg-layer1));
+      z-index: 60;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--sm-accent);
+      pointer-events: none;
+    }
+
+    /* --- Unified Composer with @ / # / Upload & Reply Bar --- */
+    .sm-composer-wrap {
+      position: relative;
+      padding: 10px 18px 14px;
+      background: var(--sm-bg-layer1);
+      border-top: 1px solid var(--sm-border-l1);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sm-reply-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border-left: 3px solid var(--sm-accent);
+      background: var(--sm-bg-layer2);
+      font-size: 11.5px;
+      color: var(--sm-fg-secondary);
     }
     .sm-popover {
       position: absolute;
       left: 18px;
       right: 18px;
       bottom: calc(100% - 4px);
-      max-height: 220px;
+      max-height: 224px;
       overflow-y: auto;
-      background: var(--dsw-alias-bg-surface, #ffffff);
-      border: 1px solid var(--dsw-alias-border-def, #cbd5e1);
+      background: var(--sm-bg-layer1);
+      border: 1px solid var(--sm-border-l2);
       border-radius: 10px;
-      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
       padding: 6px;
       z-index: 40;
       display: flex;
@@ -920,7 +1749,7 @@ window.__ModuleLoader__.load({
       padding: 4px 8px;
       font-size: 11px;
       font-weight: 600;
-      color: var(--dsw-alias-label-sec, #64748b);
+      color: var(--sm-fg-secondary);
     }
     .sm-popover-item {
       display: flex;
@@ -933,11 +1762,11 @@ window.__ModuleLoader__.load({
       cursor: pointer;
       border: none;
       background: transparent;
-      color: var(--dsw-alias-label-pri, #0f172a);
+      color: var(--sm-fg-primary);
       text-align: left;
     }
     .sm-popover-item:hover, .sm-popover-item.active {
-      background: rgba(14, 165, 233, 0.12);
+      background: color-mix(in srgb, var(--sm-accent) 14%, transparent);
     }
     .sm-attached-files {
       display: flex;
@@ -951,46 +1780,47 @@ window.__ModuleLoader__.load({
       padding: 3px 9px;
       border-radius: 999px;
       font-size: 11.5px;
-      background: rgba(14, 165, 233, 0.12);
-      color: var(--dsw-alias-Interactive-pri, #0284c7);
-      border: 1px solid rgba(14, 165, 233, 0.28);
+      background: rgba(14, 165, 233, 0.13);
+      color: var(--sm-accent);
+      border: 1px solid rgba(14, 165, 233, 0.3);
     }
     .sm-composer-box {
       display: flex;
-      align-items: center;
-      gap: 8px;
+      align-items: flex-end;
+      gap: 7px;
       padding: 6px 8px;
-      border-radius: 9px;
-      border: 1px solid var(--dsw-alias-border-def, #cbd5e1);
-      background: var(--dsw-alias-bg-base, #f8fafc);
+      border-radius: 10px;
+      border: 1px solid var(--sm-border-l2);
+      background: var(--sm-bg-input);
+      transition: border-color 0.14s ease;
     }
     .sm-composer-box:focus-within {
-      border-color: var(--dsw-alias-Interactive-pri, #0284c7);
+      border-color: var(--sm-accent);
     }
     .sm-composer-input {
       flex: 1;
       min-width: 0;
       border: none;
       background: transparent;
-      color: var(--dsw-alias-label-pri, #0f172a);
+      color: var(--sm-fg-primary);
       font-size: 13px;
       font-family: inherit;
-      line-height: 1.45;
+      line-height: 1.48;
       padding: 4px 6px;
       outline: none;
       resize: none;
-      max-height: 120px;
+      max-height: 140px;
     }
     .sm-trigger-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
       border: 1px solid transparent;
       background: transparent;
-      color: var(--dsw-alias-label-sec, #475569);
+      color: var(--sm-fg-secondary);
       font-size: 13px;
       font-weight: 700;
       cursor: pointer;
@@ -998,20 +1828,164 @@ window.__ModuleLoader__.load({
       transition: all 0.12s ease;
     }
     .sm-trigger-btn:hover, .sm-trigger-btn.active {
-      background: rgba(14, 165, 233, 0.12);
-      color: var(--dsw-alias-Interactive-pri, #0284c7);
-      border-color: rgba(14, 165, 233, 0.28);
+      background: color-mix(in srgb, var(--sm-accent) 14%, transparent);
+      color: var(--sm-accent);
+      border-color: color-mix(in srgb, var(--sm-accent) 32%, transparent);
+    }
+
+    /* --- Native DSH Main-Chat Tool Call & Incoming Wake Cards --- */
+    .sm-tool-card {
+      border-radius: 9px;
+      border: 1px solid var(--dsw-alias-border-l1, rgba(148, 163, 184, 0.26));
+      background: var(--dsw-alias-bg-layer-1, rgba(148, 163, 184, 0.05));
+      color: var(--dsw-alias-label-primary, #0f172a);
+      overflow: hidden;
+      font-size: 12.5px;
+      margin: 2px 0;
+    }
+    .sm-tool-card.running {
+      border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary, #0284c7) 42%, transparent);
+    }
+    .sm-tool-card.error {
+      border-color: rgba(239, 68, 68, 0.36);
+    }
+    .sm-tool-head {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 11px;
+      border: none;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+    }
+    .sm-tool-head:hover:not(:disabled) {
+      background: var(--dsw-alias-bg-layer-2, rgba(148, 163, 184, 0.1));
+    }
+    .sm-tool-head-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+    .sm-tool-icon {
+      display: inline-flex;
+      color: var(--dsw-alias-state-business-primary, var(--dsw-alias-link, #0284c7));
+      flex-shrink: 0;
+    }
+    .sm-tool-title {
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .sm-tool-target {
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(139, 92, 246, 0.14);
+      color: #8b5cf6;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .sm-tool-preview {
+      color: var(--dsw-alias-label-secondary, #64748b);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sm-tool-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .sm-tool-status.running { color: var(--dsw-alias-state-business-primary, #0284c7); }
+    .sm-tool-status.ok { color: var(--dsw-alias-state-success-primary, #059669); }
+    .sm-tool-status.error { color: var(--dsw-alias-state-error-primary, #dc2626); }
+    .sm-tool-body {
+      border-top: 1px solid var(--dsw-alias-border-l1, rgba(148, 163, 184, 0.22));
+      padding: 10px 12px;
+      background: var(--dsw-alias-bg-base, transparent);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .sm-tool-section {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .sm-tool-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--dsw-alias-label-secondary, #64748b);
+    }
+    .sm-tool-files {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .sm-tool-roster {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .sm-wake-card {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      border: 1px solid var(--dsw-alias-border-l1, rgba(148, 163, 184, 0.28));
+      background: var(--dsw-alias-bg-layer-1, rgba(148, 163, 184, 0.06));
+      color: var(--dsw-alias-label-primary, inherit);
+    }
+    .sm-wake-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 12px;
+    }
+    .sm-wake-body {
+      font-size: 13px;
+    }
+    .sm-wake-raw {
+      margin: 0;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: var(--dsw-alias-markdown-code-block, rgba(148, 163, 184, 0.12));
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 260px;
+      overflow: auto;
     }
 
     /* --- Action variants, badges & confirmations --- */
     .sm-btn-sm {
-      padding: 3px 8px;
+      padding: 3.5px 8.5px;
       font-size: 11.5px;
     }
     .sm-btn-danger {
       background: rgba(239, 68, 68, 0.1);
-      border-color: rgba(239, 68, 68, 0.38);
-      color: #dc2626;
+      border-color: rgba(239, 68, 68, 0.36);
+      color: var(--dsw-alias-state-error-primary, #dc2626);
     }
     .sm-btn.sm-btn-danger:hover:not(:disabled) {
       background: #dc2626;
@@ -1019,16 +1993,16 @@ window.__ModuleLoader__.load({
       color: #ffffff;
     }
     .sm-badge-ok {
-      background: rgba(16, 185, 129, 0.14);
-      color: #059669;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--dsw-alias-state-success-primary, #059669);
     }
     .sm-badge-warn {
-      background: rgba(245, 158, 11, 0.15);
-      color: #b45309;
+      background: rgba(245, 158, 11, 0.16);
+      color: #d97706;
     }
     .sm-badge-err {
-      background: rgba(239, 68, 68, 0.12);
-      color: #dc2626;
+      background: rgba(239, 68, 68, 0.13);
+      color: var(--dsw-alias-state-error-primary, #dc2626);
     }
     .sm-confirm-bar {
       display: flex;
@@ -1041,16 +2015,7 @@ window.__ModuleLoader__.load({
       background: rgba(239, 68, 68, 0.08);
       border: 1px solid rgba(239, 68, 68, 0.28);
       font-size: 12px;
-      color: var(--dsw-alias-label-pri, #0f172a);
-    }
-    .sm-manage-strip {
-      padding: 10px 16px;
-      background: var(--dsw-alias-bg-elevated, #f1f5f9);
-      border-bottom: 1px solid var(--dsw-alias-border-def, #e2e8f0);
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      font-size: 12px;
+      color: var(--sm-fg-primary);
     }
     .sm-unpaired-banner {
       display: flex;
@@ -1063,17 +2028,17 @@ window.__ModuleLoader__.load({
       background: rgba(245, 158, 11, 0.1);
       border: 1px solid rgba(245, 158, 11, 0.32);
       font-size: 12.5px;
-      color: var(--dsw-alias-label-pri, #0f172a);
+      color: var(--sm-fg-primary);
     }
     .sm-onboarding-card {
       margin: auto;
       width: 100%;
-      max-width: 580px;
-      padding: 22px 24px;
-      border-radius: 12px;
-      background: var(--dsw-alias-bg-surface, #ffffff);
-      border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
-      box-shadow: 0 6px 24px rgba(15, 23, 42, 0.05);
+      max-width: 590px;
+      padding: 24px 26px;
+      border-radius: 14px;
+      background: var(--sm-bg-layer1);
+      border: 1px solid var(--sm-border-l1);
+      box-shadow: 0 8px 30px rgba(15, 23, 42, 0.07);
       display: flex;
       flex-direction: column;
       gap: 14px;
@@ -1084,8 +2049,8 @@ window.__ModuleLoader__.load({
       gap: 8px;
       padding: 12px 14px;
       border-radius: 9px;
-      background: var(--dsw-alias-bg-elevated, #f1f5f9);
-      border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+      background: var(--sm-bg-layer2);
+      border: 1px solid var(--sm-border-l1);
     }
     .sm-pair-step-head {
       display: flex;
@@ -1098,10 +2063,10 @@ window.__ModuleLoader__.load({
     .sm-invite-expiry {
       font-size: 11px;
       font-weight: 500;
-      color: var(--dsw-alias-label-sec, #475569);
+      color: var(--sm-fg-secondary);
     }
 
-    /* --- Settings View: Pairing & Node Config (No label wrap!) --- */
+    /* --- Settings View: Pairing, Presets & Node Config --- */
     .sm-root {
       display: flex;
       flex-direction: column;
@@ -1123,13 +2088,13 @@ window.__ModuleLoader__.load({
     .sm-subtitle {
       margin: 4px 0 0;
       font-size: 12.5px;
-      color: var(--dsw-alias-label-sec, #475569);
-      line-height: 1.45;
+      color: var(--sm-fg-secondary);
+      line-height: 1.48;
     }
     .sm-card {
-      background: var(--dsw-alias-bg-surface, #ffffff);
-      border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
-      border-radius: 10px;
+      background: var(--sm-bg-layer1);
+      border: 1px solid var(--sm-border-l1);
+      border-radius: 12px;
       padding: 16px 18px;
       display: flex;
       flex-direction: column;
@@ -1143,6 +2108,28 @@ window.__ModuleLoader__.load({
       align-items: center;
       justify-content: space-between;
       gap: 12px;
+    }
+    .sm-template-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      font-size: 11.5px;
+      color: var(--sm-fg-secondary);
+    }
+    .sm-template-pill {
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--sm-border-l2);
+      background: var(--sm-bg-base);
+      color: var(--sm-fg-primary);
+      font-size: 11.5px;
+      cursor: pointer;
+      transition: border-color 0.12s ease, background 0.12s ease;
+    }
+    .sm-template-pill:hover {
+      border-color: var(--sm-accent);
+      background: color-mix(in srgb, var(--sm-accent) 10%, transparent);
     }
     .sm-invite-box {
       display: flex;
@@ -1161,7 +2148,7 @@ window.__ModuleLoader__.load({
       white-space: nowrap;
       flex-shrink: 0;
       min-width: 130px;
-      color: var(--dsw-alias-label-sec, #334155);
+      color: var(--sm-fg-secondary);
     }
     .sm-invite-code {
       flex: 1;
@@ -1172,28 +2159,28 @@ window.__ModuleLoader__.load({
       font-size: 12px;
       padding: 5px 9px;
       border-radius: 6px;
-      background: var(--dsw-alias-bg-surface, #ffffff);
-      border: 1px solid var(--dsw-alias-border-def, #cbd5e1);
-      color: var(--dsw-alias-label-pri, #0f172a);
+      background: var(--sm-bg-input);
+      border: 1px solid var(--sm-border-l2);
+      color: var(--sm-fg-primary);
       outline: none;
       cursor: text;
     }
     .sm-invite-code:focus {
-      border-color: var(--dsw-alias-Interactive-pri, #0284c7);
+      border-color: var(--sm-accent);
     }
     .sm-peer-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 10px 12px;
-      border-radius: 8px;
-      background: var(--dsw-alias-bg-elevated, #f1f5f9);
-      border: 1px solid var(--dsw-alias-border-def, #e2e8f0);
+      padding: 11px 13px;
+      border-radius: 10px;
+      background: var(--sm-bg-layer2);
+      border: 1px solid var(--sm-border-l1);
     }
     .sm-advanced-details {
       font-size: 12px;
-      color: var(--dsw-alias-label-sec, #475569);
+      color: var(--sm-fg-secondary);
     }
     .sm-advanced-details summary {
       cursor: pointer;
@@ -1528,6 +2515,1142 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function CopyIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('rect', { x: 5.5, y: 5.5, width: 8, height: 8, rx: 1.6 }),
+        H('path', { d: 'M10.5 5.5V3.6C10.5 2.9 10 2.5 9.3 2.5H3.7C3 2.5 2.5 3 2.5 3.7V9.3C2.5 10 3 10.5 3.7 10.5H5.5' }),
+      )
+    }
+
+    function CheckIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.7,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M3.2 8.4L6.4 11.6L12.8 4.8' }),
+      )
+    }
+
+    function DownloadIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M8 2.4V10.2M5.2 7.5L8 10.4L10.8 7.5' }),
+        H('path', { d: 'M2.8 12.6H13.2' }),
+      )
+    }
+
+    function EyeIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M1.8 8C3.1 5.2 5.4 3.8 8 3.8C10.6 3.8 12.9 5.2 14.2 8C12.9 10.8 10.6 12.2 8 12.2C5.4 12.2 3.1 10.8 1.8 8Z' }),
+        H('circle', { cx: 8, cy: 8, r: 2 }),
+      )
+    }
+
+    function UploadIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M8 10.6V2.8M5.2 5.5L8 2.6L10.8 5.5' }),
+        H('path', { d: 'M2.8 12.6H13.2' }),
+      )
+    }
+
+    function ReplyIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M6.2 4.2L2.8 7.5L6.2 10.8' }),
+        H('path', { d: 'M3.2 7.5H9.6C11.6 7.5 13.2 9.1 13.2 11.1V12.4' }),
+      )
+    }
+
+    function ChevronIcon({ React, size = 12, rotated = false }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.6,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          style: {
+            transition: 'transform 0.15s ease',
+            transform: rotated ? 'rotate(90deg)' : 'rotate(0deg)',
+          },
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M6 4L10 8L6 12' }),
+      )
+    }
+
+    function SlidersIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M2.5 4.5H13.5M2.5 8H13.5M2.5 11.5H13.5' }),
+        H('circle', { cx: 5.5, cy: 4.5, r: 1.3, fill: 'currentColor' }),
+        H('circle', { cx: 10.5, cy: 8, r: 1.3, fill: 'currentColor' }),
+        H('circle', { cx: 6.5, cy: 11.5, r: 1.3, fill: 'currentColor' }),
+      )
+    }
+
+    function TopicIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M3 8H13M8 3V13' }),
+      )
+    }
+
+    function RefreshIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M13 8A5 5 0 1 1 11.4 4.3' }),
+        H('path', { d: 'M11.6 2.2V4.8H9' }),
+      )
+    }
+
+    function EditIcon({ React, size = 12 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M11.2 2.4L13.6 4.8L5.6 12.8H3.2V10.4L11.2 2.4Z' }),
+      )
+    }
+
+    function CloseIcon({ React, size = 13 }) {
+      const H = React.createElement
+      return H(
+        'svg',
+        {
+          xmlns: 'http://www.w3.org/2000/svg',
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.6,
+          strokeLinecap: 'round',
+          className: 'sm-icon',
+          'aria-hidden': 'true',
+        },
+        H('path', { d: 'M4 4L12 12M12 4L4 12' }),
+      )
+    }
+
+    // --- client/markdown.js ---
+    const AVATAR_PALETTE = [
+      { bg: 'rgba(14, 165, 233, 0.16)', fg: '#0284c7', border: 'rgba(14, 165, 233, 0.34)' },
+      { bg: 'rgba(139, 92, 246, 0.16)', fg: '#7c3aed', border: 'rgba(139, 92, 246, 0.34)' },
+      { bg: 'rgba(16, 185, 129, 0.16)', fg: '#059669', border: 'rgba(16, 185, 129, 0.34)' },
+      { bg: 'rgba(245, 158, 11, 0.16)', fg: '#d97706', border: 'rgba(245, 158, 11, 0.34)' },
+      { bg: 'rgba(236, 72, 153, 0.16)', fg: '#db2777', border: 'rgba(236, 72, 153, 0.34)' },
+      { bg: 'rgba(99, 102, 241, 0.16)', fg: '#4f46e5', border: 'rgba(99, 102, 241, 0.34)' },
+    ]
+
+    function avatarToneForSlug(slug) {
+      const s = String(slug || 'sandbox')
+      let hash = 0
+      for (let i = 0; i < s.length; i += 1) {
+        hash = ((hash * 31) + s.charCodeAt(i)) >>> 0
+      }
+      return AVATAR_PALETTE[hash % AVATAR_PALETTE.length]
+    }
+
+    function formatBytes(bytes) {
+      const n = Number(bytes) || 0
+      if (n < 1024) return `${n} B`
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(n >= 10 * 1024 ? 0 : 1)} KB`
+      return `${(n / (1024 * 1024)).toFixed(2)} MB`
+    }
+
+    function formatRelativeTime(ms, t) {
+      if (!ms || typeof ms !== 'number') return ''
+      const diffSec = Math.floor((Date.now() - ms) / 1000)
+      if (diffSec < 45) return typeof t === 'function' ? t('timeJustNow') : 'just now'
+      if (diffSec < 3600) {
+        const mins = Math.max(1, Math.floor(diffSec / 60))
+        return `${mins}${typeof t === 'function' ? t('timeMinsAgo') : 'm ago'}`
+      }
+      const d = new Date(ms)
+      const now = new Date()
+      const pad = (v) => String(v).padStart(2, '0')
+      if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) {
+        return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+      }
+      return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}`
+    }
+
+    /**
+     * Strip Markdown punctuation, fenced code blocks, and verbose inline commands
+     * to produce crisp single-line previews for room lists and collapsed delegation cards.
+     */
+    function stripMarkdownForPreview(rawText, maxLen = 88) {
+      const raw = String(rawText || '')
+      if (!raw.trim()) return ''
+      const cleaned = raw
+        .replace(/```[\s\S]*?```/g, ' [code] ')
+        .replace(/`([^`\n]{1,60})`/g, '$1')
+        .replace(/`[^`\n]+`/g, '[code]')
+        .replace(/node\s+-e\s+['"][\s\S]{24,}?['"]/g, '[script]')
+        .replace(/@\[([^\]\n]+)\]\(dsh-mesh(?:-[a-z]+)?:[^)\s]+\)/g, '@$1')
+        .replace(/\[([^\]\n]+)\]\((?:https?:\/\/|mailto:)[^)\s]+\)/g, '$1')
+        .replace(/^#{1,6}\s+/gm, '')
+        .replace(/^>\s?/gm, '')
+        .replace(/\|[-:\s|]+\|/g, ' ')
+        .replace(/[*~_]+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (cleaned.length <= maxLen) return cleaned
+      return `${cleaned.slice(0, Math.max(12, maxLen - 1)).trimEnd()}…`
+    }
+
+    /**
+     * Localize stored English host system events so both historical and newly created rooms
+     * display clean localized event pills.
+     */
+    function localizeSystemMessage(rawText, t) {
+      const text = String(rawText || '').trim()
+      if (!text || typeof t !== 'function') return text
+
+      let m = text.match(/^Paired with (.+) via Traefik mesh\.?$/i)
+      if (m) return `${t('sysPairedWith')} ${m[1]}`
+
+      m = text.match(/^(.+) paired with this sandbox\.?$/i)
+      if (m) return `${m[1]} ${t('sysPairedSelf')}`
+
+      m = text.match(/^(.+) unpaired from this sandbox\.?$/i)
+      if (m) return `${m[1]} ${t('sysUnpairedBy')}`
+
+      m = text.match(/^Created group "([^"]+)" \(Moderator: (@[^)]+)\) with (.+)\.?$/i)
+      if (m) return `${t('sysGroupCreated')}「${m[1]}」· ${t('moderatorBadge')} ${m[2]}`
+
+      m = text.match(/^(.+) invited (.+) to the group\.?$/i)
+      if (m) return `${m[1]} ${t('sysGroupInvited')} ${m[2]}`
+
+      m = text.match(/^Removed (@[a-z0-9_-]+) from group(?:\s+after unpairing)?(?:\s*\([^)]*\))?\.?$/i)
+      if (m) return `${m[1]} ${t('sysGroupRemoved')}`
+
+      m = text.match(/^(@[a-z0-9_-]+) unpaired and was removed from the group(?:\s*\([^)]*\))?\.?$/i)
+      if (m) return `${m[1]} ${t('sysGroupRemoved')}`
+
+      m = text.match(/^(@[a-z0-9_-]+) left the group(?:\s*\([^)]*\))?\.?$/i)
+      if (m) return `${m[1]} ${t('sysGroupLeft')}`
+
+      m = text.match(/^Group creator (@[a-z0-9_-]+) (?:dissolved\/left the group|unpaired); this group is disconnected\.?$/i)
+      if (m) return `${m[1]} ${t('sysGroupDissolved')}`
+
+      m = text.match(/^Renamed group to "([^"]+)"\.?$/i)
+      if (m) return `${t('sysGroupRenamed')}「${m[1]}」`
+
+      return text
+    }
+
+    function isSafeLinkHref(rawUrl) {
+      const str = String(rawUrl || '').trim()
+      return /^(https?:\/\/|mailto:)/i.test(str) ? str : ''
+    }
+
+    /**
+     * Render inline Markdown + Sandbox Mesh `@mention` & `#file` chips into React nodes (XSS-safe).
+     */
+    function renderInlineRichText(H, rawText, keyPrefix = 'in', depth = 0) {
+      const text = String(rawText ?? '')
+      if (!text) return ''
+      if (depth > 4) return text
+
+      const fakeReact = { createElement: H }
+      const tokenRe = /`([^`\n]+)`|@\[([^\]\n]+)\]\(dsh-mesh(?:-[a-z]+)?:[^)\s]+\)|\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)|\*\*([^*\n]+(?:\*(?!\*)[^*\n]*)*)\*\*|~~([^~\n]+)~~|\*([^*\s\n][^*\n]*?[^*\s\n]|[^*\s\n])\*|(?<![a-zA-Z0-9_.-])@([a-zA-Z0-9_-]{2,64})|(?<![a-zA-Z0-9_/.-])#([^\s#,:;!?()[\]{}]+(?:\.[^\s#,:;!?()[\]{}]+|\/[^\s#,:;!?()[\]{}]*))/g
+
+      const parts = []
+      let lastIdx = 0
+      let match
+      let idx = 0
+
+      while ((match = tokenRe.exec(text)) !== null) {
+        if (match.index > lastIdx) {
+          parts.push(text.slice(lastIdx, match.index))
+        }
+        const k = `${keyPrefix}-${idx++}`
+        if (match[1] !== undefined) {
+          parts.push(H('code', { key: k, className: 'sm-md-inline-code' }, match[1]))
+        } else if (match[2] !== undefined) {
+          const label = match[2].replace(/^@/, '')
+          parts.push(
+            H(
+              'span',
+              { key: k, className: 'sm-inline-mention' },
+              label === 'moderator'
+                ? ModeratorCrownIcon({ React: fakeReact, size: 12 })
+                : AgentIcon({ React: fakeReact, size: 12 }),
+              `@${label}`,
+            ),
+          )
+        } else if (match[3] !== undefined && match[4] !== undefined) {
+          const safeHref = isSafeLinkHref(match[4])
+          if (safeHref) {
+            parts.push(
+              H(
+                'a',
+                {
+                  key: k,
+                  className: 'sm-md-link',
+                  href: safeHref,
+                  target: '_blank',
+                  rel: 'noopener noreferrer',
+                },
+                renderInlineRichText(H, match[3], `${k}a`, depth + 1),
+              ),
+            )
+          } else {
+            parts.push(match[0])
+          }
+        } else if (match[5] !== undefined) {
+          parts.push(H('strong', { key: k }, renderInlineRichText(H, match[5], `${k}b`, depth + 1)))
+        } else if (match[6] !== undefined) {
+          parts.push(H('del', { key: k }, renderInlineRichText(H, match[6], `${k}s`, depth + 1)))
+        } else if (match[7] !== undefined) {
+          parts.push(H('em', { key: k }, renderInlineRichText(H, match[7], `${k}i`, depth + 1)))
+        } else if (match[8] !== undefined) {
+          const label = match[8].replace(/^@/, '')
+          parts.push(
+            H(
+              'span',
+              { key: k, className: 'sm-inline-mention' },
+              label === 'moderator'
+                ? ModeratorCrownIcon({ React: fakeReact, size: 12 })
+                : AgentIcon({ React: fakeReact, size: 12 }),
+              `@${label}`,
+            ),
+          )
+        } else if (match[9] !== undefined) {
+          if (/^[0-9a-fA-F]{3,8}$/.test(match[9])) {
+            parts.push(match[0])
+          } else {
+            parts.push(
+              H(
+                'span',
+                { key: k, className: 'sm-inline-file' },
+                FileDocIcon({ React: fakeReact, size: 12 }),
+                `#${match[9]}`,
+              ),
+            )
+          }
+        }
+        lastIdx = match.index + match[0].length
+      }
+
+      if (parts.length === 0) return text
+      if (lastIdx < text.length) {
+        parts.push(text.slice(lastIdx))
+      }
+      return parts
+    }
+
+    function splitTableRow(line) {
+      let trimmed = line.trim()
+      if (trimmed.startsWith('|')) trimmed = trimmed.slice(1)
+      if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1)
+      const cells = []
+      let cur = ''
+      let inCode = false
+      for (let i = 0; i < trimmed.length; i += 1) {
+        const ch = trimmed[i]
+        if (ch === '`') {
+          inCode = !inCode
+          cur += ch
+        } else if (ch === '\\' && i + 1 < trimmed.length && trimmed[i + 1] === '|') {
+          cur += '|'
+          i += 1
+        } else if (ch === '|' && !inCode) {
+          cells.push(cur.trim())
+          cur = ''
+        } else {
+          cur += ch
+        }
+      }
+      cells.push(cur.trim())
+      return cells
+    }
+
+    function isTableSeparatorLine(line) {
+      const trimmed = String(line || '').trim()
+      if (!trimmed.includes('|') && !trimmed.includes('-')) return false
+      return /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(trimmed)
+    }
+
+    function parseTableAlignments(sepLine) {
+      return splitTableRow(sepLine).map((cell) => {
+        const c = cell.trim()
+        const left = c.startsWith(':')
+        const right = c.endsWith(':')
+        if (left && right) return 'center'
+        if (right) return 'right'
+        return 'left'
+      })
+    }
+
+    function isBlockBoundary(lines, i) {
+      const line = lines[i]
+      if (line === undefined) return true
+      const t = line.trim()
+      if (!t) return true
+      if (/^```/.test(t)) return true
+      if (/^#{1,4}\s+/.test(t)) return true
+      if (/^(?:---+|\*\*\*+|___+)$/.test(t)) return true
+      if (/^>\s?/.test(t)) return true
+      if (/^(?:[-*•]\s+|\d+[.)]\s+)/.test(t)) return true
+      if (line.includes('|') && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1])) return true
+      return false
+    }
+
+    /**
+     * Full block + inline Markdown renderer for Sandbox Mesh chat bubbles & previews.
+     * Zero external dependencies, XSS-safe (never uses innerHTML), preserves `@` and `#` chips.
+     */
+    function renderMarkdownMessage(
+      H,
+      rawText,
+      {
+        keyPrefix = 'md',
+        onCopyCode = null,
+        copiedCodeKey = '',
+        t = null,
+      } = {},
+    ) {
+      const source = String(rawText ?? '').replace(/\r\n?/g, '\n')
+      if (!source.trim()) return ''
+
+      const fakeReact = { createElement: H }
+      const lines = source.split('\n')
+      const blocks = []
+      let i = 0
+      let blockIdx = 0
+
+      while (i < lines.length) {
+        const line = lines[i]
+        const trimmed = line.trim()
+
+        if (!trimmed) {
+          i += 1
+          continue
+        }
+
+        const bk = `${keyPrefix}-b${blockIdx++}`
+
+        // 1. Fenced code block ```lang
+        const fenceMatch = trimmed.match(/^```([a-zA-Z0-9_+#.-]*)\s*$/)
+        if (fenceMatch) {
+          const lang = fenceMatch[1] || 'text'
+          const codeLines = []
+          i += 1
+          while (i < lines.length && !/^```\s*$/.test(lines[i].trim())) {
+            codeLines.push(lines[i])
+            i += 1
+          }
+          if (i < lines.length) i += 1
+          const codeText = codeLines.join('\n')
+          const isCopied = copiedCodeKey && copiedCodeKey === bk
+          blocks.push(
+            H(
+              'div',
+              { key: bk, className: 'sm-md-codeblock' },
+              H(
+                'div',
+                { className: 'sm-md-code-head' },
+                H('span', { className: 'sm-md-code-lang' }, lang),
+                typeof onCopyCode === 'function'
+                  ? H(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'sm-md-copy-btn',
+                        onClick: () => onCopyCode(codeText, bk),
+                      },
+                      isCopied
+                        ? CheckIcon({ React: fakeReact, size: 11 })
+                        : CopyIcon({ React: fakeReact, size: 11 }),
+                      isCopied
+                        ? (typeof t === 'function' ? t('copiedCodeBtn') : 'Copied')
+                        : (typeof t === 'function' ? t('copyCodeBtn') : 'Copy'),
+                    )
+                  : null,
+              ),
+              H('pre', { className: 'sm-md-pre' }, H('code', null, codeText)),
+            ),
+          )
+          continue
+        }
+
+        // 2. Headings (# .. ####)
+        const headMatch = trimmed.match(/^(#{1,4})\s+(.+)$/)
+        if (headMatch) {
+          const level = headMatch[1].length
+          const tag = `h${Math.min(6, level + 2)}`
+          blocks.push(
+            H(
+              tag,
+              { key: bk, className: `sm-md-h sm-md-h${level}` },
+              renderInlineRichText(H, headMatch[2], `${bk}-h`),
+            ),
+          )
+          i += 1
+          continue
+        }
+
+        // 3. Horizontal rule
+        if (/^(?:---+|\*\*\*+|___+)$/.test(trimmed)) {
+          blocks.push(H('hr', { key: bk, className: 'sm-md-hr' }))
+          i += 1
+          continue
+        }
+
+        // 4. GFM Table
+        if (line.includes('|') && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1])) {
+          const headers = splitTableRow(line)
+          const aligns = parseTableAlignments(lines[i + 1])
+          i += 2
+          const rows = []
+          while (i < lines.length && lines[i].trim() && lines[i].includes('|') && !isTableSeparatorLine(lines[i])) {
+            rows.push(splitTableRow(lines[i]))
+            i += 1
+          }
+          blocks.push(
+            H(
+              'div',
+              { key: bk, className: 'sm-md-table-wrap' },
+              H(
+                'table',
+                { className: 'sm-md-table' },
+                H(
+                  'thead',
+                  null,
+                  H(
+                    'tr',
+                    null,
+                    ...headers.map((cell, ci) =>
+                      H(
+                        'th',
+                        { key: `${bk}-th-${ci}`, style: aligns[ci] ? { textAlign: aligns[ci] } : undefined },
+                        renderInlineRichText(H, cell, `${bk}-th-${ci}`),
+                      ),
+                    ),
+                  ),
+                ),
+                rows.length > 0
+                  ? H(
+                      'tbody',
+                      null,
+                      ...rows.map((row, ri) =>
+                        H(
+                          'tr',
+                          { key: `${bk}-tr-${ri}` },
+                          ...headers.map((_, ci) =>
+                            H(
+                              'td',
+                              { key: `${bk}-td-${ri}-${ci}`, style: aligns[ci] ? { textAlign: aligns[ci] } : undefined },
+                              renderInlineRichText(H, row[ci] ?? '', `${bk}-td-${ri}-${ci}`),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : null,
+              ),
+            ),
+          )
+          continue
+        }
+
+        // 5. Blockquote
+        if (/^>\s?/.test(trimmed)) {
+          const qLines = []
+          while (i < lines.length && /^>\s?/.test(lines[i].trim())) {
+            qLines.push(lines[i].trim().replace(/^>\s?/, ''))
+            i += 1
+          }
+          blocks.push(
+            H(
+              'blockquote',
+              { key: bk, className: 'sm-md-quote' },
+              renderMarkdownMessage(H, qLines.join('\n'), { keyPrefix: `${bk}-q`, onCopyCode, copiedCodeKey, t }),
+            ),
+          )
+          continue
+        }
+
+        // 6. Unordered or Ordered List
+        const ulMatch = trimmed.match(/^[-*•]\s+(.+)$/)
+        const olMatch = !ulMatch ? trimmed.match(/^\d+[.)]\s+(.+)$/) : null
+        if (ulMatch || olMatch) {
+          const ordered = Boolean(olMatch)
+          const itemRe = ordered ? /^\d+[.)]\s+(.+)$/ : /^[-*•]\s+(.+)$/
+          const items = []
+          while (i < lines.length) {
+            const curTrim = lines[i].trim()
+            const m = curTrim.match(itemRe)
+            if (!m) break
+            items.push(m[1])
+            i += 1
+          }
+          blocks.push(
+            H(
+              ordered ? 'ol' : 'ul',
+              { key: bk, className: `sm-md-list${ordered ? ' ordered' : ''}` },
+              ...items.map((item, li) =>
+                H('li', { key: `${bk}-li-${li}` }, renderInlineRichText(H, item, `${bk}-li-${li}`)),
+              ),
+            ),
+          )
+          continue
+        }
+
+        // 7. Paragraph (collect lines until blank or next block element)
+        const paraLines = [line]
+        i += 1
+        while (i < lines.length && !isBlockBoundary(lines, i)) {
+          paraLines.push(lines[i])
+          i += 1
+        }
+        const paraChildren = []
+        paraLines.forEach((pLine, pi) => {
+          if (pi > 0) paraChildren.push(H('br', { key: `${bk}-br-${pi}` }))
+          const rendered = renderInlineRichText(H, pLine, `${bk}-p-${pi}`)
+          if (Array.isArray(rendered)) {
+            paraChildren.push(...rendered)
+          } else {
+            paraChildren.push(rendered)
+          }
+        })
+        blocks.push(H('p', { key: bk, className: 'sm-md-p' }, ...paraChildren))
+      }
+
+      return H('div', { className: 'sm-md' }, ...blocks)
+    }
+
+    // --- client/tool-views.js ---
+    function parseToolArgsSafe(block) {
+      if (!block || typeof block !== 'object') return {}
+      const direct = block.call?.args ?? block.args
+      if (direct && typeof direct === 'object' && !Array.isArray(direct)) {
+        return direct
+      }
+      const raw = block.call?.argsRaw ?? block.argsRaw ?? ''
+      if (typeof raw === 'string' && raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw)
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+        } catch {}
+      }
+      return {}
+    }
+
+    function extractToolOutputText(block) {
+      if (!block || typeof block !== 'object' || !Array.isArray(block.content)) return ''
+      const parts = []
+      for (const item of block.content) {
+        if (item && item.type === 'text' && typeof item.text === 'string' && item.text.trim()) {
+          parts.push(item.text.trim())
+        }
+      }
+      return parts.join('\n')
+    }
+
+    function parsePeerReplyOutput(rawOutput) {
+      const text = String(rawOutput || '').trim()
+      if (!text) return { header: '', body: '', files: [], isFailed: false }
+      const m = text.match(/^\[Remote (?:Agent|Group Moderator)\s+@([a-z0-9_-]+)[^\]]*\]:\s*\n?([\s\S]*)$/i)
+      let body = m ? m[2].trim() : text
+      const files = []
+      const fileMatch = body.match(/\nShared files saved at:\s*(.+)$/i)
+      if (fileMatch) {
+        body = body.slice(0, fileMatch.index).trim()
+        for (const f of fileMatch[1].split(',')) {
+          const clean = f.trim()
+          if (clean) files.push(clean)
+        }
+      }
+      return {
+        repliedBy: m ? m[1] : '',
+        body,
+        files,
+        isFailed: /^Mesh peer request failed|^Group discussion failed/i.test(text),
+      }
+    }
+
+    function parsePeersListOutput(rawOutput) {
+      const text = String(rawOutput || '').trim()
+      if (!text) return null
+      // Backwards compatible with historical JSON output stored in older sessions
+      if (text.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(text)
+          if (parsed && typeof parsed === 'object') {
+            return {
+              self: parsed.self || null,
+              peers: Array.isArray(parsed.peers) ? parsed.peers : [],
+              groups: Array.isArray(parsed.groups) ? parsed.groups : [],
+            }
+          }
+        } catch {}
+      }
+      return null
+    }
+
+    function parseRoomDisplayName(roomId, controller) {
+      const clean = String(roomId || '').trim()
+      if (!clean) return ''
+      const snap = controller?.getSnapshot?.()
+      const room = (snap?.state?.rooms || []).find((r) => r.id === clean)
+      if (room?.name) return room.name
+      if (clean.startsWith('pair:')) {
+        const selfSlug = snap?.state?.self?.slug || ''
+        const slugs = clean.split(':').slice(1)
+        const other = slugs.find((s) => s !== selfSlug) || slugs[0] || clean
+        return `@${other}`
+      }
+      return clean
+    }
+
+    function baseFileName(rawPath) {
+      const s = String(rawPath || '').trim()
+      if (!s) return ''
+      const parts = s.split(/[\\/]/)
+      return parts[parts.length - 1] || s
+    }
+
+    function parseIncomingWakePrompt(rawText) {
+      const text = String(rawText || '')
+      if (!text.startsWith('[SANDBOX MESH INCOMING ')) return null
+
+      const roomMatch = text.match(/Room:\s*"([^"]+)"\s*\(roomId:\s*"([^"]+)",\s*type:\s*(pair|group)\)/i)
+      const senderMatch = text.match(/Sender:\s*([^\n(]+?)\s*\(@([a-z0-9_-]+)/i)
+      const msgTagMatch = text.match(/<remote-mesh-message>\s*\n?([\s\S]*?)\n?\s*<\/remote-mesh-message>/i)
+      const legacyMsgMatch = !msgTagMatch ? text.match(/Message:\s*\n([\s\S]*?)(?:\n\nInstructions:|\nInstructions:|$)/i) : null
+
+      const body = (msgTagMatch?.[1] || legacyMsgMatch?.[1] || '').trim()
+      return {
+        roomName: roomMatch?.[1] || '',
+        roomId: roomMatch?.[2] || '',
+        roomType: roomMatch?.[3] || 'pair',
+        senderName: (senderMatch?.[1] || '').trim(),
+        senderSlug: senderMatch?.[2] || '',
+        body,
+        raw: text,
+      }
+    }
+
+    /**
+     * Native DSH `tool.call.toolview` renderer for all 5 `mesh_*` Harness tools.
+     * Replaces raw JSON tool rows in the main DSH conversation with clean Sandbox Mesh collaboration cards.
+     */
+    function createMeshToolView({ React, getLocale, subscribeLocale, controller }) {
+      const H = React.createElement
+      const { useState, useEffect } = React
+
+      return function MeshToolCallCard(props) {
+        const [, setTick] = useState(0)
+        const [localOpen, setLocalOpen] = useState(false)
+        const disclosure = typeof props.useDisclosure === 'function' ? props.useDisclosure() : null
+        const expanded = disclosure ? Boolean(disclosure.expanded) : localOpen
+        const toggleExpand = disclosure ? disclosure.toggle : () => setLocalOpen((v) => !v)
+
+        useEffect(() => {
+          if (typeof subscribeLocale !== 'function') return undefined
+          return subscribeLocale(() => setTick((n) => n + 1))
+        }, [])
+
+        const t = createTranslator(typeof getLocale === 'function' ? getLocale() : 'en')
+        const toolName = String(props.toolName || '')
+        const block = props.block || {}
+        const isDone = props.phase === 'result' || ('kind' in block)
+        const isRunning = !isDone
+        const args = parseToolArgsSafe(block)
+        const rawOutput = isDone ? extractToolOutputText(block) : ''
+        const isError = Boolean(isDone && (block.isError || block.error || parsePeerReplyOutput(rawOutput).isFailed))
+
+        let iconEl = MeshNavIcon({ React, size: 14 })
+        let titleText = t('toolAskPeerTitle')
+        let targetPill = ''
+        let summaryPreview = ''
+        let statusLabel = isRunning ? t('toolStateRunning') : isError ? t('toolStateError') : t('toolStateDone')
+
+        const parsedReply = parsePeerReplyOutput(rawOutput)
+        const parsedPeers = toolName === 'mesh_list_peers' ? parsePeersListOutput(rawOutput) : null
+
+        if (toolName === 'mesh_ask_peer') {
+          iconEl = AgentIcon({ React, size: 14 })
+          titleText = t('toolAskPeerTitle')
+          targetPill = args.targetSlug ? `@${String(args.targetSlug).replace(/^@/, '')}` : ''
+          summaryPreview = stripMarkdownForPreview(args.question || '', 84)
+          if (isDone && !isError) statusLabel = t('toolStateReplied')
+        } else if (toolName === 'mesh_discuss_group') {
+          iconEl = RoundtableIcon({ React, size: 14 })
+          titleText = t('toolDiscussGroupTitle')
+          const outGroupMatch = rawOutput.match(/^(?:Created task group|Reused group|Group)\s+"([^"]+)"\s+ready/i)
+          targetPill = args.groupName || outGroupMatch?.[1] || parseRoomDisplayName(args.roomId, controller) || ''
+          summaryPreview = stripMarkdownForPreview(args.topic || '', 84)
+        } else if (toolName === 'mesh_list_peers') {
+          iconEl = MeshNavIcon({ React, size: 14 })
+          titleText = t('toolListPeersTitle')
+          if (parsedPeers) {
+            summaryPreview = parsedPeers.peers.length > 0
+              ? `${parsedPeers.peers.length} ${t('toolConnectedNodes')}`
+              : t('toolNoNodes')
+          } else if (rawOutput) {
+            const countMatch = rawOutput.match(/Connected Sandboxes \((\d+)\)/i)
+            summaryPreview = countMatch ? `${countMatch[1]} ${t('toolConnectedNodes')}` : stripMarkdownForPreview(rawOutput, 72)
+          }
+        } else if (toolName === 'mesh_send_message') {
+          iconEl = AgentIcon({ React, size: 14 })
+          titleText = t('toolSendMsgTitle')
+          targetPill = parseRoomDisplayName(args.roomId, controller)
+          summaryPreview = stripMarkdownForPreview(args.text || '', 84)
+        } else if (toolName === 'mesh_share_file') {
+          iconEl = ClipIcon({ React, size: 14 })
+          titleText = t('toolShareFileTitle')
+          const fname = baseFileName(args.filePath)
+          const dest = parseRoomDisplayName(args.roomId, controller)
+          targetPill = fname && dest ? `${fname} → ${dest}` : (fname || dest)
+          summaryPreview = stripMarkdownForPreview(args.caption || '', 72)
+        }
+
+        const hasDetails = Boolean(
+          args.question || args.topic || args.text || args.filePath || rawOutput,
+        )
+
+        const statusClass = isRunning ? 'running' : isError ? 'error' : 'ok'
+
+        return H(
+          'div',
+          { className: `sm-tool-card ${statusClass}` },
+          H(
+            'button',
+            {
+              type: 'button',
+              className: 'sm-tool-head',
+              disabled: !hasDetails,
+              onClick: () => { if (hasDetails) toggleExpand() },
+            },
+            H(
+              'span',
+              { className: 'sm-tool-head-left' },
+              hasDetails ? ChevronIcon({ React, size: 11, rotated: expanded }) : null,
+              H('span', { className: 'sm-tool-icon' }, iconEl),
+              H('span', { className: 'sm-tool-title' }, titleText),
+              targetPill ? H('span', { className: 'sm-tool-target' }, targetPill) : null,
+              summaryPreview ? H('span', { className: 'sm-tool-preview' }, summaryPreview) : null,
+            ),
+            H(
+              'span',
+              { className: `sm-tool-status ${statusClass}` },
+              isRunning
+                ? H('span', { className: 'sm-dot-live' })
+                : !isError
+                  ? CheckIcon({ React, size: 11 })
+                  : null,
+              statusLabel,
+            ),
+          ),
+          expanded && hasDetails
+            ? H(
+                'div',
+                { className: 'sm-tool-body' },
+                toolName === 'mesh_ask_peer'
+                  ? H(
+                      React.Fragment || 'div',
+                      null,
+                      args.question
+                        ? H(
+                            'div',
+                            { className: 'sm-tool-section' },
+                            H('div', { className: 'sm-tool-section-label' }, t('toolRequestLabel')),
+                            renderMarkdownMessage(H, args.question, { keyPrefix: `t-req-${props.callId || '0'}`, t }),
+                          )
+                        : null,
+                      isDone && rawOutput
+                        ? H(
+                            'div',
+                            { className: 'sm-tool-section' },
+                            H(
+                              'div',
+                              { className: 'sm-tool-section-label' },
+                              `${t('toolReplyLabel')}${parsedReply.repliedBy ? ` · @${parsedReply.repliedBy}` : ''}`,
+                            ),
+                            renderMarkdownMessage(H, parsedReply.body || rawOutput, { keyPrefix: `t-rep-${props.callId || '0'}`, t }),
+                            parsedReply.files.length > 0
+                              ? H(
+                                  'div',
+                                  { className: 'sm-tool-files' },
+                                  H('span', { className: 'sm-tool-section-label' }, t('toolSharedFilesLabel')),
+                                  ...parsedReply.files.map((fp) =>
+                                    H(
+                                      'span',
+                                      { key: fp, className: 'sm-inline-file', title: fp },
+                                      FileDocIcon({ React, size: 11 }),
+                                      baseFileName(fp),
+                                    ),
+                                  ),
+                                )
+                              : null,
+                          )
+                        : null,
+                    )
+                  : toolName === 'mesh_list_peers' && parsedPeers
+                    ? H(
+                        'div',
+                        { className: 'sm-tool-roster' },
+                        parsedPeers.peers.length === 0
+                          ? H('div', { style: { fontSize: '12px', opacity: 0.72 } }, t('toolNoNodes'))
+                          : H(
+                              'div',
+                              { className: 'sm-peer-checks' },
+                              ...parsedPeers.peers.map((p) =>
+                                H(
+                                  'span',
+                                  { key: p.slug, className: 'sm-member-tag', style: { cursor: 'default' } },
+                                  AgentIcon({ React, size: 11 }),
+                                  `@${p.slug}${p.role ? ` · ${p.role}` : ''}`,
+                                ),
+                              ),
+                            ),
+                        parsedPeers.groups.length > 0
+                          ? H(
+                              'div',
+                              { className: 'sm-peer-checks', style: { marginTop: '6px' } },
+                              ...parsedPeers.groups.map((g) =>
+                                H(
+                                  'span',
+                                  { key: g.roomId, className: 'sm-member-tag moderator', style: { cursor: 'default' } },
+                                  ModeratorCrownIcon({ React, size: 11 }),
+                                  `${g.name} (${t('toolModeratorLabel')}: @${g.moderatorSlug})`,
+                                ),
+                              ),
+                            )
+                          : null,
+                      )
+                    : toolName === 'mesh_share_file'
+                      ? H(
+                          'div',
+                          { className: 'sm-tool-section' },
+                          H(
+                            'div',
+                            { className: 'sm-row', style: { flexWrap: 'wrap' } },
+                            H('span', { className: 'sm-inline-file' }, FileDocIcon({ React, size: 12 }), baseFileName(args.filePath)),
+                            targetPill ? H('span', { style: { fontSize: '12px', opacity: 0.75 } }, targetPill) : null,
+                          ),
+                          args.caption ? renderMarkdownMessage(H, args.caption, { keyPrefix: `t-file-${props.callId || '0'}`, t }) : null,
+                          isError && rawOutput ? H('div', { className: 'sm-alert', style: { marginTop: '6px' } }, rawOutput) : null,
+                        )
+                      : H(
+                          'div',
+                          { className: 'sm-tool-section' },
+                          (args.topic || args.text)
+                            ? renderMarkdownMessage(H, args.topic || args.text, { keyPrefix: `t-arg-${props.callId || '0'}`, t })
+                            : null,
+                          isDone && rawOutput
+                            ? renderMarkdownMessage(H, parsedReply.body || rawOutput, { keyPrefix: `t-out-${props.callId || '0'}`, t })
+                            : null,
+                        ),
+              )
+            : null,
+        )
+      }
+    }
+
+    /**
+     * Clean collapsible card for `[SANDBOX MESH INCOMING REQUEST]` messages when a user opens
+     * a Mesh Agent session inside the DSH sidebar, hiding XML wrapper tags & prompt boilerplate.
+     */
+    function createMeshWakePromptView({ React, getLocale }) {
+      const H = React.createElement
+      const { useState } = React
+
+      return function MeshWakePromptCard({ node, raw }) {
+        const [showRaw, setShowRaw] = useState(false)
+        const t = createTranslator(typeof getLocale === 'function' ? getLocale() : 'en')
+        const meta = node?.data || parseIncomingWakePrompt(raw) || {}
+        const senderText = meta.senderSlug
+          ? (meta.senderName && meta.senderName !== meta.senderSlug ? `${meta.senderName} (@${meta.senderSlug})` : `@${meta.senderSlug}`)
+          : ''
+
+        return H(
+          'div',
+          { className: 'sm-wake-card' },
+          H(
+            'div',
+            { className: 'sm-wake-head' },
+            H(
+              'span',
+              { className: 'sm-row', style: { gap: '6px', flexWrap: 'wrap' } },
+              MeshNavIcon({ React, size: 13 }),
+              H('strong', null, t('wakeCardTitle')),
+              senderText ? H('span', { className: 'sm-badge' }, `${t('wakeCardFrom')}: ${senderText}`) : null,
+              meta.roomName ? H('span', { className: 'sm-badge sm-badge-moderator' }, `${t('wakeCardRoom')}: ${meta.roomName}`) : null,
+            ),
+            H(
+              'button',
+              {
+                type: 'button',
+                className: 'sm-btn-ghost',
+                style: { fontSize: '11px' },
+                onClick: () => setShowRaw((v) => !v),
+              },
+              showRaw ? t('wakeCardHideRaw') : t('wakeCardShowRaw'),
+            ),
+          ),
+          showRaw
+            ? H('pre', { className: 'sm-wake-raw' }, raw || meta.raw || '')
+            : H(
+                'div',
+                { className: 'sm-wake-body' },
+                renderMarkdownMessage(H, meta.body || raw || '', { keyPrefix: 'wake', t }),
+              ),
+        )
+      }
+    }
+
     // --- client/mesh-controller.js ---
     const STATE_API = 'api/sandbox-mesh.state'
     const PROFILE_API = 'api/sandbox-mesh.profile'
@@ -1539,10 +3662,13 @@ window.__ModuleLoader__.load({
     const GROUP_MODERATE_API = 'api/sandbox-mesh.group-moderate'
     const GROUP_REMOVE_API = 'api/sandbox-mesh.group-remove'
     const GROUP_LEAVE_API = 'api/sandbox-mesh.group-leave'
+    const GROUP_RENAME_API = 'api/sandbox-mesh.group-rename'
     const ROOM_REMOVE_API = 'api/sandbox-mesh.room-remove'
     const NEW_TOPIC_API = 'api/sandbox-mesh.new-topic'
     const SEND_API = 'api/sandbox-mesh.send'
     const SEND_FILE_API = 'api/sandbox-mesh.send-file'
+    const FILE_DOWNLOAD_API = 'api/sandbox-mesh.file-download'
+    const FILE_UPLOAD_API = 'api/sandbox-mesh.file-upload'
     const MARK_READ_API = 'api/sandbox-mesh.mark-read'
     const PEER_REMOVE_API = 'api/sandbox-mesh.peer-remove'
     const PEER_PING_API = 'api/sandbox-mesh.peer-ping'
@@ -2068,6 +4194,130 @@ window.__ModuleLoader__.load({
         }
       }
 
+      async function renameGroup({ roomId, name }) {
+        busy = true
+        errorText = ''
+        notify()
+        try {
+          const data = await requestJson(GROUP_RENAME_API, {
+            method: 'POST',
+            body: JSON.stringify({
+              roomId: roomId || selectedRoomId,
+              name,
+            }),
+          })
+          if (data.state) applyServerState(data.state)
+          busy = false
+          setTransientStatus('statusGroupRenamed')
+          notify()
+          return data
+        } catch (err) {
+          busy = false
+          errorText = err?.message || String(err)
+          notify()
+          return null
+        }
+      }
+
+      async function uploadFile({ roomId, fileName, contentBase64, text = '' }) {
+        busy = true
+        errorText = ''
+        notify()
+        try {
+          const data = await requestJson(FILE_UPLOAD_API, {
+            method: 'POST',
+            body: JSON.stringify({
+              roomId: roomId || selectedRoomId,
+              fileName,
+              contentBase64,
+              text,
+            }),
+          })
+          if (data.state) applyServerState(data.state)
+          busy = false
+          setTransientStatus('statusFileSent', 2500)
+          notify()
+          return data
+        } catch (err) {
+          busy = false
+          errorText = err?.message || String(err)
+          notify()
+          return null
+        }
+      }
+
+      function getAttachmentUrl(roomId, msgId, { inline = false } = {}) {
+        const params = new URLSearchParams()
+        params.set('roomId', String(roomId || ''))
+        params.set('msgId', String(msgId || ''))
+        if (inline) params.set('inline', '1')
+        return `${FILE_DOWNLOAD_API}?${params.toString()}`
+      }
+
+      async function fetchAttachmentPreview({ roomId, msgId }) {
+        if (typeof fetchImpl !== 'function') {
+          return { ok: false, error: 'fetch is unavailable' }
+        }
+        try {
+          const url = getAttachmentUrl(roomId, msgId, { inline: true })
+          const res = await fetchImpl(url, { method: 'GET', credentials: 'same-origin' })
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}))
+            return { ok: false, error: errData.error || `HTTP ${res.status}` }
+          }
+          const kind = (res.headers?.get?.('x-mesh-preview-kind') || '').toLowerCase()
+          const contentType = res.headers?.get?.('content-type') || 'application/octet-stream'
+          if (kind === 'image' || contentType.startsWith('image/')) {
+            return { ok: true, kind: 'image', contentType, url }
+          }
+          if (kind === 'markdown' || kind === 'text' || contentType.startsWith('text/')) {
+            const text = await res.text()
+            return { ok: true, kind: kind || 'text', contentType, text }
+          }
+          return { ok: true, kind: 'binary', contentType, url }
+        } catch (err) {
+          return { ok: false, error: err?.message || String(err) }
+        }
+      }
+
+      async function pingAllPeers() {
+        const slugs = (state.peers || []).map((p) => p.slug).filter(Boolean)
+        if (slugs.length === 0) return []
+        busy = true
+        errorText = ''
+        notify()
+        try {
+          const results = await Promise.all(
+            slugs.map((slug) =>
+              requestJson(PEER_PING_API, {
+                method: 'POST',
+                body: JSON.stringify({ slug }),
+              }).catch((err) => ({ ok: false, slug, error: err?.message || String(err) })),
+            ),
+          )
+          await syncFromHost()
+          busy = false
+          const anyOnline = results.some((r) => r?.reachable)
+          setTransientStatus(anyOnline ? 'statusPingOnline' : 'statusPingOffline', 3500)
+          notify()
+          return results
+        } catch (err) {
+          busy = false
+          errorText = err?.message || String(err)
+          notify()
+          return []
+        }
+      }
+
+      function getUnreadSummary() {
+        const totalUnread = (state.rooms || []).reduce((sum, r) => sum + (Number(r.unreadCount) || 0), 0)
+        const activeCount = Object.values(state.activeStatuses || {}).reduce(
+          (sum, list) => sum + (Array.isArray(list) ? list.length : 0),
+          0,
+        )
+        return { totalUnread, activeCount }
+      }
+
       function clearNotice() {
         errorText = ''
         setTransientStatus('', 0)
@@ -2103,15 +4353,21 @@ window.__ModuleLoader__.load({
         createGroup,
         inviteToGroup,
         updateGroupModeration,
+        renameGroup,
         removeFromGroup,
         leaveGroup,
         removeRoom,
         startNewTopic,
         sendMessage,
         sendFile,
+        uploadFile,
+        getAttachmentUrl,
+        fetchAttachmentPreview,
         selectRoom,
         removePeer,
         pingPeer,
+        pingAllPeers,
+        getUnreadSummary,
         clearNotice,
         setError,
         dispose() {
@@ -2236,7 +4492,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function renderPeerStatusBadge(H, t, status) {
+    function renderPeerStatusBadge(H, t, status, latencyMs = null) {
       const s = String(status || 'online')
       if (s === 'unpaired-by-peer') {
         return H('span', { className: 'sm-badge sm-badge-err' }, t('peerStatusUnpaired'))
@@ -2244,7 +4500,34 @@ window.__ModuleLoader__.load({
       if (s === 'offline') {
         return H('span', { className: 'sm-badge sm-badge-warn' }, t('peerStatusOffline'))
       }
-      return H('span', { className: 'sm-badge sm-badge-ok' }, t('peerStatusOnline'))
+      const latPart = typeof latencyMs === 'number' && Number.isFinite(latencyMs)
+        ? ` · ${Math.round(latencyMs)}${t('latencyUnit')}`
+        : ''
+      return H('span', { className: 'sm-badge sm-badge-ok' }, `${t('peerStatusOnline')}${latPart}`)
+    }
+
+    function renderRoomAvatar(H, React, room, { status = 'online', isBusy = false, small = false } = {}) {
+      const seed = room.type === 'group' ? (room.id || room.name) : (room.peerSlug || room.name)
+      const tone = avatarToneForSlug(seed)
+      const initial = String(room.name || room.peerSlug || '?').trim().slice(0, 1).toUpperCase()
+      const dotClass = isBusy
+        ? 'sm-avatar-dot live'
+        : room.unpaired || status === 'unpaired-by-peer'
+          ? 'sm-avatar-dot err'
+          : status === 'offline'
+            ? 'sm-avatar-dot offline'
+            : 'sm-avatar-dot'
+
+      return H(
+        'span',
+        {
+          className: `sm-avatar${small ? ' sm-avatar-sm' : ''}`,
+          style: { background: tone.bg, color: tone.fg, borderColor: tone.border },
+          'aria-hidden': 'true',
+        },
+        room.type === 'group' ? RoundtableIcon({ React, size: small ? 14 : 16 }) : initial,
+        H('span', { className: dotClass }),
+      )
     }
 
     function PairingSection({
@@ -2320,7 +4603,6 @@ window.__ModuleLoader__.load({
       return H(
         'div',
         { style: { display: 'flex', flexDirection: 'column', gap: compact ? '10px' : '12px' } },
-        // Option 1: Generate & copy invite
         H(
           'div',
           { className: 'sm-pair-step' },
@@ -2410,7 +4692,6 @@ window.__ModuleLoader__.load({
             : null,
         ),
 
-        // Option 2: Paste peer code / URL
         H(
           'div',
           { className: 'sm-pair-step' },
@@ -2425,6 +4706,7 @@ window.__ModuleLoader__.load({
               placeholder: t('pairInputPlaceholder'),
               onChange: (e) => setPairInput(e.target?.value || ''),
               onKeyDown: (e) => {
+                if (e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) return
                 if (e.key === 'Enter') {
                   e.preventDefault?.()
                   void handlePairSubmit()
@@ -2446,47 +4728,8 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function renderRichMessageText(H, rawText) {
-      const text = String(rawText ?? '')
-      if (!text) return ''
-      const fakeReact = { createElement: H }
-      const tokenRe = /@\[([^\]\n]+)\]\(dsh-mesh(?:-[a-z]+)?:[^)\s]+\)|(?<!\S)@([a-zA-Z0-9_-]{2,64})|(?<!\S)#([^\s#,:;!?()[\]{}]+(?:\.[^\s#,:;!?()[\]{}]+|\/[^\s#,:;!?()[\]{}]*))/g
-      const parts = []
-      let lastIdx = 0
-      let match
-      while ((match = tokenRe.exec(text)) !== null) {
-        if (match.index > lastIdx) {
-          parts.push(text.slice(lastIdx, match.index))
-        }
-        if (match[1] || match[2]) {
-          const label = (match[1] || match[2]).replace(/^@/, '')
-          parts.push(
-            H(
-              'span',
-              { key: `m-${match.index}`, className: 'sm-inline-mention' },
-              label === 'moderator'
-                ? ModeratorCrownIcon({ React: fakeReact, size: 12 })
-                : AgentIcon({ React: fakeReact, size: 12 }),
-              `@${label}`,
-            ),
-          )
-        } else if (match[3]) {
-          parts.push(
-            H(
-              'span',
-              { key: `f-${match.index}`, className: 'sm-inline-file' },
-              FileDocIcon({ React: fakeReact, size: 12 }),
-              `#${match[3]}`,
-            ),
-          )
-        }
-        lastIdx = match.index + match[0].length
-      }
-      if (parts.length === 0) return text
-      if (lastIdx < text.length) {
-        parts.push(text.slice(lastIdx))
-      }
-      return parts
+    function renderRichMessageText(H, rawText, opts = {}) {
+      return renderMarkdownMessage(H, rawText, opts)
     }
 
     /**
@@ -2504,7 +4747,111 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Left Sidebar Main Page: Minimalist IM Chat + Quick Pair + LLM-Moderated Groups + Context Thread Isolation.
+     * Group consecutive messages into renderable items:
+     * - topic dividers (explicit system divider or threadId boundary)
+     * - centered localized system pills
+     * - collapsible collaboration clusters for group `phase === 'turn'` messages
+     * - standard human / agent / file chat messages
+     */
+    function buildMessageRenderItems(messages, { isGroup = false } = {}) {
+      const list = Array.isArray(messages) ? messages : []
+      const items = []
+      const topics = []
+      let prevThreadId = ''
+      let pendingTurns = []
+
+      const flushTurns = (hasFollowingMessage) => {
+        if (pendingTurns.length === 0) return
+        items.push({
+          kind: 'collab-group',
+          id: `collab-${pendingTurns[0].id}`,
+          messages: pendingTurns,
+          hasFollowingMessage,
+        })
+        pendingTurns = []
+      }
+
+      list.forEach((msg, idx) => {
+        const curThreadId = String(msg.threadId || '').trim()
+        const isExplicitDivider = msg.kind === 'system' && String(msg.text || '').startsWith('───')
+
+        if (isExplicitDivider) {
+          flushTurns(true)
+          if (curThreadId) prevThreadId = curThreadId
+          const anchorId = `sm-topic-${msg.id}`
+          items.push({
+            kind: 'divider',
+            id: msg.id,
+            anchorId,
+            dividerKind: 'new-topic',
+            threadId: curThreadId,
+            createdAt: msg.createdAt,
+          })
+          topics.push({
+            id: msg.id,
+            anchorId,
+            threadId: curThreadId,
+            createdAt: msg.createdAt,
+            preview: '',
+          })
+          return
+        }
+
+        if (idx > 0 && curThreadId && curThreadId !== prevThreadId) {
+          flushTurns(true)
+          const anchorId = `sm-topic-thr-${msg.id}`
+          items.push({
+            kind: 'divider',
+            id: `thr-${msg.id}`,
+            anchorId,
+            dividerKind: msg.kind === 'task' ? 'task' : 'new-topic',
+            threadId: curThreadId,
+            createdAt: msg.createdAt,
+          })
+          topics.push({
+            id: `thr-${msg.id}`,
+            anchorId,
+            threadId: curThreadId,
+            createdAt: msg.createdAt,
+            preview: stripMarkdownForPreview(msg.text, 44),
+          })
+        } else if (topics.length === 0 && msg.kind !== 'system') {
+          topics.push({
+            id: `first-${msg.id}`,
+            anchorId: `sm-msg-${msg.id}`,
+            threadId: curThreadId,
+            createdAt: msg.createdAt,
+            preview: stripMarkdownForPreview(msg.text, 44),
+          })
+        } else if (topics.length > 0 && !topics[topics.length - 1].preview && msg.kind !== 'system') {
+          topics[topics.length - 1].preview = stripMarkdownForPreview(msg.text, 44)
+        }
+
+        if (curThreadId) {
+          prevThreadId = curThreadId
+        }
+
+        if (msg.kind === 'system') {
+          flushTurns(true)
+          items.push({ kind: 'system', id: msg.id, msg })
+          return
+        }
+
+        if (isGroup && msg.phase === 'turn' && msg.sender?.actor === 'agent') {
+          pendingTurns.push(msg)
+          return
+        }
+
+        flushTurns(true)
+        items.push({ kind: 'message', id: msg.id, msg })
+      })
+
+      flushTurns(false)
+      return { items, topics }
+    }
+
+    /**
+     * Left Sidebar Main Page: Signature Multi-Sandbox Collaboration Hub.
      */
     function createMeshChatPage({
       React,
@@ -2519,22 +4866,32 @@ window.__ModuleLoader__.load({
         const [, setTick] = useState(0)
         const [showNewGroup, setShowNewGroup] = useState(false)
         const [showPairDrawer, setShowPairDrawer] = useState(false)
-        const [showGroupManage, setShowGroupManage] = useState(false)
-        const [confirmAction, setConfirmAction] = useState(null) // { type: 'unpair'|'leave-group'|'kick', slug?, roomId? }
+        const [rightPanel, setRightPanel] = useState('') // '' | 'files' | 'details'
+        const [confirmAction, setConfirmAction] = useState(null)
         const [roomFilter, setRoomFilter] = useState('')
         const [groupName, setGroupName] = useState('')
+        const [renameInput, setRenameInput] = useState('')
+        const [editingName, setEditingName] = useState(false)
         const [checkedPeers, setCheckedPeers] = useState({})
         const [newGroupModerator, setNewGroupModerator] = useState('')
         const [invitePeerSlug, setInvitePeerSlug] = useState('')
         const [draftText, setDraftText] = useState('')
         const [attachedFiles, setAttachedFiles] = useState([])
+        const [replyTarget, setReplyTarget] = useState(null)
         const [activeTrigger, setActiveTrigger] = useState(null)
         const [menuIndex, setMenuIndex] = useState(0)
+        const [expandedCollabs, setExpandedCollabs] = useState({})
+        const [copiedKey, setCopiedKey] = useState('')
+        const [dragOver, setDragOver] = useState(false)
+        const [previewState, setPreviewState] = useState(null) // { roomId, msgId, name, size, loading, kind, text, url, rawMode, error }
+
         const popoverRef = useRef ? useRef(null) : { current: null }
         const messagesRef = useRef ? useRef(null) : { current: null }
         const composerRef = useRef ? useRef(null) : { current: null }
+        const fileInputRef = useRef ? useRef(null) : { current: null }
         const nearBottomRef = useRef ? useRef(true) : { current: true }
         const prevRoomIdRef = useRef ? useRef('') : { current: '' }
+        const copyFlashTimerRef = useRef ? useRef(null) : { current: null }
 
         useEffect(() => {
           const container = popoverRef?.current
@@ -2554,8 +4911,21 @@ window.__ModuleLoader__.load({
           return () => {
             offCtrl()
             offLoc()
+            if (copyFlashTimerRef?.current) {
+              clearTimeout(copyFlashTimerRef.current)
+              copyFlashTimerRef.current = null
+            }
           }
         }, [])
+
+        useEffect(() => {
+          if (!previewState || typeof window === 'undefined') return undefined
+          const onKey = (ev) => {
+            if (ev.key === 'Escape') setPreviewState(null)
+          }
+          window.addEventListener?.('keydown', onKey)
+          return () => window.removeEventListener?.('keydown', onKey)
+        }, [Boolean(previewState)])
 
         const t = createTranslator(typeof getLocale === 'function' ? getLocale() : 'en')
         const snap = controller.getSnapshot()
@@ -2564,6 +4934,7 @@ window.__ModuleLoader__.load({
         const activeInvite = state.activeInvite
         const peers = state.peers || []
         const rooms = state.rooms || []
+        const peerBySlug = new Map(peers.map((p) => [p.slug, p]))
         const activeStatusesMap = state.activeStatuses && typeof state.activeStatuses === 'object'
           ? state.activeStatuses
           : {}
@@ -2605,7 +4976,8 @@ window.__ModuleLoader__.load({
             prevRoomIdRef.current = activeRoomId
             nearBottomRef.current = true
             setConfirmAction(null)
-            setShowGroupManage(false)
+            setEditingName(false)
+            setReplyTarget(null)
           }
           if ((roomChanged || nearBottomRef.current) && typeof el.scrollHeight === 'number') {
             el.scrollTop = el.scrollHeight
@@ -2625,6 +4997,91 @@ window.__ModuleLoader__.load({
         const canRotateTopic = canStartNewTopic(activeRoom, activeMessages)
         const isRoomUnpaired = Boolean(activeRoom?.unpaired)
         const isGroupCreator = Boolean(activeRoom?.type === 'group' && (!activeRoom.createdBy || activeRoom.createdBy === self.slug))
+        const canRenameGroup = Boolean(
+          activeRoom?.type === 'group'
+          && !isRoomUnpaired
+          && (isGroupCreator || activeModeratorSlug === self.slug),
+        )
+
+        const roomSharedFiles = activeMessages
+          .filter((m) => m && m.attachment && (m.attachment.savedPath || m.attachment.sourcePath || m.attachment.name))
+          .slice()
+          .reverse()
+
+        const { items: renderItems, topics: roomTopics } = buildMessageRenderItems(activeMessages, {
+          isGroup: activeRoom?.type === 'group',
+        })
+
+        const flashCopy = async (text, key) => {
+          const res = await copyTextToClipboard(text)
+          if (res.ok) {
+            setCopiedKey(key)
+            if (copyFlashTimerRef?.current) clearTimeout(copyFlashTimerRef.current)
+            if (typeof setTimeout === 'function') {
+              copyFlashTimerRef.current = setTimeout(() => {
+                setCopiedKey('')
+                if (copyFlashTimerRef) copyFlashTimerRef.current = null
+              }, 1600)
+            }
+          } else {
+            controller.setError?.(t('copyManualHint'))
+          }
+        }
+
+        const openFilePreview = async (msg) => {
+          if (!activeRoom || !msg?.attachment) return
+          const base = {
+            roomId: activeRoom.id,
+            msgId: msg.id,
+            name: msg.attachment.name || 'file',
+            size: msg.attachment.size || 0,
+            downloadUrl: controller.getAttachmentUrl(activeRoom.id, msg.id, { inline: false }),
+            loading: true,
+            kind: '',
+            text: '',
+            url: '',
+            rawMode: false,
+            error: '',
+          }
+          setPreviewState(base)
+          const res = await controller.fetchAttachmentPreview({ roomId: activeRoom.id, msgId: msg.id })
+          setPreviewState((cur) => {
+            if (!cur || cur.msgId !== msg.id) return cur
+            if (!res.ok) {
+              return { ...cur, loading: false, error: res.error || 'Preview unavailable' }
+            }
+            return {
+              ...cur,
+              loading: false,
+              kind: res.kind || 'text',
+              text: res.text || '',
+              url: res.url || '',
+            }
+          })
+        }
+
+        const uploadBrowserFile = (file) => {
+          if (!file || !activeRoom || isRoomUnpaired) return
+          if (file.size > DEFAULT_MAX_FILE_BYTES) {
+            controller.setError?.(t('fileTooLargeError'))
+            return
+          }
+          if (typeof FileReader !== 'function') return
+          const reader = new FileReader()
+          reader.onload = () => {
+            const result = String(reader.result || '')
+            const base64 = result.includes(',') ? result.split(',').slice(1).join(',') : result
+            void controller.uploadFile({
+              roomId: activeRoom.id,
+              fileName: file.name || 'upload.bin',
+              contentBase64: base64,
+              text: draftText.trim(),
+            }).then((res) => {
+              if (res && draftText.trim()) setDraftText('')
+            })
+          }
+          reader.readAsDataURL(file)
+        }
 
         // Build `@` mention candidates
         const mentionCandidates = []
@@ -2673,7 +5130,7 @@ window.__ModuleLoader__.load({
               iconKind: isDir ? 'folder' : 'file',
               dirQuery: f.relativePath,
               label: f.relativePath,
-              desc: isDir ? 'dir' : `${f.size || 0} B`,
+              desc: isDir ? 'dir' : formatBytes(f.size || 0),
             }
           })
         }
@@ -2686,6 +5143,13 @@ window.__ModuleLoader__.load({
           return AgentIcon({ React, size: 13 })
         }
 
+        const resizeComposer = () => {
+          const el = composerRef?.current
+          if (!el || !el.style) return
+          el.style.height = 'auto'
+          el.style.height = `${Math.min(140, Math.max(30, el.scrollHeight || 30))}px`
+        }
+
         const handleDraftChange = (nextText) => {
           setDraftText(nextText)
           setActiveTrigger(null)
@@ -2693,6 +5157,9 @@ window.__ModuleLoader__.load({
           const detected = detectComposerTrigger(nextText)
           if (detected?.trigger === '#') {
             void controller.searchFiles(detected.query)
+          }
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(resizeComposer)
           }
         }
 
@@ -2751,17 +5218,23 @@ window.__ModuleLoader__.load({
 
         const handleSend = async () => {
           if (!activeRoom || isRoomUnpaired) return
-          if (!draftText.trim() && attachedFiles.length === 0) return
+          const rawDraft = draftText.trim()
+          if (!rawDraft && attachedFiles.length === 0) return
+          const finalText = replyTarget
+            ? `> @${replyTarget.slug}: ${replyTarget.preview}\n\n${rawDraft}`
+            : rawDraft
           nearBottomRef.current = true
           const res = await controller.sendMessage({
             roomId: activeRoom.id,
-            text: draftText.trim(),
+            text: finalText,
             files: attachedFiles,
           })
           if (res) {
             setDraftText('')
             setAttachedFiles([])
+            setReplyTarget(null)
             setActiveTrigger(null)
+            if (composerRef?.current?.style) composerRef.current.style.height = 'auto'
           }
         }
 
@@ -2778,6 +5251,81 @@ window.__ModuleLoader__.load({
             (r) => r.type === 'group' && !r.unpaired && r.createdBy === self.slug
               && (r.members || []).some((m) => m.slug === targetSlug),
           )
+
+        const scrollToAnchor = (anchorId) => {
+          const container = messagesRef?.current
+          if (!container || typeof container.querySelector !== 'function') return
+          const target = container.querySelector(`[data-anchor-id="${anchorId}"]`)
+          if (target && typeof target.scrollIntoView === 'function') {
+            nearBottomRef.current = false
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        }
+
+        const renderFileCard = (msg, compactCard = false) => {
+          const att = msg?.attachment
+          if (!att) return null
+          const downloadUrl = controller.getAttachmentUrl(activeRoom.id, msg.id, { inline: false })
+          const pathToCopy = att.savedPath || att.sourcePath || ''
+          const copyId = `path-${msg.id}`
+          return H(
+            'div',
+            { className: 'sm-file-card' },
+            H(
+              'div',
+              { className: 'sm-file-card-info' },
+              H('span', { className: 'sm-file-icon-box' }, FileDocIcon({ React, size: 15 })),
+              H(
+                'div',
+                { className: 'sm-file-meta' },
+                H('span', { className: 'sm-file-name', title: att.name }, att.name),
+                H(
+                  'span',
+                  { className: 'sm-file-sub', title: pathToCopy || undefined },
+                  `${formatBytes(att.size || 0)}${att.sha256 ? ` · ${String(att.sha256).slice(0, 8)}` : ''}`,
+                ),
+              ),
+            ),
+            H(
+              'div',
+              { className: 'sm-file-actions' },
+              H(
+                'button',
+                {
+                  type: 'button',
+                  className: 'sm-btn sm-btn-sm',
+                  onClick: () => void openFilePreview(msg),
+                },
+                EyeIcon({ React, size: 12 }),
+                t('previewBtn'),
+              ),
+              H(
+                'a',
+                {
+                  className: 'sm-btn sm-btn-sm',
+                  href: downloadUrl,
+                  download: att.name || 'file',
+                  style: { textDecoration: 'none' },
+                },
+                DownloadIcon({ React, size: 12 }),
+                t('downloadBtn'),
+              ),
+              !compactCard && pathToCopy
+                ? H(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'sm-btn-ghost',
+                      title: pathToCopy,
+                      onClick: () => void flashCopy(pathToCopy, copyId),
+                    },
+                    copiedKey === copyId ? CheckIcon({ React, size: 12 }) : CopyIcon({ React, size: 12 }),
+                    copiedKey === copyId ? t('copiedCodeBtn') : t('copyPathBtn'),
+                  )
+                : null,
+            ),
+          )
+        }
 
         return H(
           'div',
@@ -2950,6 +5498,22 @@ window.__ModuleLoader__.load({
                   )
                 : filteredRooms.map((room) => {
                     const isActive = activeRoom && activeRoom.id === room.id
+                    const roomMsgs = state.messages?.[room.id] || []
+                    const lastMsg = roomMsgs.length > 0 ? roomMsgs[roomMsgs.length - 1] : null
+                    const roomActivities = Array.isArray(activeStatusesMap[room.id]) ? activeStatusesMap[room.id] : []
+                    const isRoomBusy = roomActivities.length > 0
+                    const pairPeer = room.type === 'pair' ? peerBySlug.get(room.peerSlug) : null
+                    const previewText = isRoomBusy
+                      ? `@${roomActivities[0].slug} ${roomActivities[0].stage === 'coordinating' ? t('stageCoordinating') : t('stageAnswering')}`
+                      : lastMsg
+                        ? lastMsg.kind === 'system'
+                          ? localizeSystemMessage(lastMsg.text, t)
+                          : lastMsg.attachment
+                            ? `[${lastMsg.attachment.name}] ${stripMarkdownForPreview(lastMsg.text, 40)}`
+                            : `${lastMsg.sender?.slug ? `@${lastMsg.sender.slug}: ` : ''}${stripMarkdownForPreview(lastMsg.text, 46)}`
+                        : (room.members || []).map((m) => `@${m.slug}`).join(' · ')
+                    const relTime = formatRelativeTime(lastMsg?.createdAt || room.updatedAt, t)
+
                     return H(
                       'div',
                       {
@@ -2960,608 +5524,216 @@ window.__ModuleLoader__.load({
                           void controller.selectRoom(room.id)
                         },
                       },
+                      renderRoomAvatar(H, React, room, {
+                        status: pairPeer?.status || 'online',
+                        isBusy: isRoomBusy,
+                      }),
                       H(
                         'div',
-                        { style: { display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 } },
+                        { className: 'sm-room-body' },
                         H(
                           'div',
-                          { className: 'sm-row' },
+                          { className: 'sm-room-top-line' },
                           H(
-                            'span',
-                            { className: 'sm-badge' },
-                            room.type === 'group' ? RoundtableIcon({ React, size: 11 }) : AgentIcon({ React, size: 11 }),
-                            room.type === 'group' ? t('roomTypeGroup') : t('roomTypePair'),
+                            'div',
+                            { className: 'sm-row', style: { gap: '5px', minWidth: 0, overflow: 'hidden' } },
+                            H('span', { className: 'sm-room-name', style: room.unpaired ? { opacity: 0.6 } : undefined }, room.name),
+                            room.unpaired
+                              ? H('span', { className: 'sm-badge sm-badge-warn' }, t('unpairedRoomBadge'))
+                              : null,
                           ),
-                          H(
-                            'strong',
-                            {
-                              style: {
-                                fontSize: '12.5px',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                opacity: room.unpaired ? 0.65 : 1,
-                              },
-                            },
-                            room.name,
-                          ),
-                          room.unpaired
-                            ? H('span', { className: 'sm-badge sm-badge-warn' }, t('unpairedRoomBadge'))
-                            : null,
+                          relTime ? H('span', { className: 'sm-room-time' }, relTime) : null,
                         ),
                         H(
-                          'span',
-                          {
-                            style: {
-                              fontSize: '11px',
-                              opacity: 0.7,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            },
-                          },
-                          (room.members || []).map((m) => `@${m.slug}`).join(' · '),
+                          'div',
+                          { className: 'sm-room-preview-line' },
+                          H('span', { className: `sm-room-preview${isRoomBusy ? ' live' : ''}` }, previewText),
+                          room.unreadCount > 0
+                            ? H('span', { className: 'sm-badge sm-badge-unread' }, String(room.unreadCount))
+                            : null,
                         ),
                       ),
-                      room.unreadCount > 0
-                        ? H('span', { className: 'sm-badge sm-badge-unread' }, String(room.unreadCount))
-                        : null,
                     )
                   }),
             ),
           ),
 
-          // Right Column: Streamlined Chat View or Onboarding Quick-Pair
+          // Right Stage: Main Chat + Optional Right Inspector/Files Drawer
           H(
-            'section',
-            { className: 'sm-chat-main' },
-            errorText ? H('div', { className: 'sm-alert', role: 'alert', style: { margin: '10px 16px 0' } }, errorText) : null,
-            statusKey ? H('div', { className: 'sm-toast', style: { margin: '10px 16px 0' } }, t(statusKey)) : null,
-            !activeRoom
-              ? H(
-                  'div',
-                  { style: { display: 'flex', flex: 1, padding: '24px', overflowY: 'auto' } },
-                  H(
+            'div',
+            { className: 'sm-chat-stage' },
+            H(
+              'section',
+              {
+                className: 'sm-chat-main',
+                onDragOver: (e) => {
+                  if (!activeRoom || isRoomUnpaired) return
+                  e.preventDefault?.()
+                  if (!dragOver) setDragOver(true)
+                },
+                onDragLeave: (e) => {
+                  if (e.currentTarget === e.target) setDragOver(false)
+                },
+                onDrop: (e) => {
+                  e.preventDefault?.()
+                  setDragOver(false)
+                  if (!activeRoom || isRoomUnpaired) return
+                  const file = e.dataTransfer?.files?.[0]
+                  if (file) uploadBrowserFile(file)
+                },
+              },
+              dragOver
+                ? H(
                     'div',
-                    { className: 'sm-onboarding-card' },
+                    { className: 'sm-drop-overlay' },
+                    UploadIcon({ React, size: 24 }),
+                    H('span', null, t('dropFilesHint')),
+                  )
+                : null,
+              errorText ? H('div', { className: 'sm-alert', role: 'alert', style: { margin: '10px 16px 0' } }, errorText) : null,
+              statusKey ? H('div', { className: 'sm-toast', style: { margin: '10px 16px 0' } }, t(statusKey)) : null,
+              !activeRoom
+                ? H(
+                    'div',
+                    { style: { display: 'flex', flex: 1, padding: '24px', overflowY: 'auto' } },
                     H(
                       'div',
-                      null,
-                      H('h3', { className: 'sm-title sm-row', style: { fontSize: '16px' } }, MeshNavIcon({ React, size: 18 }), t('quickStartTitle')),
-                      H('p', { className: 'sm-subtitle' }, t('quickStartDesc')),
-                    ),
-                    H(PairingSection, {
-                      React,
-                      controller,
-                      t,
-                      activeInvite,
-                      busy,
-                      compact: false,
-                    }),
-                  ),
-                )
-              : H(
-                  React.Fragment || 'div',
-                  null,
-                  // Minimalist Chat Header
-                  H(
-                    'div',
-                    { className: 'sm-chat-header' },
-                    H(
-                      'div',
-                      { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                      { className: 'sm-onboarding-card' },
                       H(
                         'div',
-                        { className: 'sm-row', style: { flexWrap: 'wrap' } },
-                        H(
-                          'span',
-                          { className: 'sm-badge' },
-                          activeRoom.type === 'group' ? RoundtableIcon({ React, size: 11 }) : AgentIcon({ React, size: 11 }),
-                          activeRoom.type === 'group' ? t('roomTypeGroup') : t('roomTypePair'),
-                        ),
-                        H('strong', { style: { fontSize: '14px' } }, activeRoom.name),
-                        isRoomUnpaired
-                          ? H('span', { className: 'sm-badge sm-badge-warn' }, t('unpairedRoomBadge'))
-                          : activePairPeer
-                            ? renderPeerStatusBadge(H, t, activePairPeer.status)
-                            : null,
-                        activeRoom.type === 'group' && activeModeratorSlug
-                          ? H(
-                              'span',
-                              { className: 'sm-badge sm-badge-moderator' },
-                              ModeratorCrownIcon({ React, size: 11 }),
-                              `${t('moderatorBadge')}: @${activeModeratorSlug}`,
-                            )
-                          : null,
+                        null,
+                        H('h3', { className: 'sm-title sm-row', style: { fontSize: '16px' } }, MeshNavIcon({ React, size: 18 }), t('quickStartTitle')),
+                        H('p', { className: 'sm-subtitle' }, t('quickStartDesc')),
                       ),
+                      H(PairingSection, {
+                        React,
+                        controller,
+                        t,
+                        activeInvite,
+                        busy,
+                        compact: false,
+                      }),
+                    ),
+                  )
+                : H(
+                    React.Fragment || 'div',
+                    null,
+                    // Streamlined Chat Header
+                    H(
+                      'div',
+                      { className: 'sm-chat-header' },
                       H(
                         'div',
-                        { className: 'sm-row', style: { flexWrap: 'wrap', gap: '5px' } },
-                        ...(activeRoom.members || []).map((m) => {
-                          const isMod = activeRoom.type === 'group' && m.slug === activeModeratorSlug
-                          const isBusy = activeSlugSet.has(m.slug)
-                          return H(
-                            'button',
-                            {
-                              key: m.slug,
-                              type: 'button',
-                              className: `sm-member-tag${isMod ? ' moderator' : ''}${isBusy ? ' busy' : ''}`,
-                              title: m.description || `@${m.slug}`,
-                              disabled: isRoomUnpaired,
-                              onClick: () => {
-                                if (isRoomUnpaired) return
-                                const mention = `@${m.slug}`
-                                const sep = draftText && !draftText.endsWith(' ') ? ' ' : ''
-                                setDraftText(`${draftText}${sep}${mention} `)
-                                composerRef?.current?.focus?.()
-                              },
-                            },
-                            isMod ? ModeratorCrownIcon({ React, size: 12 }) : AgentIcon({ React, size: 12 }),
-                            `${m.ownerName} (@${m.slug})${m.role ? ` · ${m.role}` : ''}`,
-                            isBusy ? H('span', { className: 'sm-dot-live' }) : null,
-                          )
+                        { className: 'sm-header-left' },
+                        renderRoomAvatar(H, React, activeRoom, {
+                          status: activePairPeer?.status || 'online',
+                          isBusy: activeStatusesList.length > 0,
+                          small: true,
                         }),
-                      ),
-                    ),
-                    H(
-                      'div',
-                      { className: 'sm-row', style: { flexWrap: 'wrap' } },
-                      activeRoom.type === 'group' && !isRoomUnpaired
-                        ? H(
-                            'select',
-                            {
-                              className: 'sm-input',
-                              title: t('moderatorSelectLabel'),
-                              style: { flex: '0 0 auto', width: 'auto', padding: '4px 8px', fontSize: '12px' },
-                              value: activeModeratorSlug,
-                              disabled: busy,
-                              onChange: (e) => {
-                                const nextMod = e.target?.value
-                                if (nextMod) {
-                                  void controller.updateGroupModeration({
-                                    roomId: activeRoom.id,
-                                    moderatorSlug: nextMod,
-                                  })
-                                }
-                              },
-                            },
-                            ...(activeRoom.members || []).map((m) =>
-                              H('option', { key: m.slug, value: m.slug }, `${t('moderatorBadge')}: @${m.slug}`),
-                            ),
-                          )
-                        : null,
-                      activeRoom.type === 'group' && !isRoomUnpaired && uninvitedPeers.length > 0
-                        ? H(
-                            'div',
-                            { className: 'sm-row' },
-                            H(
-                              'select',
-                              {
-                                className: 'sm-input',
-                                style: { flex: '0 0 auto', width: 'auto', padding: '4px 8px', fontSize: '12px' },
-                                value: invitePeerSlug,
-                                onChange: (e) => setInvitePeerSlug(e.target?.value || ''),
-                              },
-                              H('option', { value: '' }, t('invitePeerPlaceholder')),
-                              ...uninvitedPeers.map((p) =>
-                                H('option', { key: p.slug, value: p.slug }, `${p.ownerName} (${p.slug})`),
-                              ),
-                            ),
-                            H(
-                              'button',
-                              {
-                                type: 'button',
-                                className: 'sm-btn',
-                                disabled: busy || !invitePeerSlug,
-                                onClick: () => {
-                                  if (!invitePeerSlug) return
-                                  void controller.inviteToGroup({
-                                    roomId: activeRoom.id,
-                                    memberSlugs: [invitePeerSlug],
-                                  })
-                                  setInvitePeerSlug('')
-                                },
-                              },
-                              t('inviteBtn'),
-                            ),
-                          )
-                        : null,
-                      activeRoom.type === 'group' && !isRoomUnpaired
-                        ? H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: `sm-btn${showGroupManage ? ' sm-btn-primary' : ''}`,
-                              disabled: busy,
-                              onClick: () => {
-                                setShowGroupManage((v) => !v)
-                                setConfirmAction(null)
-                              },
-                            },
-                            t('manageGroupBtn'),
-                          )
-                        : null,
-                      activeRoom.type === 'pair' && !isRoomUnpaired && activeRoom.peerSlug
-                        ? H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'sm-btn',
-                              disabled: busy,
-                              onClick: () => void controller.pingPeer(activeRoom.peerSlug),
-                            },
-                            t('pingBtn'),
-                          )
-                        : null,
-                      !isRoomUnpaired
-                        ? H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'sm-btn',
-                              disabled: busy || !canRotateTopic,
-                              title: canRotateTopic ? '' : t('alreadyFreshTopicHint'),
-                              onClick: () => {
-                                if (!canRotateTopic) return
-                                nearBottomRef.current = true
-                                void controller.startNewTopic(activeRoom.id)
-                              },
-                            },
-                            t('newTopicBtn'),
-                          )
-                        : null,
-                      activeRoom.type === 'pair' && !isRoomUnpaired && activeRoom.peerSlug
-                        ? H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'sm-btn',
-                              disabled: busy,
-                              onClick: () => setConfirmAction({ type: 'unpair', slug: activeRoom.peerSlug }),
-                            },
-                            t('unpairBtn'),
-                          )
-                        : null,
-                      isRoomUnpaired
-                        ? H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'sm-btn sm-btn-danger',
-                              disabled: busy,
-                              onClick: () => void controller.removeRoom(activeRoom.id),
-                            },
-                            t('removeRoomBtn'),
-                          )
-                        : null,
-                      H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'sm-btn',
-                          disabled: busy,
-                          onClick: () => void controller.syncFromHost(),
-                        },
-                        t('refreshBtn'),
-                      ),
-                    ),
-                  ),
-
-                  // Inline two-step Unpair confirmation inside Chat header
-                  confirmAction?.type === 'unpair' && confirmAction.slug === activeRoom.peerSlug
-                    ? H(
-                        'div',
-                        { className: 'sm-confirm-bar', style: { margin: '8px 16px 0' } },
                         H(
                           'div',
-                          { style: { display: 'flex', flexDirection: 'column', gap: '2px' } },
-                          H('strong', null, `${t('unpairConfirmTitle')} @${confirmAction.slug}`),
-                          ownedGroupsWithTarget(confirmAction.slug).length > 0
-                            ? H('span', { style: { fontSize: '11.5px', opacity: 0.85 } }, t('unpairGroupWarn'))
-                            : null,
-                        ),
-                        H(
-                          'div',
-                          { className: 'sm-row', style: { gap: '6px' } },
-                          H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'sm-btn sm-btn-sm sm-btn-danger',
-                              disabled: busy,
-                              onClick: async () => {
-                                const slugToRemove = confirmAction.slug
-                                setConfirmAction(null)
-                                await controller.removePeer(slugToRemove)
-                              },
-                            },
-                            t('confirmUnpairBtn'),
-                          ),
-                          H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'sm-btn sm-btn-sm',
-                              disabled: busy,
-                              onClick: () => setConfirmAction(null),
-                            },
-                            t('cancelBtn'),
-                          ),
-                        ),
-                      )
-                    : null,
-
-                  // Group Member Management Strip
-                  showGroupManage && activeRoom.type === 'group' && !isRoomUnpaired
-                    ? H(
-                        'div',
-                        { className: 'sm-manage-strip' },
-                        H(
-                          'div',
-                          { className: 'sm-row', style: { flexWrap: 'wrap', justifyContent: 'space-between' } },
+                          { className: 'sm-header-meta' },
                           H(
                             'div',
                             { className: 'sm-row', style: { flexWrap: 'wrap', gap: '6px' } },
-                            ...(activeRoom.members || []).map((m) =>
-                              H(
-                                'span',
-                                { key: m.slug, className: 'sm-peer-chip', style: { cursor: 'default' } },
-                                H('span', null, `@${m.slug}`),
-                                m.slug === activeRoom.createdBy
-                                  ? H('span', { className: 'sm-badge' }, t('creatorBadge'))
-                                  : null,
-                                isGroupCreator && m.slug !== self.slug && m.slug !== activeRoom.createdBy
-                                  ? (confirmAction?.type === 'kick' && confirmAction.slug === m.slug
-                                    ? H(
-                                        'span',
-                                        { className: 'sm-row', style: { gap: '4px' } },
-                                        H(
-                                          'button',
-                                          {
-                                            type: 'button',
-                                            className: 'sm-btn sm-btn-sm sm-btn-danger',
-                                            disabled: busy,
-                                            onClick: async () => {
-                                              setConfirmAction(null)
-                                              await controller.removeFromGroup({ roomId: activeRoom.id, slug: m.slug })
-                                            },
-                                          },
-                                          t('removeMemberBtn'),
-                                        ),
-                                        H(
-                                          'button',
-                                          {
-                                            type: 'button',
-                                            className: 'sm-btn sm-btn-sm',
-                                            onClick: () => setConfirmAction(null),
-                                          },
-                                          t('cancelBtn'),
-                                        ),
-                                      )
-                                    : H(
-                                        'button',
-                                        {
-                                          type: 'button',
-                                          className: 'sm-btn-ghost',
-                                          style: { padding: '0 4px', color: '#dc2626' },
-                                          disabled: busy,
-                                          onClick: () => setConfirmAction({ type: 'kick', slug: m.slug }),
-                                        },
-                                        '×',
-                                      ))
-                                  : null,
-                              ),
+                            H(
+                              'span',
+                              { className: 'sm-badge' },
+                              activeRoom.type === 'group' ? RoundtableIcon({ React, size: 11 }) : AgentIcon({ React, size: 11 }),
+                              activeRoom.type === 'group' ? t('roomTypeGroup') : t('roomTypePair'),
                             ),
+                            H('strong', { style: { fontSize: '14px' } }, activeRoom.name),
+                            isRoomUnpaired
+                              ? H('span', { className: 'sm-badge sm-badge-warn' }, t('unpairedRoomBadge'))
+                              : activePairPeer
+                                ? renderPeerStatusBadge(H, t, activePairPeer.status, activePairPeer.lastLatencyMs)
+                                : null,
+                            activeRoom.type === 'group' && activeModeratorSlug
+                              ? H(
+                                  'span',
+                                  { className: 'sm-badge sm-badge-moderator' },
+                                  ModeratorCrownIcon({ React, size: 11 }),
+                                  `${t('moderatorBadge')}: @${activeModeratorSlug}`,
+                                )
+                              : null,
                           ),
-                          confirmAction?.type === 'leave-group'
-                            ? H(
-                                'div',
-                                { className: 'sm-row', style: { gap: '6px' } },
-                                H('span', null, t('confirmLeaveGroup')),
-                                H(
-                                  'button',
-                                  {
-                                    type: 'button',
-                                    className: 'sm-btn sm-btn-sm sm-btn-danger',
-                                    disabled: busy,
-                                    onClick: async () => {
-                                      setConfirmAction(null)
-                                      setShowGroupManage(false)
-                                      await controller.leaveGroup(activeRoom.id)
-                                    },
-                                  },
-                                  isGroupCreator ? t('dissolveGroupBtn') : t('leaveGroupBtn'),
-                                ),
-                                H(
-                                  'button',
-                                  {
-                                    type: 'button',
-                                    className: 'sm-btn sm-btn-sm',
-                                    onClick: () => setConfirmAction(null),
-                                  },
-                                  t('cancelBtn'),
-                                ),
-                              )
-                            : H(
-                                'button',
-                                {
-                                  type: 'button',
-                                  className: 'sm-btn sm-btn-sm sm-btn-danger',
-                                  disabled: busy,
-                                  onClick: () => setConfirmAction({ type: 'leave-group', roomId: activeRoom.id }),
-                                },
-                                isGroupCreator ? t('dissolveGroupBtn') : t('leaveGroupBtn'),
-                              ),
-                        ),
-                      )
-                    : null,
-
-                  // Minimalist Message Stream (with automatic thread boundary dividers & default scroll-to-bottom)
-                  H(
-                    'div',
-                    {
-                      ref: messagesRef,
-                      className: 'sm-messages',
-                      onScroll: (e) => {
-                        const el = e?.currentTarget
-                        if (!el || typeof el.scrollHeight !== 'number') return
-                        nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 120
-                      },
-                    },
-                    activeMessages.length === 0 && activeStatusesList.length === 0
-                      ? H('div', { style: { opacity: 0.7, fontSize: '12.5px' } }, t('noMessagesYet'))
-                      : (() => {
-                          const nodes = []
-                          let prevThreadId = ''
-                          activeMessages.forEach((msg, idx) => {
-                            const curThreadId = String(msg.threadId || '').trim()
-                            const clockStr = formatClock(msg.createdAt)
-                            if (msg.kind === 'system' && String(msg.text || '').startsWith('───')) {
-                              if (curThreadId) prevThreadId = curThreadId
-                              nodes.push(
-                                H(
-                                  'div',
-                                  { key: msg.id, className: 'sm-topic-divider', title: curThreadId || undefined },
-                                  `─── ${t('newTopicDivider')}${clockStr ? ` · ${clockStr}` : ''} ───`,
-                                ),
-                              )
-                              return
-                            }
-
-                            if (idx > 0 && curThreadId && curThreadId !== prevThreadId) {
-                              const label = msg.kind === 'task' ? t('taskThreadDivider') : t('newTopicDivider')
-                              nodes.push(
-                                H(
-                                  'div',
-                                  { key: `thr-${msg.id}`, className: 'sm-topic-divider', title: curThreadId },
-                                  `─── ${label}${clockStr ? ` · ${clockStr}` : ''} ───`,
-                                ),
-                              )
-                            }
-                            if (curThreadId) {
-                              prevThreadId = curThreadId
-                            }
-
-                            const isSelf = msg.sender?.slug === self.slug
-                            const isAgent = msg.sender?.actor === 'agent'
-                            const isModSender = activeRoom.type === 'group' && msg.sender?.slug === activeModeratorSlug
-                            const actorIcon = isAgent
-                              ? (isModSender ? ModeratorCrownIcon({ React, size: 12 }) : AgentIcon({ React, size: 12 }))
-                              : msg.sender?.actor === 'system'
-                                ? SystemBellIcon({ React, size: 12 })
-                                : HumanIcon({ React, size: 12 })
-                            const pending = msg.delivery?.pendingPeers || []
-
-                            nodes.push(
-                              H(
-                                'div',
-                                {
-                                  key: msg.id,
-                                  className: `sm-msg${isSelf ? ' self' : ''}${isAgent ? ' agent' : ''}`,
-                                },
-                                H(
-                                  'div',
-                                  { className: 'sm-msg-meta' },
-                                  H(
-                                    'span',
-                                    { className: 'sm-msg-author' },
-                                    actorIcon,
-                                    `${msg.sender?.ownerName || msg.sender?.slug} (@${msg.sender?.slug})`,
-                                    isModSender && isAgent
-                                      ? H('span', { className: 'sm-badge sm-badge-moderator' }, t('moderatorBadge'))
-                                      : isAgent
-                                        ? H('span', { className: 'sm-badge' }, t('actorAgent'))
-                                        : null,
-                                  ),
-                                  H('span', null, clockStr),
-                                ),
-                                H('div', { style: { whiteSpace: 'pre-wrap', lineHeight: 1.5 } }, renderRichMessageText(H, msg.text)),
-                                msg.attachment
-                                  ? H(
-                                      'div',
-                                      { className: 'sm-file-card' },
-                                      H(
-                                        'strong',
-                                        { style: { display: 'inline-flex', alignItems: 'center', gap: '5px' } },
-                                        ClipIcon({ React, size: 12 }),
-                                        `${msg.attachment.name} (${msg.attachment.size || 0} B)`,
-                                      ),
-                                      msg.attachment.savedPath
-                                        ? H('code', { className: 'sm-code-inline' }, `${t('savedAtLabel')} ${msg.attachment.savedPath}`)
-                                        : msg.attachment.sourcePath
-                                          ? H('code', { className: 'sm-code-inline' }, `${t('sourceAtLabel')} ${msg.attachment.sourcePath}`)
-                                          : null,
-                                    )
-                                  : null,
-                                pending.length > 0
-                                  ? H(
-                                      'div',
-                                      { style: { fontSize: '11px', opacity: 0.72 } },
-                                      `⏳ ${t('pendingOutbox')} ${pending.join(', ')}`,
-                                    )
-                                  : null,
-                              ),
-                            )
-                          })
-                          return nodes
-                        })(),
-                    ...activeStatusesList.map((st) => {
-                      const stageText = st.stage === 'coordinating'
-                        ? t('stageCoordinating')
-                        : st.stage === 'waiting_peer'
-                          ? `${t('stageWaitingPeer')}${st.detail ? ` @${st.detail}` : ''}…`
-                          : st.stage === 'answering'
-                            ? t('stageAnswering')
-                            : t('stagePreparing')
-                      return H(
-                        'div',
-                        { key: `typing-${st.slug}`, className: 'sm-typing-bubble' },
-                        st.isModerator
-                          ? ModeratorCrownIcon({ React, size: 13 })
-                          : AgentIcon({ React, size: 13 }),
-                        H(
-                          'span',
-                          null,
-                          H('strong', null, `@${st.slug}`),
-                          st.isModerator ? ` (${t('moderatorBadge')})` : '',
-                          ` ${stageText}`,
-                        ),
-                        H(
-                          'span',
-                          { className: 'sm-typing-dots', 'aria-hidden': 'true' },
-                          H('span', { className: 'sm-typing-dot' }),
-                          H('span', { className: 'sm-typing-dot' }),
-                          H('span', { className: 'sm-typing-dot' }),
-                        ),
-                      )
-                    }),
-                  ),
-
-                  // Unified Single Composer or Disconnected Banner
-                  isRoomUnpaired
-                    ? H(
-                        'div',
-                        { className: 'sm-composer-wrap' },
-                        H(
-                          'div',
-                          { className: 'sm-unpaired-banner' },
-                          H('span', null, t('unpairedRoomBanner')),
                           H(
                             'div',
-                            { className: 'sm-row', style: { gap: '6px' } },
-                            H(
+                            { className: 'sm-row', style: { flexWrap: 'wrap', gap: '5px' } },
+                            ...(activeRoom.members || []).map((m) => {
+                              const isMod = activeRoom.type === 'group' && m.slug === activeModeratorSlug
+                              const isBusy = activeSlugSet.has(m.slug)
+                              return H(
+                                'button',
+                                {
+                                  key: m.slug,
+                                  type: 'button',
+                                  className: `sm-member-tag${isMod ? ' moderator' : ''}${isBusy ? ' busy' : ''}`,
+                                  title: m.description || `@${m.slug}`,
+                                  disabled: isRoomUnpaired,
+                                  onClick: () => {
+                                    if (isRoomUnpaired) return
+                                    const mention = `@${m.slug}`
+                                    const sep = draftText && !draftText.endsWith(' ') ? ' ' : ''
+                                    setDraftText(`${draftText}${sep}${mention} `)
+                                    composerRef?.current?.focus?.()
+                                  },
+                                },
+                                isMod ? ModeratorCrownIcon({ React, size: 11 }) : AgentIcon({ React, size: 11 }),
+                                `${m.ownerName} (@${m.slug})${m.role ? ` · ${m.role}` : ''}`,
+                                isBusy ? H('span', { className: 'sm-dot-live' }) : null,
+                              )
+                            }),
+                          ),
+                        ),
+                      ),
+
+                      H(
+                        'div',
+                        { className: 'sm-header-actions' },
+                        !isRoomUnpaired
+                          ? H(
                               'button',
                               {
                                 type: 'button',
-                                className: 'sm-btn sm-btn-sm sm-btn-primary',
+                                className: 'sm-btn sm-btn-sm',
+                                disabled: busy || !canRotateTopic,
+                                title: canRotateTopic ? '' : t('alreadyFreshTopicHint'),
                                 onClick: () => {
-                                  setShowPairDrawer(true)
-                                  setShowNewGroup(false)
+                                  if (!canRotateTopic) return
+                                  nearBottomRef.current = true
+                                  void controller.startNewTopic(activeRoom.id)
                                 },
                               },
-                              t('repairBtn'),
-                            ),
-                            H(
+                              TopicIcon({ React, size: 12 }),
+                              t('newTopicBtn'),
+                            )
+                          : null,
+                        H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: `sm-btn sm-btn-sm${rightPanel === 'files' ? ' sm-btn-primary' : ''}`,
+                            onClick: () => setRightPanel((p) => (p === 'files' ? '' : 'files')),
+                          },
+                          ClipIcon({ React, size: 12 }),
+                          `${t('filesDrawerBtn')}${roomSharedFiles.length > 0 ? ` (${roomSharedFiles.length})` : ''}`,
+                        ),
+                        !isRoomUnpaired
+                          ? H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: `sm-btn sm-btn-sm${rightPanel === 'details' ? ' sm-btn-primary' : ''}`,
+                                onClick: () => {
+                                  setRightPanel((p) => (p === 'details' ? '' : 'details'))
+                                  setConfirmAction(null)
+                                },
+                              },
+                              SlidersIcon({ React, size: 12 }),
+                              t('roomDetailsBtn'),
+                            )
+                          : H(
                               'button',
                               {
                                 type: 'button',
@@ -3571,162 +5743,1039 @@ window.__ModuleLoader__.load({
                               },
                               t('removeRoomBtn'),
                             ),
-                          ),
+                        H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'sm-btn sm-btn-sm',
+                            disabled: busy,
+                            title: t('refreshBtn'),
+                            onClick: () => void controller.syncFromHost(),
+                          },
+                          RefreshIcon({ React, size: 12 }),
                         ),
-                      )
-                    : H(
-                        'div',
-                        { className: 'sm-composer-wrap' },
-                        triggerInfo
-                          ? H(
+                      ),
+                    ),
+
+                    // Live Collaboration Topology Strip (appears when any Agent is actively coordinating/responding)
+                    activeStatusesList.length > 0
+                      ? H(
+                          'div',
+                          { className: 'sm-topology-bar' },
+                          H(
+                            'span',
+                            { className: 'sm-topo-label' },
+                            H('span', { className: 'sm-dot-live' }),
+                            t('collabActiveLabel'),
+                          ),
+                          H(
+                            'div',
+                            { className: 'sm-topo-flow' },
+                            ...activeStatusesList.map((st, sIdx) =>
+                              H(
+                                React.Fragment || 'span',
+                                { key: `topo-${st.slug}` },
+                                sIdx > 0 ? H('span', { className: 'sm-topo-edge' }, '·') : null,
+                                H(
+                                  'span',
+                                  { className: 'sm-topo-node' },
+                                  st.isModerator ? ModeratorCrownIcon({ React, size: 11 }) : AgentIcon({ React, size: 11 }),
+                                  `@${st.slug}`,
+                                  st.stage === 'waiting_peer' && st.detail
+                                    ? H(
+                                        React.Fragment || 'span',
+                                        null,
+                                        H('span', { className: 'sm-topo-edge' }, '──▶'),
+                                        H('strong', null, `@${st.detail}`),
+                                      )
+                                    : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : null,
+
+                    // Message Stream
+                    H(
+                      'div',
+                      {
+                        ref: messagesRef,
+                        className: 'sm-messages',
+                        onScroll: (e) => {
+                          const el = e?.currentTarget
+                          if (!el || typeof el.scrollHeight !== 'number') return
+                          nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 120
+                        },
+                      },
+                      activeMessages.length === 0 && activeStatusesList.length === 0
+                        ? H('div', { style: { opacity: 0.72, fontSize: '12.5px', padding: '12px 4px' } }, t('noMessagesYet'))
+                        : renderItems.map((item) => {
+                            if (item.kind === 'divider') {
+                              const clockStr = formatClock(item.createdAt)
+                              const label = item.dividerKind === 'task' ? t('taskThreadDivider') : t('newTopicDivider')
+                              return H(
+                                'div',
+                                {
+                                  key: item.id,
+                                  'data-anchor-id': item.anchorId,
+                                  className: 'sm-topic-divider',
+                                  title: item.threadId || undefined,
+                                },
+                                `${label}${clockStr ? ` · ${clockStr}` : ''}`,
+                              )
+                            }
+
+                            if (item.kind === 'system') {
+                              const clockStr = formatClock(item.msg.createdAt)
+                              return H(
+                                'div',
+                                { key: item.id, className: 'sm-system-pill' },
+                                SystemBellIcon({ React, size: 11 }),
+                                H('span', null, localizeSystemMessage(item.msg.text, t)),
+                                clockStr ? H('span', { style: { opacity: 0.65, fontSize: '10.5px' } }, clockStr) : null,
+                              )
+                            }
+
+                            if (item.kind === 'collab-group') {
+                              const defaultOpen = !item.hasFollowingMessage && activeStatusesList.length > 0
+                              const isOpen = expandedCollabs[item.id] !== undefined
+                                ? Boolean(expandedCollabs[item.id])
+                                : defaultOpen
+                              const firstStep = item.messages[0]
+                              const preview = stripMarkdownForPreview(firstStep?.text || '', 64)
+                              const actors = [...new Set(item.messages.map((m) => `@${m.sender?.slug || 'agent'}`))]
+                              return H(
+                                'div',
+                                { key: item.id, className: 'sm-collab-group' },
+                                H(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    className: 'sm-collab-toggle',
+                                    onClick: () => setExpandedCollabs((prev) => ({ ...prev, [item.id]: !isOpen })),
+                                  },
+                                  H(
+                                    'span',
+                                    { className: 'sm-collab-summary' },
+                                    ChevronIcon({ React, size: 12, rotated: isOpen }),
+                                    RoundtableIcon({ React, size: 13 }),
+                                    H('strong', null, t('collabStepsTitle')),
+                                    H('span', { className: 'sm-badge' }, `${item.messages.length} ${t('collabStepsCount')}`),
+                                    H('span', { className: 'sm-collab-preview' }, `${actors.join(' → ')}${preview ? ` · ${preview}` : ''}`),
+                                  ),
+                                  H('span', { style: { fontSize: '10.5px', opacity: 0.65, whiteSpace: 'nowrap' } }, formatClock(firstStep?.createdAt)),
+                                ),
+                                isOpen
+                                  ? H(
+                                      'div',
+                                      { className: 'sm-collab-steps' },
+                                      ...item.messages.map((stepMsg) => {
+                                        const isDispatch = stepMsg.kind === 'task'
+                                        const targets = Array.isArray(stepMsg.mentions) && stepMsg.mentions.length > 0
+                                          ? stepMsg.mentions.map((s) => `@${s}`).join(', ')
+                                          : ''
+                                        return H(
+                                          'div',
+                                          {
+                                            key: stepMsg.id,
+                                            className: `sm-collab-step ${isDispatch ? 'dispatch' : 'report'}`,
+                                          },
+                                          H(
+                                            'div',
+                                            { className: 'sm-collab-step-head' },
+                                            H(
+                                              'span',
+                                              { className: 'sm-row', style: { gap: '5px' } },
+                                              isDispatch
+                                                ? ModeratorCrownIcon({ React, size: 11 })
+                                                : AgentIcon({ React, size: 11 }),
+                                              H('strong', { style: { color: 'var(--sm-fg-primary)' } }, `@${stepMsg.sender?.slug}`),
+                                              H(
+                                                'span',
+                                                null,
+                                                isDispatch
+                                                  ? `${t('collabStepDispatch')} ${targets || ''}`.trim()
+                                                  : t('collabStepReport'),
+                                              ),
+                                            ),
+                                            H('span', null, formatClock(stepMsg.createdAt)),
+                                          ),
+                                          renderMarkdownMessage(H, stepMsg.text, {
+                                            keyPrefix: stepMsg.id,
+                                            onCopyCode: flashCopy,
+                                            copiedCodeKey: copiedKey,
+                                            t,
+                                          }),
+                                        )
+                                      }),
+                                    )
+                                  : null,
+                              )
+                            }
+
+                            // Standard human / agent / file bubble
+                            const msg = item.msg
+                            const clockStr = formatClock(msg.createdAt)
+                            const isSelf = msg.sender?.slug === self.slug
+                            const isAgent = msg.sender?.actor === 'agent'
+                            const isModSender = activeRoom.type === 'group' && msg.sender?.slug === activeModeratorSlug
+                            const actorIcon = isAgent
+                              ? (isModSender ? ModeratorCrownIcon({ React, size: 12 }) : AgentIcon({ React, size: 12 }))
+                              : HumanIcon({ React, size: 12 })
+                            const pending = msg.delivery?.pendingPeers || []
+                            const hideRedundantFileCaption = Boolean(
+                              msg.kind === 'file'
+                              && msg.attachment?.name
+                              && String(msg.text || '').trim() === `#${msg.attachment.name}`,
+                            )
+                            const msgCopyId = `msg-${msg.id}`
+
+                            return H(
                               'div',
-                              { ref: popoverRef, className: 'sm-popover', role: 'listbox' },
+                              {
+                                key: msg.id,
+                                'data-anchor-id': `sm-msg-${msg.id}`,
+                                className: `sm-msg${isSelf ? ' self' : ''}${isAgent ? (isModSender ? ' agent moderator-agent' : ' agent') : ''}`,
+                              },
                               H(
                                 'div',
-                                { className: 'sm-popover-header' },
-                                triggerInfo.trigger === '@' ? t('mentionMenuTitle') : t('fileMenuTitle'),
-                              ),
-                              popoverItems.length === 0
-                                ? H(
-                                    'div',
-                                    { style: { padding: '6px 10px', fontSize: '12px', opacity: 0.7 } },
-                                    t('noMatchingFiles'),
-                                  )
-                                : popoverItems.map((item, idx) =>
+                                { className: 'sm-msg-meta' },
+                                H(
+                                  'span',
+                                  { className: 'sm-msg-author' },
+                                  actorIcon,
+                                  `${msg.sender?.ownerName || msg.sender?.slug} (@${msg.sender?.slug})`,
+                                  isModSender && isAgent
+                                    ? H('span', { className: 'sm-badge sm-badge-moderator' }, t('moderatorBadge'))
+                                    : isAgent
+                                      ? H('span', { className: 'sm-badge' }, t('actorAgent'))
+                                      : null,
+                                ),
+                                H(
+                                  'span',
+                                  { className: 'sm-row', style: { gap: '6px' } },
+                                  H(
+                                    'span',
+                                    { className: 'sm-msg-actions' },
                                     H(
                                       'button',
                                       {
-                                        key: item.token,
                                         type: 'button',
-                                        className: `sm-popover-item${idx === menuIndex ? ' active' : ''}`,
-                                        onClick: () => applyPopoverSelection(item),
+                                        className: 'sm-msg-act-btn',
+                                        title: t('copyMsgBtn'),
+                                        onClick: () => void flashCopy(msg.text || '', msgCopyId),
                                       },
-                                      H(
-                                        'strong',
-                                        { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } },
-                                        renderPopoverIcon(item.iconKind),
-                                        item.label,
-                                      ),
-                                      H('span', { style: { fontSize: '11px', opacity: 0.72 } }, item.desc),
+                                      copiedKey === msgCopyId ? CheckIcon({ React, size: 11 }) : CopyIcon({ React, size: 11 }),
+                                      copiedKey === msgCopyId ? t('copiedCodeBtn') : t('copyMsgBtn'),
                                     ),
+                                    !isRoomUnpaired
+                                      ? H(
+                                          'button',
+                                          {
+                                            type: 'button',
+                                            className: 'sm-msg-act-btn',
+                                            title: t('replyMsgBtn'),
+                                            onClick: () => {
+                                              setReplyTarget({
+                                                slug: msg.sender?.slug || 'peer',
+                                                ownerName: msg.sender?.ownerName || msg.sender?.slug || 'peer',
+                                                preview: stripMarkdownForPreview(msg.text || msg.attachment?.name || '', 72),
+                                              })
+                                              composerRef?.current?.focus?.()
+                                            },
+                                          },
+                                          ReplyIcon({ React, size: 11 }),
+                                          t('replyMsgBtn'),
+                                        )
+                                      : null,
                                   ),
+                                  H('span', null, clockStr),
+                                ),
+                              ),
+                              !hideRedundantFileCaption && msg.text
+                                ? renderMarkdownMessage(H, msg.text, {
+                                    keyPrefix: msg.id,
+                                    onCopyCode: flashCopy,
+                                    copiedCodeKey: copiedKey,
+                                    t,
+                                  })
+                                : null,
+                              msg.attachment ? renderFileCard(msg) : null,
+                              pending.length > 0
+                                ? H(
+                                    'div',
+                                    { style: { fontSize: '11px', opacity: 0.72 } },
+                                    `${t('pendingOutbox')} ${pending.join(', ')}`,
+                                  )
+                                : null,
                             )
-                          : null,
+                          }),
+                      ...activeStatusesList.map((st) => {
+                        const stageText = st.stage === 'coordinating'
+                          ? t('stageCoordinating')
+                          : st.stage === 'waiting_peer'
+                            ? `${t('stageWaitingPeer')}${st.detail ? ` @${st.detail}` : ''}…`
+                            : st.stage === 'answering'
+                              ? t('stageAnswering')
+                              : t('stagePreparing')
+                        return H(
+                          'div',
+                          { key: `typing-${st.slug}`, className: 'sm-typing-bubble' },
+                          st.isModerator
+                            ? ModeratorCrownIcon({ React, size: 13 })
+                            : AgentIcon({ React, size: 13 }),
+                          H(
+                            'span',
+                            null,
+                            H('strong', null, `@${st.slug}`),
+                            st.isModerator ? ` (${t('moderatorBadge')})` : '',
+                            ` ${stageText}`,
+                          ),
+                          H(
+                            'span',
+                            { className: 'sm-typing-dots', 'aria-hidden': 'true' },
+                            H('span', { className: 'sm-typing-dot' }),
+                            H('span', { className: 'sm-typing-dot' }),
+                            H('span', { className: 'sm-typing-dot' }),
+                          ),
+                        )
+                      }),
+                    ),
 
-                        attachedFiles.length > 0
-                          ? H(
+                    // Composer or Disconnected Banner
+                    isRoomUnpaired
+                      ? H(
+                          'div',
+                          { className: 'sm-composer-wrap' },
+                          H(
+                            'div',
+                            { className: 'sm-unpaired-banner' },
+                            H('span', null, t('unpairedRoomBanner')),
+                            H(
                               'div',
-                              { className: 'sm-attached-files' },
-                              ...attachedFiles.map((fileRef) =>
+                              { className: 'sm-row', style: { gap: '6px' } },
+                              H(
+                                'button',
+                                {
+                                  type: 'button',
+                                  className: 'sm-btn sm-btn-sm sm-btn-primary',
+                                  onClick: () => {
+                                    setShowPairDrawer(true)
+                                    setShowNewGroup(false)
+                                  },
+                                },
+                                t('repairBtn'),
+                              ),
+                              H(
+                                'button',
+                                {
+                                  type: 'button',
+                                  className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                  disabled: busy,
+                                  onClick: () => void controller.removeRoom(activeRoom.id),
+                                },
+                                t('removeRoomBtn'),
+                              ),
+                            ),
+                          ),
+                        )
+                      : H(
+                          'div',
+                          { className: 'sm-composer-wrap' },
+                          triggerInfo
+                            ? H(
+                                'div',
+                                { ref: popoverRef, className: 'sm-popover', role: 'listbox' },
+                                H(
+                                  'div',
+                                  { className: 'sm-popover-header' },
+                                  triggerInfo.trigger === '@' ? t('mentionMenuTitle') : t('fileMenuTitle'),
+                                ),
+                                popoverItems.length === 0
+                                  ? H(
+                                      'div',
+                                      { style: { padding: '6px 10px', fontSize: '12px', opacity: 0.7 } },
+                                      t('noMatchingFiles'),
+                                    )
+                                  : popoverItems.map((item, idx) =>
+                                      H(
+                                        'button',
+                                        {
+                                          key: item.token,
+                                          type: 'button',
+                                          className: `sm-popover-item${idx === menuIndex ? ' active' : ''}`,
+                                          onClick: () => applyPopoverSelection(item),
+                                        },
+                                        H(
+                                          'strong',
+                                          { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } },
+                                          renderPopoverIcon(item.iconKind),
+                                          item.label,
+                                        ),
+                                        H('span', { style: { fontSize: '11px', opacity: 0.72 } }, item.desc),
+                                      ),
+                                    ),
+                              )
+                            : null,
+
+                          replyTarget
+                            ? H(
+                                'div',
+                                { className: 'sm-reply-bar' },
                                 H(
                                   'span',
-                                  { key: fileRef, className: 'sm-attached-pill' },
-                                  FileDocIcon({ React, size: 12 }),
-                                  `#${fileRef}`,
+                                  { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                                  `${t('replyingToLabel')} @${replyTarget.slug}: ${replyTarget.preview}`,
+                                ),
+                                H(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    className: 'sm-btn-ghost',
+                                    title: t('clearReplyBtn'),
+                                    onClick: () => setReplyTarget(null),
+                                  },
+                                  CloseIcon({ React, size: 11 }),
+                                ),
+                              )
+                            : null,
+
+                          attachedFiles.length > 0
+                            ? H(
+                                'div',
+                                { className: 'sm-attached-files' },
+                                ...attachedFiles.map((fileRef) =>
                                   H(
-                                    'button',
-                                    {
-                                      type: 'button',
-                                      className: 'sm-btn-ghost',
-                                      style: { padding: '0 4px' },
-                                      onClick: () => setAttachedFiles((prev) => prev.filter((f) => f !== fileRef)),
+                                    'span',
+                                    { key: fileRef, className: 'sm-attached-pill' },
+                                    FileDocIcon({ React, size: 12 }),
+                                    `#${fileRef}`,
+                                    H(
+                                      'button',
+                                      {
+                                        type: 'button',
+                                        className: 'sm-btn-ghost',
+                                        style: { padding: '0 4px' },
+                                        onClick: () => setAttachedFiles((prev) => prev.filter((f) => f !== fileRef)),
+                                      },
+                                      '×',
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : null,
+
+                          H(
+                            'div',
+                            { className: 'sm-composer-box' },
+                            H('input', {
+                              ref: fileInputRef,
+                              type: 'file',
+                              style: { display: 'none' },
+                              onChange: (e) => {
+                                const f = e.target?.files?.[0]
+                                if (f) uploadBrowserFile(f)
+                                if (e.target) e.target.value = ''
+                              },
+                            }),
+                            H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: `sm-trigger-btn${triggerInfo?.trigger === '@' ? ' active' : ''}`,
+                                title: t('mentionTriggerTitle'),
+                                onClick: () => {
+                                  setMenuIndex(0)
+                                  setActiveTrigger((prev) => (prev?.trigger === '@' ? null : { trigger: '@', query: '', replaceStart: draftText.length }))
+                                },
+                              },
+                              '@',
+                            ),
+                            H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: `sm-trigger-btn${triggerInfo?.trigger === '#' ? ' active' : ''}`,
+                                title: t('fileTriggerTitle'),
+                                onClick: () => {
+                                  setMenuIndex(0)
+                                  setActiveTrigger((prev) => {
+                                    if (prev?.trigger === '#') return null
+                                    void controller.searchFiles('')
+                                    return { trigger: '#', query: '', replaceStart: draftText.length }
+                                  })
+                                },
+                              },
+                              '#',
+                            ),
+                            H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-trigger-btn',
+                                title: t('uploadFileTitle'),
+                                disabled: busy,
+                                onClick: () => fileInputRef?.current?.click?.(),
+                              },
+                              UploadIcon({ React, size: 13 }),
+                            ),
+                            H('textarea', {
+                              ref: composerRef,
+                              rows: 1,
+                              className: 'sm-composer-input',
+                              value: draftText,
+                              placeholder: t('composerPlaceholder'),
+                              onChange: (e) => handleDraftChange(e.target?.value || ''),
+                              onKeyDown: (e) => {
+                                // Never submit while an IME (Chinese/Japanese/Korean) composition is active
+                                if (e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) {
+                                  return
+                                }
+                                if (triggerInfo && popoverItems.length > 0) {
+                                  if (e.key === 'ArrowDown') {
+                                    e.preventDefault?.()
+                                    setMenuIndex((i) => (i + 1) % popoverItems.length)
+                                    return
+                                  }
+                                  if (e.key === 'ArrowUp') {
+                                    e.preventDefault?.()
+                                    setMenuIndex((i) => (i - 1 + popoverItems.length) % popoverItems.length)
+                                    return
+                                  }
+                                  if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                                    e.preventDefault?.()
+                                    applyPopoverSelection(popoverItems[menuIndex] || popoverItems[0])
+                                    return
+                                  }
+                                  if (e.key === 'Escape') {
+                                    e.preventDefault?.()
+                                    setActiveTrigger(null)
+                                    return
+                                  }
+                                }
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault?.()
+                                  void handleSend()
+                                }
+                              },
+                            }),
+                            H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-btn sm-btn-primary',
+                                disabled: busy || (!draftText.trim() && attachedFiles.length === 0),
+                                onClick: handleSend,
+                              },
+                              t('sendBtn'),
+                            ),
+                          ),
+                        ),
+                  ),
+            ),
+
+            // Right Drawer: Shared Files Box OR Room Details & Management
+            activeRoom && rightPanel
+              ? H(
+                  'aside',
+                  { className: 'sm-detail-drawer' },
+                  H(
+                    'div',
+                    { className: 'sm-drawer-head' },
+                    H(
+                      'span',
+                      { className: 'sm-row', style: { gap: '6px' } },
+                      rightPanel === 'files' ? ClipIcon({ React, size: 13 }) : SlidersIcon({ React, size: 13 }),
+                      rightPanel === 'files' ? t('filesDrawerTitle') : t('roomDetailsTitle'),
+                    ),
+                    H(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'sm-btn-ghost',
+                        onClick: () => setRightPanel(''),
+                      },
+                      CloseIcon({ React, size: 13 }),
+                    ),
+                  ),
+                  rightPanel === 'files'
+                    ? H(
+                        'div',
+                        { className: 'sm-drawer-body' },
+                        roomSharedFiles.length === 0
+                          ? H('div', { style: { fontSize: '12px', opacity: 0.72 } }, t('noSharedFilesYet'))
+                          : roomSharedFiles.map((fMsg) =>
+                              H(
+                                'div',
+                                { key: `file-row-${fMsg.id}`, style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
+                                H(
+                                  'div',
+                                  { style: { display: 'flex', justifyContent: 'space-between', fontSize: '11px', opacity: 0.75 } },
+                                  H('span', null, `@${fMsg.sender?.slug || 'peer'}`),
+                                  H('span', null, formatRelativeTime(fMsg.createdAt, t)),
+                                ),
+                                renderFileCard(fMsg, true),
+                              ),
+                            ),
+                      )
+                    : H(
+                        'div',
+                        { className: 'sm-drawer-body' },
+                        // Group Rename & Moderator
+                        activeRoom.type === 'group' && !isRoomUnpaired
+                          ? H(
+                              React.Fragment || 'div',
+                              null,
+                              canRenameGroup
+                                ? H(
+                                    'div',
+                                    { className: 'sm-drawer-section' },
+                                    H('span', { className: 'sm-drawer-label' }, t('renameGroupLabel')),
+                                    editingName
+                                      ? H(
+                                          'div',
+                                          { className: 'sm-row' },
+                                          H('input', {
+                                            type: 'text',
+                                            className: 'sm-input',
+                                            value: renameInput,
+                                            onChange: (e) => setRenameInput(e.target?.value || ''),
+                                            onKeyDown: (e) => {
+                                              if (e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) return
+                                              if (e.key === 'Enter' && renameInput.trim()) {
+                                                e.preventDefault?.()
+                                                void controller.renameGroup({ roomId: activeRoom.id, name: renameInput.trim() }).then((r) => {
+                                                  if (r) setEditingName(false)
+                                                })
+                                              }
+                                            },
+                                          }),
+                                          H(
+                                            'button',
+                                            {
+                                              type: 'button',
+                                              className: 'sm-btn sm-btn-sm sm-btn-primary',
+                                              disabled: busy || !renameInput.trim(),
+                                              onClick: async () => {
+                                                const r = await controller.renameGroup({ roomId: activeRoom.id, name: renameInput.trim() })
+                                                if (r) setEditingName(false)
+                                              },
+                                            },
+                                            t('saveBtn'),
+                                          ),
+                                        )
+                                      : H(
+                                          'div',
+                                          { className: 'sm-row', style: { justifyContent: 'space-between' } },
+                                          H('strong', { style: { fontSize: '13px' } }, activeRoom.name),
+                                          H(
+                                            'button',
+                                            {
+                                              type: 'button',
+                                              className: 'sm-btn sm-btn-sm',
+                                              onClick: () => {
+                                                setRenameInput(activeRoom.name || '')
+                                                setEditingName(true)
+                                              },
+                                            },
+                                            EditIcon({ React, size: 11 }),
+                                            t('renameGroupBtn'),
+                                          ),
+                                        ),
+                                  )
+                                : null,
+                              H(
+                                'div',
+                                { className: 'sm-drawer-section' },
+                                H('span', { className: 'sm-drawer-label' }, t('moderatorBadge')),
+                                H(
+                                  'select',
+                                  {
+                                    className: 'sm-input',
+                                    value: activeModeratorSlug,
+                                    disabled: busy,
+                                    onChange: (e) => {
+                                      const nextMod = e.target?.value
+                                      if (nextMod) {
+                                        void controller.updateGroupModeration({
+                                          roomId: activeRoom.id,
+                                          moderatorSlug: nextMod,
+                                        })
+                                      }
                                     },
-                                    '×',
+                                  },
+                                  ...(activeRoom.members || []).map((m) =>
+                                    H('option', { key: m.slug, value: m.slug }, `${t('moderatorBadge')}: @${m.slug}`),
+                                  ),
+                                ),
+                              ),
+                              uninvitedPeers.length > 0
+                                ? H(
+                                    'div',
+                                    { className: 'sm-drawer-section' },
+                                    H('span', { className: 'sm-drawer-label' }, t('inviteBtn')),
+                                    H(
+                                      'div',
+                                      { className: 'sm-row' },
+                                      H(
+                                        'select',
+                                        {
+                                          className: 'sm-input',
+                                          value: invitePeerSlug,
+                                          onChange: (e) => setInvitePeerSlug(e.target?.value || ''),
+                                        },
+                                        H('option', { value: '' }, t('invitePeerPlaceholder')),
+                                        ...uninvitedPeers.map((p) =>
+                                          H('option', { key: p.slug, value: p.slug }, `${p.ownerName} (${p.slug})`),
+                                        ),
+                                      ),
+                                      H(
+                                        'button',
+                                        {
+                                          type: 'button',
+                                          className: 'sm-btn sm-btn-sm sm-btn-primary',
+                                          disabled: busy || !invitePeerSlug,
+                                          onClick: () => {
+                                            if (!invitePeerSlug) return
+                                            void controller.inviteToGroup({
+                                              roomId: activeRoom.id,
+                                              memberSlugs: [invitePeerSlug],
+                                            })
+                                            setInvitePeerSlug('')
+                                          },
+                                        },
+                                        t('inviteBtn'),
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                              H(
+                                'div',
+                                { className: 'sm-drawer-section' },
+                                H('span', { className: 'sm-drawer-label' }, `${t('membersLabel')} (${(activeRoom.members || []).length})`),
+                                ...(activeRoom.members || []).map((m) =>
+                                  H(
+                                    'div',
+                                    { key: m.slug, className: 'sm-peer-row', style: { padding: '7px 9px' } },
+                                    H(
+                                      'div',
+                                      { style: { display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 } },
+                                      H(
+                                        'div',
+                                        { className: 'sm-row', style: { gap: '5px', flexWrap: 'wrap' } },
+                                        H('strong', { style: { fontSize: '12px' } }, `@${m.slug}`),
+                                        m.slug === activeRoom.createdBy ? H('span', { className: 'sm-badge' }, t('creatorBadge')) : null,
+                                        m.slug === activeModeratorSlug ? H('span', { className: 'sm-badge sm-badge-moderator' }, t('moderatorBadge')) : null,
+                                      ),
+                                      m.role ? H('span', { style: { fontSize: '11px', opacity: 0.72 } }, m.role) : null,
+                                    ),
+                                    isGroupCreator && m.slug !== self.slug && m.slug !== activeRoom.createdBy
+                                      ? (confirmAction?.type === 'kick' && confirmAction.slug === m.slug
+                                        ? H(
+                                            'div',
+                                            { className: 'sm-row', style: { gap: '4px' } },
+                                            H(
+                                              'button',
+                                              {
+                                                type: 'button',
+                                                className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                                disabled: busy,
+                                                onClick: async () => {
+                                                  setConfirmAction(null)
+                                                  await controller.removeFromGroup({ roomId: activeRoom.id, slug: m.slug })
+                                                },
+                                              },
+                                              t('removeMemberBtn'),
+                                            ),
+                                            H(
+                                              'button',
+                                              {
+                                                type: 'button',
+                                                className: 'sm-btn sm-btn-sm',
+                                                onClick: () => setConfirmAction(null),
+                                              },
+                                              t('cancelBtn'),
+                                            ),
+                                          )
+                                        : H(
+                                            'button',
+                                            {
+                                              type: 'button',
+                                              className: 'sm-btn-ghost',
+                                              style: { color: '#dc2626' },
+                                              disabled: busy,
+                                              onClick: () => setConfirmAction({ type: 'kick', slug: m.slug }),
+                                            },
+                                            t('removeMemberBtn'),
+                                          ))
+                                      : null,
                                   ),
                                 ),
                               ),
                             )
                           : null,
 
-                        H(
-                          'div',
-                          { className: 'sm-composer-box' },
-                          H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: `sm-trigger-btn${triggerInfo?.trigger === '@' ? ' active' : ''}`,
-                              title: t('mentionTriggerTitle'),
-                              onClick: () => {
-                                setMenuIndex(0)
-                                setActiveTrigger((prev) => (prev?.trigger === '@' ? null : { trigger: '@', query: '', replaceStart: draftText.length }))
-                              },
-                            },
-                            '@',
-                          ),
-                          H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: `sm-trigger-btn${triggerInfo?.trigger === '#' ? ' active' : ''}`,
-                              title: t('fileTriggerTitle'),
-                              onClick: () => {
-                                setMenuIndex(0)
-                                setActiveTrigger((prev) => {
-                                  if (prev?.trigger === '#') return null
-                                  void controller.searchFiles('')
-                                  return { trigger: '#', query: '', replaceStart: draftText.length }
-                                })
-                              },
-                            },
-                            '#',
-                          ),
-                          H('textarea', {
-                            ref: composerRef,
-                            rows: 1,
-                            className: 'sm-composer-input',
-                            value: draftText,
-                            placeholder: t('composerPlaceholder'),
-                            onChange: (e) => handleDraftChange(e.target?.value || ''),
-                            onKeyDown: (e) => {
-                              if (triggerInfo && popoverItems.length > 0) {
-                                if (e.key === 'ArrowDown') {
-                                  e.preventDefault?.()
-                                  setMenuIndex((i) => (i + 1) % popoverItems.length)
-                                  return
-                                }
-                                if (e.key === 'ArrowUp') {
-                                  e.preventDefault?.()
-                                  setMenuIndex((i) => (i - 1 + popoverItems.length) % popoverItems.length)
-                                  return
-                                }
-                                if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-                                  e.preventDefault?.()
-                                  applyPopoverSelection(popoverItems[menuIndex] || popoverItems[0])
-                                  return
-                                }
-                                if (e.key === 'Escape') {
-                                  e.preventDefault?.()
-                                  setActiveTrigger(null)
-                                  return
-                                }
-                              }
-                              if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault?.()
-                                void handleSend()
-                              }
-                            },
-                          }),
-                          H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'sm-btn sm-btn-primary',
-                              disabled: busy || (!draftText.trim() && attachedFiles.length === 0),
-                              onClick: handleSend,
-                            },
-                            t('sendBtn'),
-                          ),
-                        ),
+                        // Pair Room Peer Controls
+                        activeRoom.type === 'pair' && !isRoomUnpaired && activeRoom.peerSlug
+                          ? H(
+                              'div',
+                              { className: 'sm-drawer-section' },
+                              H('span', { className: 'sm-drawer-label' }, activeRoom.name),
+                              activePairPeer?.role
+                                ? H('span', { className: 'sm-badge', style: { alignSelf: 'flex-start' } }, activePairPeer.role)
+                                : null,
+                              H('div', { style: { fontSize: '12px', opacity: 0.8 } }, activePairPeer?.description || t('noSpecialtyYet')),
+                              H(
+                                'div',
+                                { className: 'sm-row', style: { flexWrap: 'wrap' } },
+                                H(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    className: 'sm-btn sm-btn-sm',
+                                    disabled: busy,
+                                    onClick: () => void controller.pingPeer(activeRoom.peerSlug),
+                                  },
+                                  t('pingBtn'),
+                                ),
+                                H(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                    disabled: busy,
+                                    onClick: () => setConfirmAction({ type: 'unpair', slug: activeRoom.peerSlug }),
+                                  },
+                                  t('unpairBtn'),
+                                ),
+                              ),
+                              confirmAction?.type === 'unpair' && confirmAction.slug === activeRoom.peerSlug
+                                ? H(
+                                    'div',
+                                    { className: 'sm-confirm-bar' },
+                                    H(
+                                      'div',
+                                      { style: { display: 'flex', flexDirection: 'column', gap: '2px' } },
+                                      H('strong', null, `${t('unpairConfirmTitle')} @${confirmAction.slug}`),
+                                      ownedGroupsWithTarget(confirmAction.slug).length > 0
+                                        ? H('span', { style: { fontSize: '11px', opacity: 0.85 } }, t('unpairGroupWarn'))
+                                        : null,
+                                    ),
+                                    H(
+                                      'div',
+                                      { className: 'sm-row', style: { gap: '6px' } },
+                                      H(
+                                        'button',
+                                        {
+                                          type: 'button',
+                                          className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                          disabled: busy,
+                                          onClick: async () => {
+                                            const slugToRemove = confirmAction.slug
+                                            setConfirmAction(null)
+                                            setRightPanel('')
+                                            await controller.removePeer(slugToRemove)
+                                          },
+                                        },
+                                        t('confirmUnpairBtn'),
+                                      ),
+                                      H(
+                                        'button',
+                                        {
+                                          type: 'button',
+                                          className: 'sm-btn sm-btn-sm',
+                                          onClick: () => setConfirmAction(null),
+                                        },
+                                        t('cancelBtn'),
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                            )
+                          : null,
+
+                        // Topic Directory Jump List
+                        roomTopics.length > 0
+                          ? H(
+                              'div',
+                              { className: 'sm-drawer-section' },
+                              H('span', { className: 'sm-drawer-label' }, `${t('topicsSectionTitle')} (${roomTopics.length})`),
+                              ...roomTopics.slice().reverse().map((tp, tIdx) =>
+                                H(
+                                  'button',
+                                  {
+                                    key: tp.id,
+                                    type: 'button',
+                                    className: 'sm-topic-jump-btn',
+                                    onClick: () => scrollToAnchor(tp.anchorId),
+                                  },
+                                  H(
+                                    'span',
+                                    { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                                    tp.preview || `${t('topicItemLabel')} #${roomTopics.length - tIdx}`,
+                                  ),
+                                  H('span', { style: { fontSize: '10.5px', opacity: 0.65, flexShrink: 0 } }, formatClock(tp.createdAt)),
+                                ),
+                              ),
+                            )
+                          : null,
+
+                        // Leave / Dissolve Group
+                        activeRoom.type === 'group' && !isRoomUnpaired
+                          ? H(
+                              'div',
+                              { className: 'sm-drawer-section', style: { marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--sm-border-l1)' } },
+                              confirmAction?.type === 'leave-group'
+                                ? H(
+                                    'div',
+                                    { className: 'sm-confirm-bar' },
+                                    H('span', null, t('confirmLeaveGroup')),
+                                    H(
+                                      'div',
+                                      { className: 'sm-row', style: { gap: '6px' } },
+                                      H(
+                                        'button',
+                                        {
+                                          type: 'button',
+                                          className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                          disabled: busy,
+                                          onClick: async () => {
+                                            setConfirmAction(null)
+                                            setRightPanel('')
+                                            await controller.leaveGroup(activeRoom.id)
+                                          },
+                                        },
+                                        isGroupCreator ? t('dissolveGroupBtn') : t('leaveGroupBtn'),
+                                      ),
+                                      H(
+                                        'button',
+                                        {
+                                          type: 'button',
+                                          className: 'sm-btn sm-btn-sm',
+                                          onClick: () => setConfirmAction(null),
+                                        },
+                                        t('cancelBtn'),
+                                      ),
+                                    ),
+                                  )
+                                : H(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                      disabled: busy,
+                                      onClick: () => setConfirmAction({ type: 'leave-group', roomId: activeRoom.id }),
+                                    },
+                                    isGroupCreator ? t('dissolveGroupBtn') : t('leaveGroupBtn'),
+                                  ),
+                            )
+                          : null,
                       ),
-                ),
+                )
+              : null,
           ),
+
+          // Shared File Online Preview Modal
+          previewState
+            ? H(
+                'div',
+                {
+                  className: 'sm-preview-backdrop',
+                  onClick: (e) => {
+                    if (e.target === e.currentTarget) setPreviewState(null)
+                  },
+                },
+                H(
+                  'div',
+                  { className: 'sm-preview-modal', role: 'dialog', 'aria-label': previewState.name },
+                  H(
+                    'div',
+                    { className: 'sm-preview-head' },
+                    H(
+                      'div',
+                      { className: 'sm-row', style: { minWidth: 0 } },
+                      FileDocIcon({ React, size: 15 }),
+                      H('strong', { style: { fontSize: '13.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, previewState.name),
+                      H('span', { className: 'sm-badge' }, formatBytes(previewState.size)),
+                    ),
+                    H(
+                      'div',
+                      { className: 'sm-row', style: { gap: '6px' } },
+                      previewState.kind === 'markdown'
+                        ? H(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'sm-btn sm-btn-sm',
+                              onClick: () => setPreviewState((cur) => (cur ? { ...cur, rawMode: !cur.rawMode } : cur)),
+                            },
+                            previewState.rawMode ? t('previewRenderedBtn') : t('previewRawBtn'),
+                          )
+                        : null,
+                      previewState.text
+                        ? H(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'sm-btn sm-btn-sm',
+                              onClick: () => void flashCopy(previewState.text, 'preview-copy'),
+                            },
+                            copiedKey === 'preview-copy' ? CheckIcon({ React, size: 12 }) : CopyIcon({ React, size: 12 }),
+                            copiedKey === 'preview-copy' ? t('copiedCodeBtn') : t('copyCodeBtn'),
+                          )
+                        : null,
+                      H(
+                        'a',
+                        {
+                          className: 'sm-btn sm-btn-sm sm-btn-primary',
+                          href: previewState.downloadUrl,
+                          download: previewState.name,
+                          style: { textDecoration: 'none' },
+                        },
+                        DownloadIcon({ React, size: 12 }),
+                        t('downloadBtn'),
+                      ),
+                      H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn-ghost',
+                          onClick: () => setPreviewState(null),
+                        },
+                        CloseIcon({ React, size: 14 }),
+                      ),
+                    ),
+                  ),
+                  H(
+                    'div',
+                    { className: 'sm-preview-body' },
+                    previewState.loading
+                      ? H('div', { style: { opacity: 0.72, fontSize: '12.5px' } }, t('previewLoading'))
+                      : previewState.error
+                        ? H('div', { className: 'sm-alert' }, previewState.error)
+                        : previewState.kind === 'image'
+                          ? H('img', { className: 'sm-preview-img', src: previewState.url, alt: previewState.name })
+                          : previewState.kind === 'markdown' && !previewState.rawMode
+                            ? renderMarkdownMessage(H, previewState.text, {
+                                keyPrefix: `prev-${previewState.msgId}`,
+                                onCopyCode: flashCopy,
+                                copiedCodeKey: copiedKey,
+                                t,
+                              })
+                            : previewState.kind === 'binary'
+                              ? H('div', { style: { opacity: 0.78, fontSize: '13px', textAlign: 'center', padding: '24px' } }, t('previewUnavailable'))
+                              : H('pre', { className: 'sm-preview-pre' }, previewState.text),
+                  ),
+                ),
+              )
+            : null,
         )
       }
     }
 
     /**
-     * Settings Section Page: Node Endpoint Info + 1-on-1 Pairing + Paired Peers Management.
+     * Settings Section Page: Node Agent Profile (with Quick Presets) + 1-on-1 Pairing + Connected Sandboxes.
      */
     function createMeshSettingsPage({
       React,
@@ -3742,6 +6791,7 @@ window.__ModuleLoader__.load({
         const [copiedField, setCopiedField] = useState('')
         const [confirmUnpairSlug, setConfirmUnpairSlug] = useState('')
         const [pingingSlug, setPingingSlug] = useState('')
+        const [pingingAll, setPingingAll] = useState(false)
         const initialSelf = controller.getSnapshot().state?.self || {}
         const [roleInput, setRoleInput] = useState(initialSelf.role || '')
         const [descInput, setDescInput] = useState(initialSelf.description || '')
@@ -3783,6 +6833,14 @@ window.__ModuleLoader__.load({
         const peers = state.peers || []
         const rooms = state.rooms || []
 
+        const roleTemplates = [
+          { id: 'fe', role: t('tplFrontendRole'), desc: t('tplFrontendDesc') },
+          { id: 'be', role: t('tplBackendRole'), desc: t('tplBackendDesc') },
+          { id: 'qa', role: t('tplQaRole'), desc: t('tplQaDesc') },
+          { id: 'data', role: t('tplDataRole'), desc: t('tplDataDesc') },
+          { id: 'arch', role: t('tplArchRole'), desc: t('tplArchDesc') },
+        ]
+
         const copyText = async (key, value, inputRef) => {
           const res = await copyTextToClipboard(value, { fallbackInput: inputRef?.current || null })
           if (res.ok) {
@@ -3819,6 +6877,15 @@ window.__ModuleLoader__.load({
           }
         }
 
+        const handlePingAll = async () => {
+          setPingingAll(true)
+          try {
+            await controller.pingAllPeers()
+          } finally {
+            setPingingAll(false)
+          }
+        }
+
         const ownedGroupsWithTarget = (targetSlug) =>
           rooms.filter(
             (r) => r.type === 'group' && !r.unpaired && r.createdBy === self.slug
@@ -3845,6 +6912,7 @@ window.__ModuleLoader__.load({
                 disabled: busy,
                 onClick: () => void controller.syncFromHost(),
               },
+              RefreshIcon({ React, size: 12 }),
               t('refreshBtn'),
             ),
           ),
@@ -3907,6 +6975,27 @@ window.__ModuleLoader__.load({
                 },
               }),
             ),
+            H(
+              'div',
+              { className: 'sm-template-row' },
+              H('span', null, t('roleTemplatesLabel')),
+              ...roleTemplates.map((tpl) =>
+                H(
+                  'button',
+                  {
+                    key: tpl.id,
+                    type: 'button',
+                    className: 'sm-template-pill',
+                    onClick: () => {
+                      setProfileDirty(true)
+                      setRoleInput(tpl.role)
+                      setDescInput(tpl.desc)
+                    },
+                  },
+                  tpl.role,
+                ),
+              ),
+            ),
             H('p', { className: 'sm-subtitle', style: { margin: 0 } }, t('cliHint')),
             H(
               'details',
@@ -3945,7 +7034,7 @@ window.__ModuleLoader__.load({
             ),
           ),
 
-          // 2. 1-on-1 Pairing Card (Shared streamlined component with live countdown & reliable copy)
+          // 2. 1-on-1 Pairing Card
           H(
             'div',
             { className: 'sm-card' },
@@ -3969,7 +7058,23 @@ window.__ModuleLoader__.load({
           H(
             'div',
             { className: 'sm-card' },
-            H('div', { className: 'sm-card-title' }, `${t('pairedPeersTitle')} (${peers.length})`),
+            H(
+              'div',
+              { className: 'sm-card-title' },
+              H('span', null, `${t('pairedPeersTitle')} (${peers.length})`),
+              peers.length > 0
+                ? H(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'sm-btn sm-btn-sm',
+                      disabled: busy || pingingAll,
+                      onClick: () => void handlePingAll(),
+                    },
+                    pingingAll ? t('pingingAllBtn') : t('pingAllBtn'),
+                  )
+                : null,
+            ),
             peers.length === 0
               ? H('div', { style: { fontSize: '12.5px', opacity: 0.72 } }, t('noPairedPeersDesc'))
               : H(
@@ -3997,7 +7102,7 @@ window.__ModuleLoader__.load({
                             peer.role
                               ? H('span', { className: 'sm-badge' }, peer.role)
                               : null,
-                            renderPeerStatusBadge(H, t, peer.status),
+                            renderPeerStatusBadge(H, t, peer.status, peer.lastLatencyMs),
                           ),
                           H(
                             'div',
@@ -4005,10 +7110,17 @@ window.__ModuleLoader__.load({
                             peer.description || t('noSpecialtyYet'),
                           ),
                           H(
-                            'code',
+                            'div',
                             {
-                              className: 'sm-code-inline',
-                              style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                              style: {
+                                fontSize: '11px',
+                                opacity: 0.62,
+                                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              },
+                              title: peer.endpointUrl || '',
                             },
                             peer.endpointUrl || '',
                           ),
@@ -4250,11 +7362,12 @@ window.__ModuleLoader__.load({
           trigCtx.effect(() => disposeTrigger, 'sandbox-mesh: native session @ trigger')
         })
 
-        // Register userText rule & chip renderer so `@[slug](dsh-mesh:slug)` renders as a clean chip in DSH Session chat history!
+        // Register userText rules & chip/card renderers so `@[slug](dsh-mesh:slug)`, legacy XML peer tags,
+        // and `[SANDBOX MESH INCOMING REQUEST]` wake prompts render cleanly in DSH Session chat history!
         ctx.inject(['uiConversation'], (convCtx) => {
           const uiConv = convCtx.uiConversation ?? convCtx.get?.('uiConversation')
           if (!uiConv?.userText?.register) return
-          const disposeRule = uiConv.userText.register({
+          const disposeMentionRule = uiConv.userText.register({
             id: 'sandbox-mesh',
             order: 8,
             match(text, from) {
@@ -4270,8 +7383,43 @@ window.__ModuleLoader__.load({
               }
             },
           })
-          const disposeNode = convCtx.slots.inject('conversation.user.text.node', () =>
-            convCtx.slots.register(
+          const disposeLegacyPeerRule = uiConv.userText.register({
+            id: 'sandbox-mesh-legacy-peer',
+            order: 7,
+            match(text, from) {
+              const pattern = /<sandbox-mesh-peer\b[^>]*slug="([^"]+)"[^>]*>[\s\S]*?<\/sandbox-mesh-peer>/gu
+              pattern.lastIndex = from
+              const m = pattern.exec(text)
+              if (!m) return undefined
+              return {
+                id: 'sandbox-mesh-legacy-peer',
+                start: m.index,
+                end: m.index + m[0].length,
+                data: { label: m[1], target: m[1] },
+              }
+            },
+          })
+          const disposeWakeRule = uiConv.userText.register({
+            id: 'sandbox-mesh-wake',
+            order: 6,
+            match(text, from) {
+              if (from !== 0) return undefined
+              const parsed = parseIncomingWakePrompt(text)
+              if (!parsed) return undefined
+              return {
+                id: 'sandbox-mesh-wake',
+                start: 0,
+                end: text.length,
+                data: parsed,
+              }
+            },
+          })
+          const MeshWakeCard = createMeshWakePromptView({
+            React,
+            getLocale: () => readActiveLocale(ctx.locale),
+          })
+          const disposeNodes = convCtx.slots.inject('conversation.user.text.node', () => {
+            const d1 = convCtx.slots.register(
               {
                 name: 'conversation.user.text.node',
                 key: 'sandbox-mesh',
@@ -4289,16 +7437,81 @@ window.__ModuleLoader__.load({
                   `@${label}`,
                 )
               },
-            ),
-          )
+            )
+            const d2 = convCtx.slots.register(
+              {
+                name: 'conversation.user.text.node',
+                key: 'sandbox-mesh-legacy-peer',
+                priority: 100,
+              },
+              function MeshLegacyPeerChip({ node }) {
+                const label = node?.data?.label || 'peer'
+                const t = createTranslator(readActiveLocale(ctx.locale))
+                return React.createElement(
+                  'span',
+                  {
+                    className: 'sm-inline-mention',
+                    title: `${t('legacyPeerChipDesc')}: @${label}`,
+                  },
+                  React.createElement(AgentIcon, { React, size: 12 }),
+                  `@${label}`,
+                )
+              },
+            )
+            const d3 = convCtx.slots.register(
+              {
+                name: 'conversation.user.text.node',
+                key: 'sandbox-mesh-wake',
+                priority: 100,
+              },
+              MeshWakeCard,
+            )
+            return () => {
+              d1?.()
+              d2?.()
+              d3?.()
+            }
+          })
           convCtx.effect(() => () => {
-            disposeRule?.()
-            disposeNode?.()
-          }, 'sandbox-mesh: userText chip rule')
+            disposeMentionRule?.()
+            disposeLegacyPeerRule?.()
+            disposeWakeRule?.()
+            disposeNodes?.()
+          }, 'sandbox-mesh: userText chip & wake card rules')
         })
       }
 
-      // Left Sidebar Main Slot: Pure IM Chat + Group Creation + Unified @ / # Composer
+      // Register native DSH tool call cards so `mesh_*` calls never dump raw JSON in main chat
+      const MeshToolCard = createMeshToolView({
+        React,
+        controller,
+        getLocale: () => readActiveLocale(ctx.locale),
+        subscribeLocale,
+      })
+      const MESH_TOOL_NAMES = [
+        'mesh_ask_peer',
+        'mesh_discuss_group',
+        'mesh_list_peers',
+        'mesh_send_message',
+        'mesh_share_file',
+      ]
+      ctx.slots.inject('tool.call.toolview', () => {
+        const disposers = MESH_TOOL_NAMES.map((toolKey) =>
+          ctx.slots.register(
+            {
+              name: 'tool.call.toolview',
+              key: toolKey,
+              priority: 100,
+            },
+            MeshToolCard,
+          ),
+        )
+        return () => {
+          for (const d of disposers) d?.()
+        }
+      })
+
+      // Left Sidebar Main Slot: Signature IM Chat + Group Collaboration + Unified @ / # / Upload Composer
       const MeshChatPage = createMeshChatPage({
         React,
         controller,
@@ -4306,7 +7519,7 @@ window.__ModuleLoader__.load({
         subscribeLocale,
       })
 
-      // Settings Section Slot: Node Endpoint Info + 1-on-1 Pairing + Paired Sandboxes Management
+      // Settings Section Slot: Node Agent Profile + 1-on-1 Pairing + Paired Sandboxes Management
       const MeshSettingsPage = createMeshSettingsPage({
         React,
         controller,
@@ -4314,7 +7527,31 @@ window.__ModuleLoader__.load({
         subscribeLocale,
       })
 
-      const PanelIcon = ({ size = 18 }) => MeshNavIcon({ React, size })
+      function PanelIcon({ size = 18 }) {
+        const [, setBadgeTick] = React.useState(0)
+        React.useEffect(() => {
+          const off = controller.subscribe(() => setBadgeTick((n) => n + 1))
+          const bgTimer = typeof setInterval === 'function'
+            ? setInterval(() => { void controller.syncFromHost() }, 12000)
+            : null
+          return () => {
+            off()
+            if (bgTimer) clearInterval(bgTimer)
+          }
+        }, [])
+        const summary = controller.getUnreadSummary ? controller.getUnreadSummary() : { totalUnread: 0, activeCount: 0 }
+        const showDot = summary.activeCount > 0 || summary.totalUnread > 0
+        return React.createElement(
+          'span',
+          { className: 'sm-nav-icon-wrap' },
+          MeshNavIcon({ React, size }),
+          showDot
+            ? React.createElement('span', {
+                className: `sm-nav-badge-dot${summary.activeCount > 0 ? ' live' : ''}`,
+              })
+            : null,
+        )
+      }
 
       ctx.slots.inject('sidebar.panellist', () =>
         ctx.slots.register(

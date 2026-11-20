@@ -25,7 +25,10 @@ export const MARK_READ_ENDPOINT = '/api/sandbox-mesh.mark-read'
 export const PEER_REMOVE_ENDPOINT = '/api/sandbox-mesh.peer-remove'
 export const PEER_PING_ENDPOINT = '/api/sandbox-mesh.peer-ping'
 export const GROUP_LEAVE_ENDPOINT = '/api/sandbox-mesh.group-leave'
+export const GROUP_RENAME_ENDPOINT = '/api/sandbox-mesh.group-rename'
 export const ROOM_REMOVE_ENDPOINT = '/api/sandbox-mesh.room-remove'
+export const FILE_DOWNLOAD_ENDPOINT = '/api/sandbox-mesh.file-download'
+export const FILE_UPLOAD_ENDPOINT = '/api/sandbox-mesh.file-upload'
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -215,6 +218,29 @@ export function registerBrowserRoutes(ctx, service) {
         }),
       },
       {
+        path: GROUP_RENAME_ENDPOINT,
+        validate: (body) => (body?.roomId && body?.name ? null : 'roomId and name are required'),
+        run: (body, headers) => service.renameGroup({
+          roomId: body.roomId,
+          name: body.name,
+          headers,
+        }),
+      },
+      {
+        path: FILE_UPLOAD_ENDPOINT,
+        validate: (body) => (body?.roomId && body?.fileName && typeof body?.contentBase64 === 'string'
+          ? null
+          : 'roomId, fileName, and contentBase64 are required'),
+        run: (body, headers) => service.uploadAndSendFile({
+          roomId: body.roomId,
+          fileName: body.fileName,
+          contentBase64: body.contentBase64,
+          text: body.text || '',
+          threadId: body.threadId || '',
+          headers,
+        }),
+      },
+      {
         path: ROOM_REMOVE_ENDPOINT,
         validate: (body) => (body?.roomId ? null : 'roomId is required'),
         run: (body, headers) => service.removeRoom({
@@ -254,6 +280,43 @@ export function registerBrowserRoutes(ctx, service) {
           } catch {}
           const files = service.listFiles(q, 40)
           return jsonResponse({ ok: true, files })
+        },
+      }),
+      connection.fetch.register({
+        path: FILE_DOWNLOAD_ENDPOINT,
+        methods: ['GET', 'HEAD'],
+        requestBody: 'buffered',
+        async fetch(request) {
+          let roomId = ''
+          let msgId = ''
+          let inline = false
+          try {
+            const u = new URL(request.url, 'http://localhost')
+            roomId = u.searchParams.get('roomId') || ''
+            msgId = u.searchParams.get('msgId') || ''
+            inline = u.searchParams.get('inline') === '1'
+          } catch {}
+          if (!roomId || !msgId) {
+            return jsonResponse({ ok: false, error: 'roomId and msgId are required' }, 400)
+          }
+          const result = await service.readAttachmentFile({ roomId, msgId })
+          if (!result.ok) {
+            return jsonResponse({ ok: false, error: result.error || 'Attachment unavailable' }, result.status || 404)
+          }
+          const headers = {
+            'content-type': inline ? result.inlineMimeType : result.mimeType,
+            'content-length': String(result.bytes.byteLength),
+            'cache-control': 'no-store',
+            'x-content-type-options': 'nosniff',
+            'x-mesh-preview-kind': result.kind,
+          }
+          if (!inline) {
+            headers['content-disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(result.name)}`
+          }
+          if (request.method === 'HEAD') {
+            return new Response(null, { status: 200, headers })
+          }
+          return new Response(result.bytes, { status: 200, headers })
         },
       }),
       ...postRoutes.map((spec) =>

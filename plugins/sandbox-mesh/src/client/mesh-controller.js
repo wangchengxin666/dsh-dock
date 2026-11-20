@@ -10,10 +10,13 @@ const GROUP_INVITE_API = 'api/sandbox-mesh.group-invite'
 const GROUP_MODERATE_API = 'api/sandbox-mesh.group-moderate'
 const GROUP_REMOVE_API = 'api/sandbox-mesh.group-remove'
 const GROUP_LEAVE_API = 'api/sandbox-mesh.group-leave'
+const GROUP_RENAME_API = 'api/sandbox-mesh.group-rename'
 const ROOM_REMOVE_API = 'api/sandbox-mesh.room-remove'
 const NEW_TOPIC_API = 'api/sandbox-mesh.new-topic'
 const SEND_API = 'api/sandbox-mesh.send'
 const SEND_FILE_API = 'api/sandbox-mesh.send-file'
+const FILE_DOWNLOAD_API = 'api/sandbox-mesh.file-download'
+const FILE_UPLOAD_API = 'api/sandbox-mesh.file-upload'
 const MARK_READ_API = 'api/sandbox-mesh.mark-read'
 const PEER_REMOVE_API = 'api/sandbox-mesh.peer-remove'
 const PEER_PING_API = 'api/sandbox-mesh.peer-ping'
@@ -539,6 +542,130 @@ export function createMeshController({
     }
   }
 
+  async function renameGroup({ roomId, name }) {
+    busy = true
+    errorText = ''
+    notify()
+    try {
+      const data = await requestJson(GROUP_RENAME_API, {
+        method: 'POST',
+        body: JSON.stringify({
+          roomId: roomId || selectedRoomId,
+          name,
+        }),
+      })
+      if (data.state) applyServerState(data.state)
+      busy = false
+      setTransientStatus('statusGroupRenamed')
+      notify()
+      return data
+    } catch (err) {
+      busy = false
+      errorText = err?.message || String(err)
+      notify()
+      return null
+    }
+  }
+
+  async function uploadFile({ roomId, fileName, contentBase64, text = '' }) {
+    busy = true
+    errorText = ''
+    notify()
+    try {
+      const data = await requestJson(FILE_UPLOAD_API, {
+        method: 'POST',
+        body: JSON.stringify({
+          roomId: roomId || selectedRoomId,
+          fileName,
+          contentBase64,
+          text,
+        }),
+      })
+      if (data.state) applyServerState(data.state)
+      busy = false
+      setTransientStatus('statusFileSent', 2500)
+      notify()
+      return data
+    } catch (err) {
+      busy = false
+      errorText = err?.message || String(err)
+      notify()
+      return null
+    }
+  }
+
+  function getAttachmentUrl(roomId, msgId, { inline = false } = {}) {
+    const params = new URLSearchParams()
+    params.set('roomId', String(roomId || ''))
+    params.set('msgId', String(msgId || ''))
+    if (inline) params.set('inline', '1')
+    return `${FILE_DOWNLOAD_API}?${params.toString()}`
+  }
+
+  async function fetchAttachmentPreview({ roomId, msgId }) {
+    if (typeof fetchImpl !== 'function') {
+      return { ok: false, error: 'fetch is unavailable' }
+    }
+    try {
+      const url = getAttachmentUrl(roomId, msgId, { inline: true })
+      const res = await fetchImpl(url, { method: 'GET', credentials: 'same-origin' })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        return { ok: false, error: errData.error || `HTTP ${res.status}` }
+      }
+      const kind = (res.headers?.get?.('x-mesh-preview-kind') || '').toLowerCase()
+      const contentType = res.headers?.get?.('content-type') || 'application/octet-stream'
+      if (kind === 'image' || contentType.startsWith('image/')) {
+        return { ok: true, kind: 'image', contentType, url }
+      }
+      if (kind === 'markdown' || kind === 'text' || contentType.startsWith('text/')) {
+        const text = await res.text()
+        return { ok: true, kind: kind || 'text', contentType, text }
+      }
+      return { ok: true, kind: 'binary', contentType, url }
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) }
+    }
+  }
+
+  async function pingAllPeers() {
+    const slugs = (state.peers || []).map((p) => p.slug).filter(Boolean)
+    if (slugs.length === 0) return []
+    busy = true
+    errorText = ''
+    notify()
+    try {
+      const results = await Promise.all(
+        slugs.map((slug) =>
+          requestJson(PEER_PING_API, {
+            method: 'POST',
+            body: JSON.stringify({ slug }),
+          }).catch((err) => ({ ok: false, slug, error: err?.message || String(err) })),
+        ),
+      )
+      await syncFromHost()
+      busy = false
+      const anyOnline = results.some((r) => r?.reachable)
+      setTransientStatus(anyOnline ? 'statusPingOnline' : 'statusPingOffline', 3500)
+      notify()
+      return results
+    } catch (err) {
+      busy = false
+      errorText = err?.message || String(err)
+      notify()
+      return []
+    }
+  }
+
+  function getUnreadSummary() {
+    const totalUnread = (state.rooms || []).reduce((sum, r) => sum + (Number(r.unreadCount) || 0), 0)
+    const activeCount = Object.values(state.activeStatuses || {}).reduce(
+      (sum, list) => sum + (Array.isArray(list) ? list.length : 0),
+      0,
+    )
+    return { totalUnread, activeCount }
+  }
+
   function clearNotice() {
     errorText = ''
     setTransientStatus('', 0)
@@ -574,15 +701,21 @@ export function createMeshController({
     createGroup,
     inviteToGroup,
     updateGroupModeration,
+    renameGroup,
     removeFromGroup,
     leaveGroup,
     removeRoom,
     startNewTopic,
     sendMessage,
     sendFile,
+    uploadFile,
+    getAttachmentUrl,
+    fetchAttachmentPreview,
     selectRoom,
     removePeer,
     pingPeer,
+    pingAllPeers,
+    getUnreadSummary,
     clearNotice,
     setError,
     dispose() {

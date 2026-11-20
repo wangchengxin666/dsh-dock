@@ -206,3 +206,82 @@ export function createFileShareGuard({ homeDir, shareRoots, protectedFiles }) {
     return { ok: true, path: real }
   }
 }
+
+const IMAGE_MIME_BY_EXT = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.avif': 'image/avif',
+  '.ico': 'image/x-icon',
+}
+
+const TEXT_PREVIEW_EXTS = new Set([
+  '.txt', '.md', '.markdown', '.json', '.jsonc', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf',
+  '.csv', '.tsv', '.log', '.sh', '.bash', '.zsh', '.ps1', '.bat', '.cmd', '.js', '.mjs', '.cjs',
+  '.ts', '.mts', '.cts', '.jsx', '.tsx', '.css', '.scss', '.less', '.html', '.htm', '.xml', '.svg',
+  '.py', '.rb', '.go', '.rs', '.java', '.kt', '.c', '.h', '.cpp', '.hpp', '.cs', '.php', '.sql',
+  '.swift', '.dart', '.lua', '.r', '.diff', '.patch', '.sha256', '.lock', '.env', '.gitignore',
+])
+
+const TEXT_PREVIEW_NAMES = new Set([
+  'readme', 'license', 'dockerfile', 'makefile', 'changelog',
+])
+
+/**
+ * Classify a shared attachment for safe download or inline preview.
+ * HTML/SVG are intentionally served as `text/plain` inline so preview never executes embedded scripts.
+ */
+export function classifyAttachmentFile(fileName) {
+  const base = basename(String(fileName || 'file.bin')).toLowerCase()
+  const ext = extname(base).toLowerCase()
+  if (IMAGE_MIME_BY_EXT[ext]) {
+    return {
+      kind: 'image',
+      mimeType: IMAGE_MIME_BY_EXT[ext],
+      inlineMimeType: IMAGE_MIME_BY_EXT[ext],
+    }
+  }
+  if (ext === '.md' || ext === '.markdown') {
+    return {
+      kind: 'markdown',
+      mimeType: 'text/markdown; charset=utf-8',
+      inlineMimeType: 'text/plain; charset=utf-8',
+    }
+  }
+  if (ext === '.json') {
+    return {
+      kind: 'text',
+      mimeType: 'application/json; charset=utf-8',
+      inlineMimeType: 'text/plain; charset=utf-8',
+    }
+  }
+  if (ext === '.csv') {
+    return {
+      kind: 'text',
+      mimeType: 'text/csv; charset=utf-8',
+      inlineMimeType: 'text/plain; charset=utf-8',
+    }
+  }
+  if (TEXT_PREVIEW_EXTS.has(ext) || TEXT_PREVIEW_NAMES.has(base)) {
+    return {
+      kind: 'text',
+      mimeType: 'text/plain; charset=utf-8',
+      inlineMimeType: 'text/plain; charset=utf-8',
+    }
+  }
+  if (ext === '.pdf') {
+    return {
+      kind: 'binary',
+      mimeType: 'application/pdf',
+      inlineMimeType: 'application/octet-stream',
+    }
+  }
+  return {
+    kind: 'binary',
+    mimeType: 'application/octet-stream',
+    inlineMimeType: 'application/octet-stream',
+  }
+}

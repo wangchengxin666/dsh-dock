@@ -1,4 +1,4 @@
-import { canStartNewTopic } from '../shared/protocol.js'
+import { canStartNewTopic, DEFAULT_MAX_FILE_BYTES } from '../shared/protocol.js'
 import { createTranslator } from './locale.js'
 import {
   MeshNavIcon,
@@ -11,7 +11,27 @@ import {
   FolderIcon,
   BroadcastIcon,
   ClipIcon,
+  CopyIcon,
+  CheckIcon,
+  DownloadIcon,
+  EyeIcon,
+  UploadIcon,
+  ReplyIcon,
+  ChevronIcon,
+  SlidersIcon,
+  TopicIcon,
+  RefreshIcon,
+  EditIcon,
+  CloseIcon,
 } from './icons.js'
+import {
+  avatarToneForSlug,
+  formatBytes,
+  formatRelativeTime,
+  localizeSystemMessage,
+  renderMarkdownMessage,
+  stripMarkdownForPreview,
+} from './markdown.js'
 
 export { MeshNavIcon }
 
@@ -121,7 +141,7 @@ function selectInputAll(event) {
   }
 }
 
-function renderPeerStatusBadge(H, t, status) {
+function renderPeerStatusBadge(H, t, status, latencyMs = null) {
   const s = String(status || 'online')
   if (s === 'unpaired-by-peer') {
     return H('span', { className: 'sm-badge sm-badge-err' }, t('peerStatusUnpaired'))
@@ -129,7 +149,34 @@ function renderPeerStatusBadge(H, t, status) {
   if (s === 'offline') {
     return H('span', { className: 'sm-badge sm-badge-warn' }, t('peerStatusOffline'))
   }
-  return H('span', { className: 'sm-badge sm-badge-ok' }, t('peerStatusOnline'))
+  const latPart = typeof latencyMs === 'number' && Number.isFinite(latencyMs)
+    ? ` · ${Math.round(latencyMs)}${t('latencyUnit')}`
+    : ''
+  return H('span', { className: 'sm-badge sm-badge-ok' }, `${t('peerStatusOnline')}${latPart}`)
+}
+
+function renderRoomAvatar(H, React, room, { status = 'online', isBusy = false, small = false } = {}) {
+  const seed = room.type === 'group' ? (room.id || room.name) : (room.peerSlug || room.name)
+  const tone = avatarToneForSlug(seed)
+  const initial = String(room.name || room.peerSlug || '?').trim().slice(0, 1).toUpperCase()
+  const dotClass = isBusy
+    ? 'sm-avatar-dot live'
+    : room.unpaired || status === 'unpaired-by-peer'
+      ? 'sm-avatar-dot err'
+      : status === 'offline'
+        ? 'sm-avatar-dot offline'
+        : 'sm-avatar-dot'
+
+  return H(
+    'span',
+    {
+      className: `sm-avatar${small ? ' sm-avatar-sm' : ''}`,
+      style: { background: tone.bg, color: tone.fg, borderColor: tone.border },
+      'aria-hidden': 'true',
+    },
+    room.type === 'group' ? RoundtableIcon({ React, size: small ? 14 : 16 }) : initial,
+    H('span', { className: dotClass }),
+  )
 }
 
 function PairingSection({
@@ -205,7 +252,6 @@ function PairingSection({
   return H(
     'div',
     { style: { display: 'flex', flexDirection: 'column', gap: compact ? '10px' : '12px' } },
-    // Option 1: Generate & copy invite
     H(
       'div',
       { className: 'sm-pair-step' },
@@ -295,7 +341,6 @@ function PairingSection({
         : null,
     ),
 
-    // Option 2: Paste peer code / URL
     H(
       'div',
       { className: 'sm-pair-step' },
@@ -310,6 +355,7 @@ function PairingSection({
           placeholder: t('pairInputPlaceholder'),
           onChange: (e) => setPairInput(e.target?.value || ''),
           onKeyDown: (e) => {
+            if (e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) return
             if (e.key === 'Enter') {
               e.preventDefault?.()
               void handlePairSubmit()
@@ -331,47 +377,8 @@ function PairingSection({
   )
 }
 
-export function renderRichMessageText(H, rawText) {
-  const text = String(rawText ?? '')
-  if (!text) return ''
-  const fakeReact = { createElement: H }
-  const tokenRe = /@\[([^\]\n]+)\]\(dsh-mesh(?:-[a-z]+)?:[^)\s]+\)|(?<!\S)@([a-zA-Z0-9_-]{2,64})|(?<!\S)#([^\s#,:;!?()[\]{}]+(?:\.[^\s#,:;!?()[\]{}]+|\/[^\s#,:;!?()[\]{}]*))/g
-  const parts = []
-  let lastIdx = 0
-  let match
-  while ((match = tokenRe.exec(text)) !== null) {
-    if (match.index > lastIdx) {
-      parts.push(text.slice(lastIdx, match.index))
-    }
-    if (match[1] || match[2]) {
-      const label = (match[1] || match[2]).replace(/^@/, '')
-      parts.push(
-        H(
-          'span',
-          { key: `m-${match.index}`, className: 'sm-inline-mention' },
-          label === 'moderator'
-            ? ModeratorCrownIcon({ React: fakeReact, size: 12 })
-            : AgentIcon({ React: fakeReact, size: 12 }),
-          `@${label}`,
-        ),
-      )
-    } else if (match[3]) {
-      parts.push(
-        H(
-          'span',
-          { key: `f-${match.index}`, className: 'sm-inline-file' },
-          FileDocIcon({ React: fakeReact, size: 12 }),
-          `#${match[3]}`,
-        ),
-      )
-    }
-    lastIdx = match.index + match[0].length
-  }
-  if (parts.length === 0) return text
-  if (lastIdx < text.length) {
-    parts.push(text.slice(lastIdx))
-  }
-  return parts
+export function renderRichMessageText(H, rawText, opts = {}) {
+  return renderMarkdownMessage(H, rawText, opts)
 }
 
 /**
@@ -389,7 +396,111 @@ export function detectComposerTrigger(text) {
 }
 
 /**
- * Left Sidebar Main Page: Minimalist IM Chat + Quick Pair + LLM-Moderated Groups + Context Thread Isolation.
+ * Group consecutive messages into renderable items:
+ * - topic dividers (explicit system divider or threadId boundary)
+ * - centered localized system pills
+ * - collapsible collaboration clusters for group `phase === 'turn'` messages
+ * - standard human / agent / file chat messages
+ */
+export function buildMessageRenderItems(messages, { isGroup = false } = {}) {
+  const list = Array.isArray(messages) ? messages : []
+  const items = []
+  const topics = []
+  let prevThreadId = ''
+  let pendingTurns = []
+
+  const flushTurns = (hasFollowingMessage) => {
+    if (pendingTurns.length === 0) return
+    items.push({
+      kind: 'collab-group',
+      id: `collab-${pendingTurns[0].id}`,
+      messages: pendingTurns,
+      hasFollowingMessage,
+    })
+    pendingTurns = []
+  }
+
+  list.forEach((msg, idx) => {
+    const curThreadId = String(msg.threadId || '').trim()
+    const isExplicitDivider = msg.kind === 'system' && String(msg.text || '').startsWith('───')
+
+    if (isExplicitDivider) {
+      flushTurns(true)
+      if (curThreadId) prevThreadId = curThreadId
+      const anchorId = `sm-topic-${msg.id}`
+      items.push({
+        kind: 'divider',
+        id: msg.id,
+        anchorId,
+        dividerKind: 'new-topic',
+        threadId: curThreadId,
+        createdAt: msg.createdAt,
+      })
+      topics.push({
+        id: msg.id,
+        anchorId,
+        threadId: curThreadId,
+        createdAt: msg.createdAt,
+        preview: '',
+      })
+      return
+    }
+
+    if (idx > 0 && curThreadId && curThreadId !== prevThreadId) {
+      flushTurns(true)
+      const anchorId = `sm-topic-thr-${msg.id}`
+      items.push({
+        kind: 'divider',
+        id: `thr-${msg.id}`,
+        anchorId,
+        dividerKind: msg.kind === 'task' ? 'task' : 'new-topic',
+        threadId: curThreadId,
+        createdAt: msg.createdAt,
+      })
+      topics.push({
+        id: `thr-${msg.id}`,
+        anchorId,
+        threadId: curThreadId,
+        createdAt: msg.createdAt,
+        preview: stripMarkdownForPreview(msg.text, 44),
+      })
+    } else if (topics.length === 0 && msg.kind !== 'system') {
+      topics.push({
+        id: `first-${msg.id}`,
+        anchorId: `sm-msg-${msg.id}`,
+        threadId: curThreadId,
+        createdAt: msg.createdAt,
+        preview: stripMarkdownForPreview(msg.text, 44),
+      })
+    } else if (topics.length > 0 && !topics[topics.length - 1].preview && msg.kind !== 'system') {
+      topics[topics.length - 1].preview = stripMarkdownForPreview(msg.text, 44)
+    }
+
+    if (curThreadId) {
+      prevThreadId = curThreadId
+    }
+
+    if (msg.kind === 'system') {
+      flushTurns(true)
+      items.push({ kind: 'system', id: msg.id, msg })
+      return
+    }
+
+    if (isGroup && msg.phase === 'turn' && msg.sender?.actor === 'agent') {
+      pendingTurns.push(msg)
+      return
+    }
+
+    flushTurns(true)
+    items.push({ kind: 'message', id: msg.id, msg })
+  })
+
+  flushTurns(false)
+  return { items, topics }
+}
+
+/**
+ * Left Sidebar Main Page: Signature Multi-Sandbox Collaboration Hub.
  */
 export function createMeshChatPage({
   React,
@@ -404,22 +515,32 @@ export function createMeshChatPage({
     const [, setTick] = useState(0)
     const [showNewGroup, setShowNewGroup] = useState(false)
     const [showPairDrawer, setShowPairDrawer] = useState(false)
-    const [showGroupManage, setShowGroupManage] = useState(false)
-    const [confirmAction, setConfirmAction] = useState(null) // { type: 'unpair'|'leave-group'|'kick', slug?, roomId? }
+    const [rightPanel, setRightPanel] = useState('') // '' | 'files' | 'details'
+    const [confirmAction, setConfirmAction] = useState(null)
     const [roomFilter, setRoomFilter] = useState('')
     const [groupName, setGroupName] = useState('')
+    const [renameInput, setRenameInput] = useState('')
+    const [editingName, setEditingName] = useState(false)
     const [checkedPeers, setCheckedPeers] = useState({})
     const [newGroupModerator, setNewGroupModerator] = useState('')
     const [invitePeerSlug, setInvitePeerSlug] = useState('')
     const [draftText, setDraftText] = useState('')
     const [attachedFiles, setAttachedFiles] = useState([])
+    const [replyTarget, setReplyTarget] = useState(null)
     const [activeTrigger, setActiveTrigger] = useState(null)
     const [menuIndex, setMenuIndex] = useState(0)
+    const [expandedCollabs, setExpandedCollabs] = useState({})
+    const [copiedKey, setCopiedKey] = useState('')
+    const [dragOver, setDragOver] = useState(false)
+    const [previewState, setPreviewState] = useState(null) // { roomId, msgId, name, size, loading, kind, text, url, rawMode, error }
+
     const popoverRef = useRef ? useRef(null) : { current: null }
     const messagesRef = useRef ? useRef(null) : { current: null }
     const composerRef = useRef ? useRef(null) : { current: null }
+    const fileInputRef = useRef ? useRef(null) : { current: null }
     const nearBottomRef = useRef ? useRef(true) : { current: true }
     const prevRoomIdRef = useRef ? useRef('') : { current: '' }
+    const copyFlashTimerRef = useRef ? useRef(null) : { current: null }
 
     useEffect(() => {
       const container = popoverRef?.current
@@ -439,8 +560,21 @@ export function createMeshChatPage({
       return () => {
         offCtrl()
         offLoc()
+        if (copyFlashTimerRef?.current) {
+          clearTimeout(copyFlashTimerRef.current)
+          copyFlashTimerRef.current = null
+        }
       }
     }, [])
+
+    useEffect(() => {
+      if (!previewState || typeof window === 'undefined') return undefined
+      const onKey = (ev) => {
+        if (ev.key === 'Escape') setPreviewState(null)
+      }
+      window.addEventListener?.('keydown', onKey)
+      return () => window.removeEventListener?.('keydown', onKey)
+    }, [Boolean(previewState)])
 
     const t = createTranslator(typeof getLocale === 'function' ? getLocale() : 'en')
     const snap = controller.getSnapshot()
@@ -449,6 +583,7 @@ export function createMeshChatPage({
     const activeInvite = state.activeInvite
     const peers = state.peers || []
     const rooms = state.rooms || []
+    const peerBySlug = new Map(peers.map((p) => [p.slug, p]))
     const activeStatusesMap = state.activeStatuses && typeof state.activeStatuses === 'object'
       ? state.activeStatuses
       : {}
@@ -490,7 +625,8 @@ export function createMeshChatPage({
         prevRoomIdRef.current = activeRoomId
         nearBottomRef.current = true
         setConfirmAction(null)
-        setShowGroupManage(false)
+        setEditingName(false)
+        setReplyTarget(null)
       }
       if ((roomChanged || nearBottomRef.current) && typeof el.scrollHeight === 'number') {
         el.scrollTop = el.scrollHeight
@@ -510,6 +646,91 @@ export function createMeshChatPage({
     const canRotateTopic = canStartNewTopic(activeRoom, activeMessages)
     const isRoomUnpaired = Boolean(activeRoom?.unpaired)
     const isGroupCreator = Boolean(activeRoom?.type === 'group' && (!activeRoom.createdBy || activeRoom.createdBy === self.slug))
+    const canRenameGroup = Boolean(
+      activeRoom?.type === 'group'
+      && !isRoomUnpaired
+      && (isGroupCreator || activeModeratorSlug === self.slug),
+    )
+
+    const roomSharedFiles = activeMessages
+      .filter((m) => m && m.attachment && (m.attachment.savedPath || m.attachment.sourcePath || m.attachment.name))
+      .slice()
+      .reverse()
+
+    const { items: renderItems, topics: roomTopics } = buildMessageRenderItems(activeMessages, {
+      isGroup: activeRoom?.type === 'group',
+    })
+
+    const flashCopy = async (text, key) => {
+      const res = await copyTextToClipboard(text)
+      if (res.ok) {
+        setCopiedKey(key)
+        if (copyFlashTimerRef?.current) clearTimeout(copyFlashTimerRef.current)
+        if (typeof setTimeout === 'function') {
+          copyFlashTimerRef.current = setTimeout(() => {
+            setCopiedKey('')
+            if (copyFlashTimerRef) copyFlashTimerRef.current = null
+          }, 1600)
+        }
+      } else {
+        controller.setError?.(t('copyManualHint'))
+      }
+    }
+
+    const openFilePreview = async (msg) => {
+      if (!activeRoom || !msg?.attachment) return
+      const base = {
+        roomId: activeRoom.id,
+        msgId: msg.id,
+        name: msg.attachment.name || 'file',
+        size: msg.attachment.size || 0,
+        downloadUrl: controller.getAttachmentUrl(activeRoom.id, msg.id, { inline: false }),
+        loading: true,
+        kind: '',
+        text: '',
+        url: '',
+        rawMode: false,
+        error: '',
+      }
+      setPreviewState(base)
+      const res = await controller.fetchAttachmentPreview({ roomId: activeRoom.id, msgId: msg.id })
+      setPreviewState((cur) => {
+        if (!cur || cur.msgId !== msg.id) return cur
+        if (!res.ok) {
+          return { ...cur, loading: false, error: res.error || 'Preview unavailable' }
+        }
+        return {
+          ...cur,
+          loading: false,
+          kind: res.kind || 'text',
+          text: res.text || '',
+          url: res.url || '',
+        }
+      })
+    }
+
+    const uploadBrowserFile = (file) => {
+      if (!file || !activeRoom || isRoomUnpaired) return
+      if (file.size > DEFAULT_MAX_FILE_BYTES) {
+        controller.setError?.(t('fileTooLargeError'))
+        return
+      }
+      if (typeof FileReader !== 'function') return
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = String(reader.result || '')
+        const base64 = result.includes(',') ? result.split(',').slice(1).join(',') : result
+        void controller.uploadFile({
+          roomId: activeRoom.id,
+          fileName: file.name || 'upload.bin',
+          contentBase64: base64,
+          text: draftText.trim(),
+        }).then((res) => {
+          if (res && draftText.trim()) setDraftText('')
+        })
+      }
+      reader.readAsDataURL(file)
+    }
 
     // Build `@` mention candidates
     const mentionCandidates = []
@@ -558,7 +779,7 @@ export function createMeshChatPage({
           iconKind: isDir ? 'folder' : 'file',
           dirQuery: f.relativePath,
           label: f.relativePath,
-          desc: isDir ? 'dir' : `${f.size || 0} B`,
+          desc: isDir ? 'dir' : formatBytes(f.size || 0),
         }
       })
     }
@@ -571,6 +792,13 @@ export function createMeshChatPage({
       return AgentIcon({ React, size: 13 })
     }
 
+    const resizeComposer = () => {
+      const el = composerRef?.current
+      if (!el || !el.style) return
+      el.style.height = 'auto'
+      el.style.height = `${Math.min(140, Math.max(30, el.scrollHeight || 30))}px`
+    }
+
     const handleDraftChange = (nextText) => {
       setDraftText(nextText)
       setActiveTrigger(null)
@@ -578,6 +806,9 @@ export function createMeshChatPage({
       const detected = detectComposerTrigger(nextText)
       if (detected?.trigger === '#') {
         void controller.searchFiles(detected.query)
+      }
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(resizeComposer)
       }
     }
 
@@ -636,17 +867,23 @@ export function createMeshChatPage({
 
     const handleSend = async () => {
       if (!activeRoom || isRoomUnpaired) return
-      if (!draftText.trim() && attachedFiles.length === 0) return
+      const rawDraft = draftText.trim()
+      if (!rawDraft && attachedFiles.length === 0) return
+      const finalText = replyTarget
+        ? `> @${replyTarget.slug}: ${replyTarget.preview}\n\n${rawDraft}`
+        : rawDraft
       nearBottomRef.current = true
       const res = await controller.sendMessage({
         roomId: activeRoom.id,
-        text: draftText.trim(),
+        text: finalText,
         files: attachedFiles,
       })
       if (res) {
         setDraftText('')
         setAttachedFiles([])
+        setReplyTarget(null)
         setActiveTrigger(null)
+        if (composerRef?.current?.style) composerRef.current.style.height = 'auto'
       }
     }
 
@@ -663,6 +900,81 @@ export function createMeshChatPage({
         (r) => r.type === 'group' && !r.unpaired && r.createdBy === self.slug
           && (r.members || []).some((m) => m.slug === targetSlug),
       )
+
+    const scrollToAnchor = (anchorId) => {
+      const container = messagesRef?.current
+      if (!container || typeof container.querySelector !== 'function') return
+      const target = container.querySelector(`[data-anchor-id="${anchorId}"]`)
+      if (target && typeof target.scrollIntoView === 'function') {
+        nearBottomRef.current = false
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+
+    const renderFileCard = (msg, compactCard = false) => {
+      const att = msg?.attachment
+      if (!att) return null
+      const downloadUrl = controller.getAttachmentUrl(activeRoom.id, msg.id, { inline: false })
+      const pathToCopy = att.savedPath || att.sourcePath || ''
+      const copyId = `path-${msg.id}`
+      return H(
+        'div',
+        { className: 'sm-file-card' },
+        H(
+          'div',
+          { className: 'sm-file-card-info' },
+          H('span', { className: 'sm-file-icon-box' }, FileDocIcon({ React, size: 15 })),
+          H(
+            'div',
+            { className: 'sm-file-meta' },
+            H('span', { className: 'sm-file-name', title: att.name }, att.name),
+            H(
+              'span',
+              { className: 'sm-file-sub', title: pathToCopy || undefined },
+              `${formatBytes(att.size || 0)}${att.sha256 ? ` · ${String(att.sha256).slice(0, 8)}` : ''}`,
+            ),
+          ),
+        ),
+        H(
+          'div',
+          { className: 'sm-file-actions' },
+          H(
+            'button',
+            {
+              type: 'button',
+              className: 'sm-btn sm-btn-sm',
+              onClick: () => void openFilePreview(msg),
+            },
+            EyeIcon({ React, size: 12 }),
+            t('previewBtn'),
+          ),
+          H(
+            'a',
+            {
+              className: 'sm-btn sm-btn-sm',
+              href: downloadUrl,
+              download: att.name || 'file',
+              style: { textDecoration: 'none' },
+            },
+            DownloadIcon({ React, size: 12 }),
+            t('downloadBtn'),
+          ),
+          !compactCard && pathToCopy
+            ? H(
+                'button',
+                {
+                  type: 'button',
+                  className: 'sm-btn-ghost',
+                  title: pathToCopy,
+                  onClick: () => void flashCopy(pathToCopy, copyId),
+                },
+                copiedKey === copyId ? CheckIcon({ React, size: 12 }) : CopyIcon({ React, size: 12 }),
+                copiedKey === copyId ? t('copiedCodeBtn') : t('copyPathBtn'),
+              )
+            : null,
+        ),
+      )
+    }
 
     return H(
       'div',
@@ -835,6 +1147,22 @@ export function createMeshChatPage({
               )
             : filteredRooms.map((room) => {
                 const isActive = activeRoom && activeRoom.id === room.id
+                const roomMsgs = state.messages?.[room.id] || []
+                const lastMsg = roomMsgs.length > 0 ? roomMsgs[roomMsgs.length - 1] : null
+                const roomActivities = Array.isArray(activeStatusesMap[room.id]) ? activeStatusesMap[room.id] : []
+                const isRoomBusy = roomActivities.length > 0
+                const pairPeer = room.type === 'pair' ? peerBySlug.get(room.peerSlug) : null
+                const previewText = isRoomBusy
+                  ? `@${roomActivities[0].slug} ${roomActivities[0].stage === 'coordinating' ? t('stageCoordinating') : t('stageAnswering')}`
+                  : lastMsg
+                    ? lastMsg.kind === 'system'
+                      ? localizeSystemMessage(lastMsg.text, t)
+                      : lastMsg.attachment
+                        ? `[${lastMsg.attachment.name}] ${stripMarkdownForPreview(lastMsg.text, 40)}`
+                        : `${lastMsg.sender?.slug ? `@${lastMsg.sender.slug}: ` : ''}${stripMarkdownForPreview(lastMsg.text, 46)}`
+                    : (room.members || []).map((m) => `@${m.slug}`).join(' · ')
+                const relTime = formatRelativeTime(lastMsg?.createdAt || room.updatedAt, t)
+
                 return H(
                   'div',
                   {
@@ -845,608 +1173,216 @@ export function createMeshChatPage({
                       void controller.selectRoom(room.id)
                     },
                   },
+                  renderRoomAvatar(H, React, room, {
+                    status: pairPeer?.status || 'online',
+                    isBusy: isRoomBusy,
+                  }),
                   H(
                     'div',
-                    { style: { display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 } },
+                    { className: 'sm-room-body' },
                     H(
                       'div',
-                      { className: 'sm-row' },
+                      { className: 'sm-room-top-line' },
                       H(
-                        'span',
-                        { className: 'sm-badge' },
-                        room.type === 'group' ? RoundtableIcon({ React, size: 11 }) : AgentIcon({ React, size: 11 }),
-                        room.type === 'group' ? t('roomTypeGroup') : t('roomTypePair'),
+                        'div',
+                        { className: 'sm-row', style: { gap: '5px', minWidth: 0, overflow: 'hidden' } },
+                        H('span', { className: 'sm-room-name', style: room.unpaired ? { opacity: 0.6 } : undefined }, room.name),
+                        room.unpaired
+                          ? H('span', { className: 'sm-badge sm-badge-warn' }, t('unpairedRoomBadge'))
+                          : null,
                       ),
-                      H(
-                        'strong',
-                        {
-                          style: {
-                            fontSize: '12.5px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            opacity: room.unpaired ? 0.65 : 1,
-                          },
-                        },
-                        room.name,
-                      ),
-                      room.unpaired
-                        ? H('span', { className: 'sm-badge sm-badge-warn' }, t('unpairedRoomBadge'))
-                        : null,
+                      relTime ? H('span', { className: 'sm-room-time' }, relTime) : null,
                     ),
                     H(
-                      'span',
-                      {
-                        style: {
-                          fontSize: '11px',
-                          opacity: 0.7,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        },
-                      },
-                      (room.members || []).map((m) => `@${m.slug}`).join(' · '),
+                      'div',
+                      { className: 'sm-room-preview-line' },
+                      H('span', { className: `sm-room-preview${isRoomBusy ? ' live' : ''}` }, previewText),
+                      room.unreadCount > 0
+                        ? H('span', { className: 'sm-badge sm-badge-unread' }, String(room.unreadCount))
+                        : null,
                     ),
                   ),
-                  room.unreadCount > 0
-                    ? H('span', { className: 'sm-badge sm-badge-unread' }, String(room.unreadCount))
-                    : null,
                 )
               }),
         ),
       ),
 
-      // Right Column: Streamlined Chat View or Onboarding Quick-Pair
+      // Right Stage: Main Chat + Optional Right Inspector/Files Drawer
       H(
-        'section',
-        { className: 'sm-chat-main' },
-        errorText ? H('div', { className: 'sm-alert', role: 'alert', style: { margin: '10px 16px 0' } }, errorText) : null,
-        statusKey ? H('div', { className: 'sm-toast', style: { margin: '10px 16px 0' } }, t(statusKey)) : null,
-        !activeRoom
-          ? H(
-              'div',
-              { style: { display: 'flex', flex: 1, padding: '24px', overflowY: 'auto' } },
-              H(
+        'div',
+        { className: 'sm-chat-stage' },
+        H(
+          'section',
+          {
+            className: 'sm-chat-main',
+            onDragOver: (e) => {
+              if (!activeRoom || isRoomUnpaired) return
+              e.preventDefault?.()
+              if (!dragOver) setDragOver(true)
+            },
+            onDragLeave: (e) => {
+              if (e.currentTarget === e.target) setDragOver(false)
+            },
+            onDrop: (e) => {
+              e.preventDefault?.()
+              setDragOver(false)
+              if (!activeRoom || isRoomUnpaired) return
+              const file = e.dataTransfer?.files?.[0]
+              if (file) uploadBrowserFile(file)
+            },
+          },
+          dragOver
+            ? H(
                 'div',
-                { className: 'sm-onboarding-card' },
+                { className: 'sm-drop-overlay' },
+                UploadIcon({ React, size: 24 }),
+                H('span', null, t('dropFilesHint')),
+              )
+            : null,
+          errorText ? H('div', { className: 'sm-alert', role: 'alert', style: { margin: '10px 16px 0' } }, errorText) : null,
+          statusKey ? H('div', { className: 'sm-toast', style: { margin: '10px 16px 0' } }, t(statusKey)) : null,
+          !activeRoom
+            ? H(
+                'div',
+                { style: { display: 'flex', flex: 1, padding: '24px', overflowY: 'auto' } },
                 H(
                   'div',
-                  null,
-                  H('h3', { className: 'sm-title sm-row', style: { fontSize: '16px' } }, MeshNavIcon({ React, size: 18 }), t('quickStartTitle')),
-                  H('p', { className: 'sm-subtitle' }, t('quickStartDesc')),
-                ),
-                H(PairingSection, {
-                  React,
-                  controller,
-                  t,
-                  activeInvite,
-                  busy,
-                  compact: false,
-                }),
-              ),
-            )
-          : H(
-              React.Fragment || 'div',
-              null,
-              // Minimalist Chat Header
-              H(
-                'div',
-                { className: 'sm-chat-header' },
-                H(
-                  'div',
-                  { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                  { className: 'sm-onboarding-card' },
                   H(
                     'div',
-                    { className: 'sm-row', style: { flexWrap: 'wrap' } },
-                    H(
-                      'span',
-                      { className: 'sm-badge' },
-                      activeRoom.type === 'group' ? RoundtableIcon({ React, size: 11 }) : AgentIcon({ React, size: 11 }),
-                      activeRoom.type === 'group' ? t('roomTypeGroup') : t('roomTypePair'),
-                    ),
-                    H('strong', { style: { fontSize: '14px' } }, activeRoom.name),
-                    isRoomUnpaired
-                      ? H('span', { className: 'sm-badge sm-badge-warn' }, t('unpairedRoomBadge'))
-                      : activePairPeer
-                        ? renderPeerStatusBadge(H, t, activePairPeer.status)
-                        : null,
-                    activeRoom.type === 'group' && activeModeratorSlug
-                      ? H(
-                          'span',
-                          { className: 'sm-badge sm-badge-moderator' },
-                          ModeratorCrownIcon({ React, size: 11 }),
-                          `${t('moderatorBadge')}: @${activeModeratorSlug}`,
-                        )
-                      : null,
+                    null,
+                    H('h3', { className: 'sm-title sm-row', style: { fontSize: '16px' } }, MeshNavIcon({ React, size: 18 }), t('quickStartTitle')),
+                    H('p', { className: 'sm-subtitle' }, t('quickStartDesc')),
                   ),
+                  H(PairingSection, {
+                    React,
+                    controller,
+                    t,
+                    activeInvite,
+                    busy,
+                    compact: false,
+                  }),
+                ),
+              )
+            : H(
+                React.Fragment || 'div',
+                null,
+                // Streamlined Chat Header
+                H(
+                  'div',
+                  { className: 'sm-chat-header' },
                   H(
                     'div',
-                    { className: 'sm-row', style: { flexWrap: 'wrap', gap: '5px' } },
-                    ...(activeRoom.members || []).map((m) => {
-                      const isMod = activeRoom.type === 'group' && m.slug === activeModeratorSlug
-                      const isBusy = activeSlugSet.has(m.slug)
-                      return H(
-                        'button',
-                        {
-                          key: m.slug,
-                          type: 'button',
-                          className: `sm-member-tag${isMod ? ' moderator' : ''}${isBusy ? ' busy' : ''}`,
-                          title: m.description || `@${m.slug}`,
-                          disabled: isRoomUnpaired,
-                          onClick: () => {
-                            if (isRoomUnpaired) return
-                            const mention = `@${m.slug}`
-                            const sep = draftText && !draftText.endsWith(' ') ? ' ' : ''
-                            setDraftText(`${draftText}${sep}${mention} `)
-                            composerRef?.current?.focus?.()
-                          },
-                        },
-                        isMod ? ModeratorCrownIcon({ React, size: 12 }) : AgentIcon({ React, size: 12 }),
-                        `${m.ownerName} (@${m.slug})${m.role ? ` · ${m.role}` : ''}`,
-                        isBusy ? H('span', { className: 'sm-dot-live' }) : null,
-                      )
+                    { className: 'sm-header-left' },
+                    renderRoomAvatar(H, React, activeRoom, {
+                      status: activePairPeer?.status || 'online',
+                      isBusy: activeStatusesList.length > 0,
+                      small: true,
                     }),
-                  ),
-                ),
-                H(
-                  'div',
-                  { className: 'sm-row', style: { flexWrap: 'wrap' } },
-                  activeRoom.type === 'group' && !isRoomUnpaired
-                    ? H(
-                        'select',
-                        {
-                          className: 'sm-input',
-                          title: t('moderatorSelectLabel'),
-                          style: { flex: '0 0 auto', width: 'auto', padding: '4px 8px', fontSize: '12px' },
-                          value: activeModeratorSlug,
-                          disabled: busy,
-                          onChange: (e) => {
-                            const nextMod = e.target?.value
-                            if (nextMod) {
-                              void controller.updateGroupModeration({
-                                roomId: activeRoom.id,
-                                moderatorSlug: nextMod,
-                              })
-                            }
-                          },
-                        },
-                        ...(activeRoom.members || []).map((m) =>
-                          H('option', { key: m.slug, value: m.slug }, `${t('moderatorBadge')}: @${m.slug}`),
-                        ),
-                      )
-                    : null,
-                  activeRoom.type === 'group' && !isRoomUnpaired && uninvitedPeers.length > 0
-                    ? H(
-                        'div',
-                        { className: 'sm-row' },
-                        H(
-                          'select',
-                          {
-                            className: 'sm-input',
-                            style: { flex: '0 0 auto', width: 'auto', padding: '4px 8px', fontSize: '12px' },
-                            value: invitePeerSlug,
-                            onChange: (e) => setInvitePeerSlug(e.target?.value || ''),
-                          },
-                          H('option', { value: '' }, t('invitePeerPlaceholder')),
-                          ...uninvitedPeers.map((p) =>
-                            H('option', { key: p.slug, value: p.slug }, `${p.ownerName} (${p.slug})`),
-                          ),
-                        ),
-                        H(
-                          'button',
-                          {
-                            type: 'button',
-                            className: 'sm-btn',
-                            disabled: busy || !invitePeerSlug,
-                            onClick: () => {
-                              if (!invitePeerSlug) return
-                              void controller.inviteToGroup({
-                                roomId: activeRoom.id,
-                                memberSlugs: [invitePeerSlug],
-                              })
-                              setInvitePeerSlug('')
-                            },
-                          },
-                          t('inviteBtn'),
-                        ),
-                      )
-                    : null,
-                  activeRoom.type === 'group' && !isRoomUnpaired
-                    ? H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: `sm-btn${showGroupManage ? ' sm-btn-primary' : ''}`,
-                          disabled: busy,
-                          onClick: () => {
-                            setShowGroupManage((v) => !v)
-                            setConfirmAction(null)
-                          },
-                        },
-                        t('manageGroupBtn'),
-                      )
-                    : null,
-                  activeRoom.type === 'pair' && !isRoomUnpaired && activeRoom.peerSlug
-                    ? H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'sm-btn',
-                          disabled: busy,
-                          onClick: () => void controller.pingPeer(activeRoom.peerSlug),
-                        },
-                        t('pingBtn'),
-                      )
-                    : null,
-                  !isRoomUnpaired
-                    ? H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'sm-btn',
-                          disabled: busy || !canRotateTopic,
-                          title: canRotateTopic ? '' : t('alreadyFreshTopicHint'),
-                          onClick: () => {
-                            if (!canRotateTopic) return
-                            nearBottomRef.current = true
-                            void controller.startNewTopic(activeRoom.id)
-                          },
-                        },
-                        t('newTopicBtn'),
-                      )
-                    : null,
-                  activeRoom.type === 'pair' && !isRoomUnpaired && activeRoom.peerSlug
-                    ? H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'sm-btn',
-                          disabled: busy,
-                          onClick: () => setConfirmAction({ type: 'unpair', slug: activeRoom.peerSlug }),
-                        },
-                        t('unpairBtn'),
-                      )
-                    : null,
-                  isRoomUnpaired
-                    ? H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'sm-btn sm-btn-danger',
-                          disabled: busy,
-                          onClick: () => void controller.removeRoom(activeRoom.id),
-                        },
-                        t('removeRoomBtn'),
-                      )
-                    : null,
-                  H(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'sm-btn',
-                      disabled: busy,
-                      onClick: () => void controller.syncFromHost(),
-                    },
-                    t('refreshBtn'),
-                  ),
-                ),
-              ),
-
-              // Inline two-step Unpair confirmation inside Chat header
-              confirmAction?.type === 'unpair' && confirmAction.slug === activeRoom.peerSlug
-                ? H(
-                    'div',
-                    { className: 'sm-confirm-bar', style: { margin: '8px 16px 0' } },
                     H(
                       'div',
-                      { style: { display: 'flex', flexDirection: 'column', gap: '2px' } },
-                      H('strong', null, `${t('unpairConfirmTitle')} @${confirmAction.slug}`),
-                      ownedGroupsWithTarget(confirmAction.slug).length > 0
-                        ? H('span', { style: { fontSize: '11.5px', opacity: 0.85 } }, t('unpairGroupWarn'))
-                        : null,
-                    ),
-                    H(
-                      'div',
-                      { className: 'sm-row', style: { gap: '6px' } },
-                      H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'sm-btn sm-btn-sm sm-btn-danger',
-                          disabled: busy,
-                          onClick: async () => {
-                            const slugToRemove = confirmAction.slug
-                            setConfirmAction(null)
-                            await controller.removePeer(slugToRemove)
-                          },
-                        },
-                        t('confirmUnpairBtn'),
-                      ),
-                      H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'sm-btn sm-btn-sm',
-                          disabled: busy,
-                          onClick: () => setConfirmAction(null),
-                        },
-                        t('cancelBtn'),
-                      ),
-                    ),
-                  )
-                : null,
-
-              // Group Member Management Strip
-              showGroupManage && activeRoom.type === 'group' && !isRoomUnpaired
-                ? H(
-                    'div',
-                    { className: 'sm-manage-strip' },
-                    H(
-                      'div',
-                      { className: 'sm-row', style: { flexWrap: 'wrap', justifyContent: 'space-between' } },
+                      { className: 'sm-header-meta' },
                       H(
                         'div',
                         { className: 'sm-row', style: { flexWrap: 'wrap', gap: '6px' } },
-                        ...(activeRoom.members || []).map((m) =>
-                          H(
-                            'span',
-                            { key: m.slug, className: 'sm-peer-chip', style: { cursor: 'default' } },
-                            H('span', null, `@${m.slug}`),
-                            m.slug === activeRoom.createdBy
-                              ? H('span', { className: 'sm-badge' }, t('creatorBadge'))
-                              : null,
-                            isGroupCreator && m.slug !== self.slug && m.slug !== activeRoom.createdBy
-                              ? (confirmAction?.type === 'kick' && confirmAction.slug === m.slug
-                                ? H(
-                                    'span',
-                                    { className: 'sm-row', style: { gap: '4px' } },
-                                    H(
-                                      'button',
-                                      {
-                                        type: 'button',
-                                        className: 'sm-btn sm-btn-sm sm-btn-danger',
-                                        disabled: busy,
-                                        onClick: async () => {
-                                          setConfirmAction(null)
-                                          await controller.removeFromGroup({ roomId: activeRoom.id, slug: m.slug })
-                                        },
-                                      },
-                                      t('removeMemberBtn'),
-                                    ),
-                                    H(
-                                      'button',
-                                      {
-                                        type: 'button',
-                                        className: 'sm-btn sm-btn-sm',
-                                        onClick: () => setConfirmAction(null),
-                                      },
-                                      t('cancelBtn'),
-                                    ),
-                                  )
-                                : H(
-                                    'button',
-                                    {
-                                      type: 'button',
-                                      className: 'sm-btn-ghost',
-                                      style: { padding: '0 4px', color: '#dc2626' },
-                                      disabled: busy,
-                                      onClick: () => setConfirmAction({ type: 'kick', slug: m.slug }),
-                                    },
-                                    '×',
-                                  ))
-                              : null,
-                          ),
+                        H(
+                          'span',
+                          { className: 'sm-badge' },
+                          activeRoom.type === 'group' ? RoundtableIcon({ React, size: 11 }) : AgentIcon({ React, size: 11 }),
+                          activeRoom.type === 'group' ? t('roomTypeGroup') : t('roomTypePair'),
                         ),
+                        H('strong', { style: { fontSize: '14px' } }, activeRoom.name),
+                        isRoomUnpaired
+                          ? H('span', { className: 'sm-badge sm-badge-warn' }, t('unpairedRoomBadge'))
+                          : activePairPeer
+                            ? renderPeerStatusBadge(H, t, activePairPeer.status, activePairPeer.lastLatencyMs)
+                            : null,
+                        activeRoom.type === 'group' && activeModeratorSlug
+                          ? H(
+                              'span',
+                              { className: 'sm-badge sm-badge-moderator' },
+                              ModeratorCrownIcon({ React, size: 11 }),
+                              `${t('moderatorBadge')}: @${activeModeratorSlug}`,
+                            )
+                          : null,
                       ),
-                      confirmAction?.type === 'leave-group'
-                        ? H(
-                            'div',
-                            { className: 'sm-row', style: { gap: '6px' } },
-                            H('span', null, t('confirmLeaveGroup')),
-                            H(
-                              'button',
-                              {
-                                type: 'button',
-                                className: 'sm-btn sm-btn-sm sm-btn-danger',
-                                disabled: busy,
-                                onClick: async () => {
-                                  setConfirmAction(null)
-                                  setShowGroupManage(false)
-                                  await controller.leaveGroup(activeRoom.id)
-                                },
-                              },
-                              isGroupCreator ? t('dissolveGroupBtn') : t('leaveGroupBtn'),
-                            ),
-                            H(
-                              'button',
-                              {
-                                type: 'button',
-                                className: 'sm-btn sm-btn-sm',
-                                onClick: () => setConfirmAction(null),
-                              },
-                              t('cancelBtn'),
-                            ),
-                          )
-                        : H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'sm-btn sm-btn-sm sm-btn-danger',
-                              disabled: busy,
-                              onClick: () => setConfirmAction({ type: 'leave-group', roomId: activeRoom.id }),
-                            },
-                            isGroupCreator ? t('dissolveGroupBtn') : t('leaveGroupBtn'),
-                          ),
-                    ),
-                  )
-                : null,
-
-              // Minimalist Message Stream (with automatic thread boundary dividers & default scroll-to-bottom)
-              H(
-                'div',
-                {
-                  ref: messagesRef,
-                  className: 'sm-messages',
-                  onScroll: (e) => {
-                    const el = e?.currentTarget
-                    if (!el || typeof el.scrollHeight !== 'number') return
-                    nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 120
-                  },
-                },
-                activeMessages.length === 0 && activeStatusesList.length === 0
-                  ? H('div', { style: { opacity: 0.7, fontSize: '12.5px' } }, t('noMessagesYet'))
-                  : (() => {
-                      const nodes = []
-                      let prevThreadId = ''
-                      activeMessages.forEach((msg, idx) => {
-                        const curThreadId = String(msg.threadId || '').trim()
-                        const clockStr = formatClock(msg.createdAt)
-                        if (msg.kind === 'system' && String(msg.text || '').startsWith('───')) {
-                          if (curThreadId) prevThreadId = curThreadId
-                          nodes.push(
-                            H(
-                              'div',
-                              { key: msg.id, className: 'sm-topic-divider', title: curThreadId || undefined },
-                              `─── ${t('newTopicDivider')}${clockStr ? ` · ${clockStr}` : ''} ───`,
-                            ),
-                          )
-                          return
-                        }
-
-                        if (idx > 0 && curThreadId && curThreadId !== prevThreadId) {
-                          const label = msg.kind === 'task' ? t('taskThreadDivider') : t('newTopicDivider')
-                          nodes.push(
-                            H(
-                              'div',
-                              { key: `thr-${msg.id}`, className: 'sm-topic-divider', title: curThreadId },
-                              `─── ${label}${clockStr ? ` · ${clockStr}` : ''} ───`,
-                            ),
-                          )
-                        }
-                        if (curThreadId) {
-                          prevThreadId = curThreadId
-                        }
-
-                        const isSelf = msg.sender?.slug === self.slug
-                        const isAgent = msg.sender?.actor === 'agent'
-                        const isModSender = activeRoom.type === 'group' && msg.sender?.slug === activeModeratorSlug
-                        const actorIcon = isAgent
-                          ? (isModSender ? ModeratorCrownIcon({ React, size: 12 }) : AgentIcon({ React, size: 12 }))
-                          : msg.sender?.actor === 'system'
-                            ? SystemBellIcon({ React, size: 12 })
-                            : HumanIcon({ React, size: 12 })
-                        const pending = msg.delivery?.pendingPeers || []
-
-                        nodes.push(
-                          H(
-                            'div',
-                            {
-                              key: msg.id,
-                              className: `sm-msg${isSelf ? ' self' : ''}${isAgent ? ' agent' : ''}`,
-                            },
-                            H(
-                              'div',
-                              { className: 'sm-msg-meta' },
-                              H(
-                                'span',
-                                { className: 'sm-msg-author' },
-                                actorIcon,
-                                `${msg.sender?.ownerName || msg.sender?.slug} (@${msg.sender?.slug})`,
-                                isModSender && isAgent
-                                  ? H('span', { className: 'sm-badge sm-badge-moderator' }, t('moderatorBadge'))
-                                  : isAgent
-                                    ? H('span', { className: 'sm-badge' }, t('actorAgent'))
-                                    : null,
-                              ),
-                              H('span', null, clockStr),
-                            ),
-                            H('div', { style: { whiteSpace: 'pre-wrap', lineHeight: 1.5 } }, renderRichMessageText(H, msg.text)),
-                            msg.attachment
-                              ? H(
-                                  'div',
-                                  { className: 'sm-file-card' },
-                                  H(
-                                    'strong',
-                                    { style: { display: 'inline-flex', alignItems: 'center', gap: '5px' } },
-                                    ClipIcon({ React, size: 12 }),
-                                    `${msg.attachment.name} (${msg.attachment.size || 0} B)`,
-                                  ),
-                                  msg.attachment.savedPath
-                                    ? H('code', { className: 'sm-code-inline' }, `${t('savedAtLabel')} ${msg.attachment.savedPath}`)
-                                    : msg.attachment.sourcePath
-                                      ? H('code', { className: 'sm-code-inline' }, `${t('sourceAtLabel')} ${msg.attachment.sourcePath}`)
-                                      : null,
-                                )
-                              : null,
-                            pending.length > 0
-                              ? H(
-                                  'div',
-                                  { style: { fontSize: '11px', opacity: 0.72 } },
-                                  `⏳ ${t('pendingOutbox')} ${pending.join(', ')}`,
-                                )
-                              : null,
-                          ),
-                        )
-                      })
-                      return nodes
-                    })(),
-                ...activeStatusesList.map((st) => {
-                  const stageText = st.stage === 'coordinating'
-                    ? t('stageCoordinating')
-                    : st.stage === 'waiting_peer'
-                      ? `${t('stageWaitingPeer')}${st.detail ? ` @${st.detail}` : ''}…`
-                      : st.stage === 'answering'
-                        ? t('stageAnswering')
-                        : t('stagePreparing')
-                  return H(
-                    'div',
-                    { key: `typing-${st.slug}`, className: 'sm-typing-bubble' },
-                    st.isModerator
-                      ? ModeratorCrownIcon({ React, size: 13 })
-                      : AgentIcon({ React, size: 13 }),
-                    H(
-                      'span',
-                      null,
-                      H('strong', null, `@${st.slug}`),
-                      st.isModerator ? ` (${t('moderatorBadge')})` : '',
-                      ` ${stageText}`,
-                    ),
-                    H(
-                      'span',
-                      { className: 'sm-typing-dots', 'aria-hidden': 'true' },
-                      H('span', { className: 'sm-typing-dot' }),
-                      H('span', { className: 'sm-typing-dot' }),
-                      H('span', { className: 'sm-typing-dot' }),
-                    ),
-                  )
-                }),
-              ),
-
-              // Unified Single Composer or Disconnected Banner
-              isRoomUnpaired
-                ? H(
-                    'div',
-                    { className: 'sm-composer-wrap' },
-                    H(
-                      'div',
-                      { className: 'sm-unpaired-banner' },
-                      H('span', null, t('unpairedRoomBanner')),
                       H(
                         'div',
-                        { className: 'sm-row', style: { gap: '6px' } },
-                        H(
+                        { className: 'sm-row', style: { flexWrap: 'wrap', gap: '5px' } },
+                        ...(activeRoom.members || []).map((m) => {
+                          const isMod = activeRoom.type === 'group' && m.slug === activeModeratorSlug
+                          const isBusy = activeSlugSet.has(m.slug)
+                          return H(
+                            'button',
+                            {
+                              key: m.slug,
+                              type: 'button',
+                              className: `sm-member-tag${isMod ? ' moderator' : ''}${isBusy ? ' busy' : ''}`,
+                              title: m.description || `@${m.slug}`,
+                              disabled: isRoomUnpaired,
+                              onClick: () => {
+                                if (isRoomUnpaired) return
+                                const mention = `@${m.slug}`
+                                const sep = draftText && !draftText.endsWith(' ') ? ' ' : ''
+                                setDraftText(`${draftText}${sep}${mention} `)
+                                composerRef?.current?.focus?.()
+                              },
+                            },
+                            isMod ? ModeratorCrownIcon({ React, size: 11 }) : AgentIcon({ React, size: 11 }),
+                            `${m.ownerName} (@${m.slug})${m.role ? ` · ${m.role}` : ''}`,
+                            isBusy ? H('span', { className: 'sm-dot-live' }) : null,
+                          )
+                        }),
+                      ),
+                    ),
+                  ),
+
+                  H(
+                    'div',
+                    { className: 'sm-header-actions' },
+                    !isRoomUnpaired
+                      ? H(
                           'button',
                           {
                             type: 'button',
-                            className: 'sm-btn sm-btn-sm sm-btn-primary',
+                            className: 'sm-btn sm-btn-sm',
+                            disabled: busy || !canRotateTopic,
+                            title: canRotateTopic ? '' : t('alreadyFreshTopicHint'),
                             onClick: () => {
-                              setShowPairDrawer(true)
-                              setShowNewGroup(false)
+                              if (!canRotateTopic) return
+                              nearBottomRef.current = true
+                              void controller.startNewTopic(activeRoom.id)
                             },
                           },
-                          t('repairBtn'),
-                        ),
-                        H(
+                          TopicIcon({ React, size: 12 }),
+                          t('newTopicBtn'),
+                        )
+                      : null,
+                    H(
+                      'button',
+                      {
+                        type: 'button',
+                        className: `sm-btn sm-btn-sm${rightPanel === 'files' ? ' sm-btn-primary' : ''}`,
+                        onClick: () => setRightPanel((p) => (p === 'files' ? '' : 'files')),
+                      },
+                      ClipIcon({ React, size: 12 }),
+                      `${t('filesDrawerBtn')}${roomSharedFiles.length > 0 ? ` (${roomSharedFiles.length})` : ''}`,
+                    ),
+                    !isRoomUnpaired
+                      ? H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: `sm-btn sm-btn-sm${rightPanel === 'details' ? ' sm-btn-primary' : ''}`,
+                            onClick: () => {
+                              setRightPanel((p) => (p === 'details' ? '' : 'details'))
+                              setConfirmAction(null)
+                            },
+                          },
+                          SlidersIcon({ React, size: 12 }),
+                          t('roomDetailsBtn'),
+                        )
+                      : H(
                           'button',
                           {
                             type: 'button',
@@ -1456,162 +1392,1039 @@ export function createMeshChatPage({
                           },
                           t('removeRoomBtn'),
                         ),
-                      ),
+                    H(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'sm-btn sm-btn-sm',
+                        disabled: busy,
+                        title: t('refreshBtn'),
+                        onClick: () => void controller.syncFromHost(),
+                      },
+                      RefreshIcon({ React, size: 12 }),
                     ),
-                  )
-                : H(
-                    'div',
-                    { className: 'sm-composer-wrap' },
-                    triggerInfo
-                      ? H(
+                  ),
+                ),
+
+                // Live Collaboration Topology Strip (appears when any Agent is actively coordinating/responding)
+                activeStatusesList.length > 0
+                  ? H(
+                      'div',
+                      { className: 'sm-topology-bar' },
+                      H(
+                        'span',
+                        { className: 'sm-topo-label' },
+                        H('span', { className: 'sm-dot-live' }),
+                        t('collabActiveLabel'),
+                      ),
+                      H(
+                        'div',
+                        { className: 'sm-topo-flow' },
+                        ...activeStatusesList.map((st, sIdx) =>
+                          H(
+                            React.Fragment || 'span',
+                            { key: `topo-${st.slug}` },
+                            sIdx > 0 ? H('span', { className: 'sm-topo-edge' }, '·') : null,
+                            H(
+                              'span',
+                              { className: 'sm-topo-node' },
+                              st.isModerator ? ModeratorCrownIcon({ React, size: 11 }) : AgentIcon({ React, size: 11 }),
+                              `@${st.slug}`,
+                              st.stage === 'waiting_peer' && st.detail
+                                ? H(
+                                    React.Fragment || 'span',
+                                    null,
+                                    H('span', { className: 'sm-topo-edge' }, '──▶'),
+                                    H('strong', null, `@${st.detail}`),
+                                  )
+                                : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : null,
+
+                // Message Stream
+                H(
+                  'div',
+                  {
+                    ref: messagesRef,
+                    className: 'sm-messages',
+                    onScroll: (e) => {
+                      const el = e?.currentTarget
+                      if (!el || typeof el.scrollHeight !== 'number') return
+                      nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 120
+                    },
+                  },
+                  activeMessages.length === 0 && activeStatusesList.length === 0
+                    ? H('div', { style: { opacity: 0.72, fontSize: '12.5px', padding: '12px 4px' } }, t('noMessagesYet'))
+                    : renderItems.map((item) => {
+                        if (item.kind === 'divider') {
+                          const clockStr = formatClock(item.createdAt)
+                          const label = item.dividerKind === 'task' ? t('taskThreadDivider') : t('newTopicDivider')
+                          return H(
+                            'div',
+                            {
+                              key: item.id,
+                              'data-anchor-id': item.anchorId,
+                              className: 'sm-topic-divider',
+                              title: item.threadId || undefined,
+                            },
+                            `${label}${clockStr ? ` · ${clockStr}` : ''}`,
+                          )
+                        }
+
+                        if (item.kind === 'system') {
+                          const clockStr = formatClock(item.msg.createdAt)
+                          return H(
+                            'div',
+                            { key: item.id, className: 'sm-system-pill' },
+                            SystemBellIcon({ React, size: 11 }),
+                            H('span', null, localizeSystemMessage(item.msg.text, t)),
+                            clockStr ? H('span', { style: { opacity: 0.65, fontSize: '10.5px' } }, clockStr) : null,
+                          )
+                        }
+
+                        if (item.kind === 'collab-group') {
+                          const defaultOpen = !item.hasFollowingMessage && activeStatusesList.length > 0
+                          const isOpen = expandedCollabs[item.id] !== undefined
+                            ? Boolean(expandedCollabs[item.id])
+                            : defaultOpen
+                          const firstStep = item.messages[0]
+                          const preview = stripMarkdownForPreview(firstStep?.text || '', 64)
+                          const actors = [...new Set(item.messages.map((m) => `@${m.sender?.slug || 'agent'}`))]
+                          return H(
+                            'div',
+                            { key: item.id, className: 'sm-collab-group' },
+                            H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-collab-toggle',
+                                onClick: () => setExpandedCollabs((prev) => ({ ...prev, [item.id]: !isOpen })),
+                              },
+                              H(
+                                'span',
+                                { className: 'sm-collab-summary' },
+                                ChevronIcon({ React, size: 12, rotated: isOpen }),
+                                RoundtableIcon({ React, size: 13 }),
+                                H('strong', null, t('collabStepsTitle')),
+                                H('span', { className: 'sm-badge' }, `${item.messages.length} ${t('collabStepsCount')}`),
+                                H('span', { className: 'sm-collab-preview' }, `${actors.join(' → ')}${preview ? ` · ${preview}` : ''}`),
+                              ),
+                              H('span', { style: { fontSize: '10.5px', opacity: 0.65, whiteSpace: 'nowrap' } }, formatClock(firstStep?.createdAt)),
+                            ),
+                            isOpen
+                              ? H(
+                                  'div',
+                                  { className: 'sm-collab-steps' },
+                                  ...item.messages.map((stepMsg) => {
+                                    const isDispatch = stepMsg.kind === 'task'
+                                    const targets = Array.isArray(stepMsg.mentions) && stepMsg.mentions.length > 0
+                                      ? stepMsg.mentions.map((s) => `@${s}`).join(', ')
+                                      : ''
+                                    return H(
+                                      'div',
+                                      {
+                                        key: stepMsg.id,
+                                        className: `sm-collab-step ${isDispatch ? 'dispatch' : 'report'}`,
+                                      },
+                                      H(
+                                        'div',
+                                        { className: 'sm-collab-step-head' },
+                                        H(
+                                          'span',
+                                          { className: 'sm-row', style: { gap: '5px' } },
+                                          isDispatch
+                                            ? ModeratorCrownIcon({ React, size: 11 })
+                                            : AgentIcon({ React, size: 11 }),
+                                          H('strong', { style: { color: 'var(--sm-fg-primary)' } }, `@${stepMsg.sender?.slug}`),
+                                          H(
+                                            'span',
+                                            null,
+                                            isDispatch
+                                              ? `${t('collabStepDispatch')} ${targets || ''}`.trim()
+                                              : t('collabStepReport'),
+                                          ),
+                                        ),
+                                        H('span', null, formatClock(stepMsg.createdAt)),
+                                      ),
+                                      renderMarkdownMessage(H, stepMsg.text, {
+                                        keyPrefix: stepMsg.id,
+                                        onCopyCode: flashCopy,
+                                        copiedCodeKey: copiedKey,
+                                        t,
+                                      }),
+                                    )
+                                  }),
+                                )
+                              : null,
+                          )
+                        }
+
+                        // Standard human / agent / file bubble
+                        const msg = item.msg
+                        const clockStr = formatClock(msg.createdAt)
+                        const isSelf = msg.sender?.slug === self.slug
+                        const isAgent = msg.sender?.actor === 'agent'
+                        const isModSender = activeRoom.type === 'group' && msg.sender?.slug === activeModeratorSlug
+                        const actorIcon = isAgent
+                          ? (isModSender ? ModeratorCrownIcon({ React, size: 12 }) : AgentIcon({ React, size: 12 }))
+                          : HumanIcon({ React, size: 12 })
+                        const pending = msg.delivery?.pendingPeers || []
+                        const hideRedundantFileCaption = Boolean(
+                          msg.kind === 'file'
+                          && msg.attachment?.name
+                          && String(msg.text || '').trim() === `#${msg.attachment.name}`,
+                        )
+                        const msgCopyId = `msg-${msg.id}`
+
+                        return H(
                           'div',
-                          { ref: popoverRef, className: 'sm-popover', role: 'listbox' },
+                          {
+                            key: msg.id,
+                            'data-anchor-id': `sm-msg-${msg.id}`,
+                            className: `sm-msg${isSelf ? ' self' : ''}${isAgent ? (isModSender ? ' agent moderator-agent' : ' agent') : ''}`,
+                          },
                           H(
                             'div',
-                            { className: 'sm-popover-header' },
-                            triggerInfo.trigger === '@' ? t('mentionMenuTitle') : t('fileMenuTitle'),
-                          ),
-                          popoverItems.length === 0
-                            ? H(
-                                'div',
-                                { style: { padding: '6px 10px', fontSize: '12px', opacity: 0.7 } },
-                                t('noMatchingFiles'),
-                              )
-                            : popoverItems.map((item, idx) =>
+                            { className: 'sm-msg-meta' },
+                            H(
+                              'span',
+                              { className: 'sm-msg-author' },
+                              actorIcon,
+                              `${msg.sender?.ownerName || msg.sender?.slug} (@${msg.sender?.slug})`,
+                              isModSender && isAgent
+                                ? H('span', { className: 'sm-badge sm-badge-moderator' }, t('moderatorBadge'))
+                                : isAgent
+                                  ? H('span', { className: 'sm-badge' }, t('actorAgent'))
+                                  : null,
+                            ),
+                            H(
+                              'span',
+                              { className: 'sm-row', style: { gap: '6px' } },
+                              H(
+                                'span',
+                                { className: 'sm-msg-actions' },
                                 H(
                                   'button',
                                   {
-                                    key: item.token,
                                     type: 'button',
-                                    className: `sm-popover-item${idx === menuIndex ? ' active' : ''}`,
-                                    onClick: () => applyPopoverSelection(item),
+                                    className: 'sm-msg-act-btn',
+                                    title: t('copyMsgBtn'),
+                                    onClick: () => void flashCopy(msg.text || '', msgCopyId),
                                   },
-                                  H(
-                                    'strong',
-                                    { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } },
-                                    renderPopoverIcon(item.iconKind),
-                                    item.label,
-                                  ),
-                                  H('span', { style: { fontSize: '11px', opacity: 0.72 } }, item.desc),
+                                  copiedKey === msgCopyId ? CheckIcon({ React, size: 11 }) : CopyIcon({ React, size: 11 }),
+                                  copiedKey === msgCopyId ? t('copiedCodeBtn') : t('copyMsgBtn'),
                                 ),
+                                !isRoomUnpaired
+                                  ? H(
+                                      'button',
+                                      {
+                                        type: 'button',
+                                        className: 'sm-msg-act-btn',
+                                        title: t('replyMsgBtn'),
+                                        onClick: () => {
+                                          setReplyTarget({
+                                            slug: msg.sender?.slug || 'peer',
+                                            ownerName: msg.sender?.ownerName || msg.sender?.slug || 'peer',
+                                            preview: stripMarkdownForPreview(msg.text || msg.attachment?.name || '', 72),
+                                          })
+                                          composerRef?.current?.focus?.()
+                                        },
+                                      },
+                                      ReplyIcon({ React, size: 11 }),
+                                      t('replyMsgBtn'),
+                                    )
+                                  : null,
                               ),
+                              H('span', null, clockStr),
+                            ),
+                          ),
+                          !hideRedundantFileCaption && msg.text
+                            ? renderMarkdownMessage(H, msg.text, {
+                                keyPrefix: msg.id,
+                                onCopyCode: flashCopy,
+                                copiedCodeKey: copiedKey,
+                                t,
+                              })
+                            : null,
+                          msg.attachment ? renderFileCard(msg) : null,
+                          pending.length > 0
+                            ? H(
+                                'div',
+                                { style: { fontSize: '11px', opacity: 0.72 } },
+                                `${t('pendingOutbox')} ${pending.join(', ')}`,
+                              )
+                            : null,
                         )
-                      : null,
+                      }),
+                  ...activeStatusesList.map((st) => {
+                    const stageText = st.stage === 'coordinating'
+                      ? t('stageCoordinating')
+                      : st.stage === 'waiting_peer'
+                        ? `${t('stageWaitingPeer')}${st.detail ? ` @${st.detail}` : ''}…`
+                        : st.stage === 'answering'
+                          ? t('stageAnswering')
+                          : t('stagePreparing')
+                    return H(
+                      'div',
+                      { key: `typing-${st.slug}`, className: 'sm-typing-bubble' },
+                      st.isModerator
+                        ? ModeratorCrownIcon({ React, size: 13 })
+                        : AgentIcon({ React, size: 13 }),
+                      H(
+                        'span',
+                        null,
+                        H('strong', null, `@${st.slug}`),
+                        st.isModerator ? ` (${t('moderatorBadge')})` : '',
+                        ` ${stageText}`,
+                      ),
+                      H(
+                        'span',
+                        { className: 'sm-typing-dots', 'aria-hidden': 'true' },
+                        H('span', { className: 'sm-typing-dot' }),
+                        H('span', { className: 'sm-typing-dot' }),
+                        H('span', { className: 'sm-typing-dot' }),
+                      ),
+                    )
+                  }),
+                ),
 
-                    attachedFiles.length > 0
-                      ? H(
+                // Composer or Disconnected Banner
+                isRoomUnpaired
+                  ? H(
+                      'div',
+                      { className: 'sm-composer-wrap' },
+                      H(
+                        'div',
+                        { className: 'sm-unpaired-banner' },
+                        H('span', null, t('unpairedRoomBanner')),
+                        H(
                           'div',
-                          { className: 'sm-attached-files' },
-                          ...attachedFiles.map((fileRef) =>
+                          { className: 'sm-row', style: { gap: '6px' } },
+                          H(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'sm-btn sm-btn-sm sm-btn-primary',
+                              onClick: () => {
+                                setShowPairDrawer(true)
+                                setShowNewGroup(false)
+                              },
+                            },
+                            t('repairBtn'),
+                          ),
+                          H(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'sm-btn sm-btn-sm sm-btn-danger',
+                              disabled: busy,
+                              onClick: () => void controller.removeRoom(activeRoom.id),
+                            },
+                            t('removeRoomBtn'),
+                          ),
+                        ),
+                      ),
+                    )
+                  : H(
+                      'div',
+                      { className: 'sm-composer-wrap' },
+                      triggerInfo
+                        ? H(
+                            'div',
+                            { ref: popoverRef, className: 'sm-popover', role: 'listbox' },
+                            H(
+                              'div',
+                              { className: 'sm-popover-header' },
+                              triggerInfo.trigger === '@' ? t('mentionMenuTitle') : t('fileMenuTitle'),
+                            ),
+                            popoverItems.length === 0
+                              ? H(
+                                  'div',
+                                  { style: { padding: '6px 10px', fontSize: '12px', opacity: 0.7 } },
+                                  t('noMatchingFiles'),
+                                )
+                              : popoverItems.map((item, idx) =>
+                                  H(
+                                    'button',
+                                    {
+                                      key: item.token,
+                                      type: 'button',
+                                      className: `sm-popover-item${idx === menuIndex ? ' active' : ''}`,
+                                      onClick: () => applyPopoverSelection(item),
+                                    },
+                                    H(
+                                      'strong',
+                                      { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } },
+                                      renderPopoverIcon(item.iconKind),
+                                      item.label,
+                                    ),
+                                    H('span', { style: { fontSize: '11px', opacity: 0.72 } }, item.desc),
+                                  ),
+                                ),
+                          )
+                        : null,
+
+                      replyTarget
+                        ? H(
+                            'div',
+                            { className: 'sm-reply-bar' },
                             H(
                               'span',
-                              { key: fileRef, className: 'sm-attached-pill' },
-                              FileDocIcon({ React, size: 12 }),
-                              `#${fileRef}`,
+                              { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                              `${t('replyingToLabel')} @${replyTarget.slug}: ${replyTarget.preview}`,
+                            ),
+                            H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-btn-ghost',
+                                title: t('clearReplyBtn'),
+                                onClick: () => setReplyTarget(null),
+                              },
+                              CloseIcon({ React, size: 11 }),
+                            ),
+                          )
+                        : null,
+
+                      attachedFiles.length > 0
+                        ? H(
+                            'div',
+                            { className: 'sm-attached-files' },
+                            ...attachedFiles.map((fileRef) =>
                               H(
-                                'button',
-                                {
-                                  type: 'button',
-                                  className: 'sm-btn-ghost',
-                                  style: { padding: '0 4px' },
-                                  onClick: () => setAttachedFiles((prev) => prev.filter((f) => f !== fileRef)),
+                                'span',
+                                { key: fileRef, className: 'sm-attached-pill' },
+                                FileDocIcon({ React, size: 12 }),
+                                `#${fileRef}`,
+                                H(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    className: 'sm-btn-ghost',
+                                    style: { padding: '0 4px' },
+                                    onClick: () => setAttachedFiles((prev) => prev.filter((f) => f !== fileRef)),
+                                  },
+                                  '×',
+                                ),
+                              ),
+                            ),
+                          )
+                        : null,
+
+                      H(
+                        'div',
+                        { className: 'sm-composer-box' },
+                        H('input', {
+                          ref: fileInputRef,
+                          type: 'file',
+                          style: { display: 'none' },
+                          onChange: (e) => {
+                            const f = e.target?.files?.[0]
+                            if (f) uploadBrowserFile(f)
+                            if (e.target) e.target.value = ''
+                          },
+                        }),
+                        H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: `sm-trigger-btn${triggerInfo?.trigger === '@' ? ' active' : ''}`,
+                            title: t('mentionTriggerTitle'),
+                            onClick: () => {
+                              setMenuIndex(0)
+                              setActiveTrigger((prev) => (prev?.trigger === '@' ? null : { trigger: '@', query: '', replaceStart: draftText.length }))
+                            },
+                          },
+                          '@',
+                        ),
+                        H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: `sm-trigger-btn${triggerInfo?.trigger === '#' ? ' active' : ''}`,
+                            title: t('fileTriggerTitle'),
+                            onClick: () => {
+                              setMenuIndex(0)
+                              setActiveTrigger((prev) => {
+                                if (prev?.trigger === '#') return null
+                                void controller.searchFiles('')
+                                return { trigger: '#', query: '', replaceStart: draftText.length }
+                              })
+                            },
+                          },
+                          '#',
+                        ),
+                        H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'sm-trigger-btn',
+                            title: t('uploadFileTitle'),
+                            disabled: busy,
+                            onClick: () => fileInputRef?.current?.click?.(),
+                          },
+                          UploadIcon({ React, size: 13 }),
+                        ),
+                        H('textarea', {
+                          ref: composerRef,
+                          rows: 1,
+                          className: 'sm-composer-input',
+                          value: draftText,
+                          placeholder: t('composerPlaceholder'),
+                          onChange: (e) => handleDraftChange(e.target?.value || ''),
+                          onKeyDown: (e) => {
+                            // Never submit while an IME (Chinese/Japanese/Korean) composition is active
+                            if (e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) {
+                              return
+                            }
+                            if (triggerInfo && popoverItems.length > 0) {
+                              if (e.key === 'ArrowDown') {
+                                e.preventDefault?.()
+                                setMenuIndex((i) => (i + 1) % popoverItems.length)
+                                return
+                              }
+                              if (e.key === 'ArrowUp') {
+                                e.preventDefault?.()
+                                setMenuIndex((i) => (i - 1 + popoverItems.length) % popoverItems.length)
+                                return
+                              }
+                              if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                                e.preventDefault?.()
+                                applyPopoverSelection(popoverItems[menuIndex] || popoverItems[0])
+                                return
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault?.()
+                                setActiveTrigger(null)
+                                return
+                              }
+                            }
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault?.()
+                              void handleSend()
+                            }
+                          },
+                        }),
+                        H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'sm-btn sm-btn-primary',
+                            disabled: busy || (!draftText.trim() && attachedFiles.length === 0),
+                            onClick: handleSend,
+                          },
+                          t('sendBtn'),
+                        ),
+                      ),
+                    ),
+              ),
+        ),
+
+        // Right Drawer: Shared Files Box OR Room Details & Management
+        activeRoom && rightPanel
+          ? H(
+              'aside',
+              { className: 'sm-detail-drawer' },
+              H(
+                'div',
+                { className: 'sm-drawer-head' },
+                H(
+                  'span',
+                  { className: 'sm-row', style: { gap: '6px' } },
+                  rightPanel === 'files' ? ClipIcon({ React, size: 13 }) : SlidersIcon({ React, size: 13 }),
+                  rightPanel === 'files' ? t('filesDrawerTitle') : t('roomDetailsTitle'),
+                ),
+                H(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'sm-btn-ghost',
+                    onClick: () => setRightPanel(''),
+                  },
+                  CloseIcon({ React, size: 13 }),
+                ),
+              ),
+              rightPanel === 'files'
+                ? H(
+                    'div',
+                    { className: 'sm-drawer-body' },
+                    roomSharedFiles.length === 0
+                      ? H('div', { style: { fontSize: '12px', opacity: 0.72 } }, t('noSharedFilesYet'))
+                      : roomSharedFiles.map((fMsg) =>
+                          H(
+                            'div',
+                            { key: `file-row-${fMsg.id}`, style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
+                            H(
+                              'div',
+                              { style: { display: 'flex', justifyContent: 'space-between', fontSize: '11px', opacity: 0.75 } },
+                              H('span', null, `@${fMsg.sender?.slug || 'peer'}`),
+                              H('span', null, formatRelativeTime(fMsg.createdAt, t)),
+                            ),
+                            renderFileCard(fMsg, true),
+                          ),
+                        ),
+                  )
+                : H(
+                    'div',
+                    { className: 'sm-drawer-body' },
+                    // Group Rename & Moderator
+                    activeRoom.type === 'group' && !isRoomUnpaired
+                      ? H(
+                          React.Fragment || 'div',
+                          null,
+                          canRenameGroup
+                            ? H(
+                                'div',
+                                { className: 'sm-drawer-section' },
+                                H('span', { className: 'sm-drawer-label' }, t('renameGroupLabel')),
+                                editingName
+                                  ? H(
+                                      'div',
+                                      { className: 'sm-row' },
+                                      H('input', {
+                                        type: 'text',
+                                        className: 'sm-input',
+                                        value: renameInput,
+                                        onChange: (e) => setRenameInput(e.target?.value || ''),
+                                        onKeyDown: (e) => {
+                                          if (e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) return
+                                          if (e.key === 'Enter' && renameInput.trim()) {
+                                            e.preventDefault?.()
+                                            void controller.renameGroup({ roomId: activeRoom.id, name: renameInput.trim() }).then((r) => {
+                                              if (r) setEditingName(false)
+                                            })
+                                          }
+                                        },
+                                      }),
+                                      H(
+                                        'button',
+                                        {
+                                          type: 'button',
+                                          className: 'sm-btn sm-btn-sm sm-btn-primary',
+                                          disabled: busy || !renameInput.trim(),
+                                          onClick: async () => {
+                                            const r = await controller.renameGroup({ roomId: activeRoom.id, name: renameInput.trim() })
+                                            if (r) setEditingName(false)
+                                          },
+                                        },
+                                        t('saveBtn'),
+                                      ),
+                                    )
+                                  : H(
+                                      'div',
+                                      { className: 'sm-row', style: { justifyContent: 'space-between' } },
+                                      H('strong', { style: { fontSize: '13px' } }, activeRoom.name),
+                                      H(
+                                        'button',
+                                        {
+                                          type: 'button',
+                                          className: 'sm-btn sm-btn-sm',
+                                          onClick: () => {
+                                            setRenameInput(activeRoom.name || '')
+                                            setEditingName(true)
+                                          },
+                                        },
+                                        EditIcon({ React, size: 11 }),
+                                        t('renameGroupBtn'),
+                                      ),
+                                    ),
+                              )
+                            : null,
+                          H(
+                            'div',
+                            { className: 'sm-drawer-section' },
+                            H('span', { className: 'sm-drawer-label' }, t('moderatorBadge')),
+                            H(
+                              'select',
+                              {
+                                className: 'sm-input',
+                                value: activeModeratorSlug,
+                                disabled: busy,
+                                onChange: (e) => {
+                                  const nextMod = e.target?.value
+                                  if (nextMod) {
+                                    void controller.updateGroupModeration({
+                                      roomId: activeRoom.id,
+                                      moderatorSlug: nextMod,
+                                    })
+                                  }
                                 },
-                                '×',
+                              },
+                              ...(activeRoom.members || []).map((m) =>
+                                H('option', { key: m.slug, value: m.slug }, `${t('moderatorBadge')}: @${m.slug}`),
+                              ),
+                            ),
+                          ),
+                          uninvitedPeers.length > 0
+                            ? H(
+                                'div',
+                                { className: 'sm-drawer-section' },
+                                H('span', { className: 'sm-drawer-label' }, t('inviteBtn')),
+                                H(
+                                  'div',
+                                  { className: 'sm-row' },
+                                  H(
+                                    'select',
+                                    {
+                                      className: 'sm-input',
+                                      value: invitePeerSlug,
+                                      onChange: (e) => setInvitePeerSlug(e.target?.value || ''),
+                                    },
+                                    H('option', { value: '' }, t('invitePeerPlaceholder')),
+                                    ...uninvitedPeers.map((p) =>
+                                      H('option', { key: p.slug, value: p.slug }, `${p.ownerName} (${p.slug})`),
+                                    ),
+                                  ),
+                                  H(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'sm-btn sm-btn-sm sm-btn-primary',
+                                      disabled: busy || !invitePeerSlug,
+                                      onClick: () => {
+                                        if (!invitePeerSlug) return
+                                        void controller.inviteToGroup({
+                                          roomId: activeRoom.id,
+                                          memberSlugs: [invitePeerSlug],
+                                        })
+                                        setInvitePeerSlug('')
+                                      },
+                                    },
+                                    t('inviteBtn'),
+                                  ),
+                                ),
+                              )
+                            : null,
+                          H(
+                            'div',
+                            { className: 'sm-drawer-section' },
+                            H('span', { className: 'sm-drawer-label' }, `${t('membersLabel')} (${(activeRoom.members || []).length})`),
+                            ...(activeRoom.members || []).map((m) =>
+                              H(
+                                'div',
+                                { key: m.slug, className: 'sm-peer-row', style: { padding: '7px 9px' } },
+                                H(
+                                  'div',
+                                  { style: { display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 } },
+                                  H(
+                                    'div',
+                                    { className: 'sm-row', style: { gap: '5px', flexWrap: 'wrap' } },
+                                    H('strong', { style: { fontSize: '12px' } }, `@${m.slug}`),
+                                    m.slug === activeRoom.createdBy ? H('span', { className: 'sm-badge' }, t('creatorBadge')) : null,
+                                    m.slug === activeModeratorSlug ? H('span', { className: 'sm-badge sm-badge-moderator' }, t('moderatorBadge')) : null,
+                                  ),
+                                  m.role ? H('span', { style: { fontSize: '11px', opacity: 0.72 } }, m.role) : null,
+                                ),
+                                isGroupCreator && m.slug !== self.slug && m.slug !== activeRoom.createdBy
+                                  ? (confirmAction?.type === 'kick' && confirmAction.slug === m.slug
+                                    ? H(
+                                        'div',
+                                        { className: 'sm-row', style: { gap: '4px' } },
+                                        H(
+                                          'button',
+                                          {
+                                            type: 'button',
+                                            className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                            disabled: busy,
+                                            onClick: async () => {
+                                              setConfirmAction(null)
+                                              await controller.removeFromGroup({ roomId: activeRoom.id, slug: m.slug })
+                                            },
+                                          },
+                                          t('removeMemberBtn'),
+                                        ),
+                                        H(
+                                          'button',
+                                          {
+                                            type: 'button',
+                                            className: 'sm-btn sm-btn-sm',
+                                            onClick: () => setConfirmAction(null),
+                                          },
+                                          t('cancelBtn'),
+                                        ),
+                                      )
+                                    : H(
+                                        'button',
+                                        {
+                                          type: 'button',
+                                          className: 'sm-btn-ghost',
+                                          style: { color: '#dc2626' },
+                                          disabled: busy,
+                                          onClick: () => setConfirmAction({ type: 'kick', slug: m.slug }),
+                                        },
+                                        t('removeMemberBtn'),
+                                      ))
+                                  : null,
                               ),
                             ),
                           ),
                         )
                       : null,
 
-                    H(
-                      'div',
-                      { className: 'sm-composer-box' },
-                      H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: `sm-trigger-btn${triggerInfo?.trigger === '@' ? ' active' : ''}`,
-                          title: t('mentionTriggerTitle'),
-                          onClick: () => {
-                            setMenuIndex(0)
-                            setActiveTrigger((prev) => (prev?.trigger === '@' ? null : { trigger: '@', query: '', replaceStart: draftText.length }))
-                          },
-                        },
-                        '@',
-                      ),
-                      H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: `sm-trigger-btn${triggerInfo?.trigger === '#' ? ' active' : ''}`,
-                          title: t('fileTriggerTitle'),
-                          onClick: () => {
-                            setMenuIndex(0)
-                            setActiveTrigger((prev) => {
-                              if (prev?.trigger === '#') return null
-                              void controller.searchFiles('')
-                              return { trigger: '#', query: '', replaceStart: draftText.length }
-                            })
-                          },
-                        },
-                        '#',
-                      ),
-                      H('textarea', {
-                        ref: composerRef,
-                        rows: 1,
-                        className: 'sm-composer-input',
-                        value: draftText,
-                        placeholder: t('composerPlaceholder'),
-                        onChange: (e) => handleDraftChange(e.target?.value || ''),
-                        onKeyDown: (e) => {
-                          if (triggerInfo && popoverItems.length > 0) {
-                            if (e.key === 'ArrowDown') {
-                              e.preventDefault?.()
-                              setMenuIndex((i) => (i + 1) % popoverItems.length)
-                              return
-                            }
-                            if (e.key === 'ArrowUp') {
-                              e.preventDefault?.()
-                              setMenuIndex((i) => (i - 1 + popoverItems.length) % popoverItems.length)
-                              return
-                            }
-                            if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-                              e.preventDefault?.()
-                              applyPopoverSelection(popoverItems[menuIndex] || popoverItems[0])
-                              return
-                            }
-                            if (e.key === 'Escape') {
-                              e.preventDefault?.()
-                              setActiveTrigger(null)
-                              return
-                            }
-                          }
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault?.()
-                            void handleSend()
-                          }
-                        },
-                      }),
-                      H(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'sm-btn sm-btn-primary',
-                          disabled: busy || (!draftText.trim() && attachedFiles.length === 0),
-                          onClick: handleSend,
-                        },
-                        t('sendBtn'),
-                      ),
-                    ),
+                    // Pair Room Peer Controls
+                    activeRoom.type === 'pair' && !isRoomUnpaired && activeRoom.peerSlug
+                      ? H(
+                          'div',
+                          { className: 'sm-drawer-section' },
+                          H('span', { className: 'sm-drawer-label' }, activeRoom.name),
+                          activePairPeer?.role
+                            ? H('span', { className: 'sm-badge', style: { alignSelf: 'flex-start' } }, activePairPeer.role)
+                            : null,
+                          H('div', { style: { fontSize: '12px', opacity: 0.8 } }, activePairPeer?.description || t('noSpecialtyYet')),
+                          H(
+                            'div',
+                            { className: 'sm-row', style: { flexWrap: 'wrap' } },
+                            H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-btn sm-btn-sm',
+                                disabled: busy,
+                                onClick: () => void controller.pingPeer(activeRoom.peerSlug),
+                              },
+                              t('pingBtn'),
+                            ),
+                            H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                disabled: busy,
+                                onClick: () => setConfirmAction({ type: 'unpair', slug: activeRoom.peerSlug }),
+                              },
+                              t('unpairBtn'),
+                            ),
+                          ),
+                          confirmAction?.type === 'unpair' && confirmAction.slug === activeRoom.peerSlug
+                            ? H(
+                                'div',
+                                { className: 'sm-confirm-bar' },
+                                H(
+                                  'div',
+                                  { style: { display: 'flex', flexDirection: 'column', gap: '2px' } },
+                                  H('strong', null, `${t('unpairConfirmTitle')} @${confirmAction.slug}`),
+                                  ownedGroupsWithTarget(confirmAction.slug).length > 0
+                                    ? H('span', { style: { fontSize: '11px', opacity: 0.85 } }, t('unpairGroupWarn'))
+                                    : null,
+                                ),
+                                H(
+                                  'div',
+                                  { className: 'sm-row', style: { gap: '6px' } },
+                                  H(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                      disabled: busy,
+                                      onClick: async () => {
+                                        const slugToRemove = confirmAction.slug
+                                        setConfirmAction(null)
+                                        setRightPanel('')
+                                        await controller.removePeer(slugToRemove)
+                                      },
+                                    },
+                                    t('confirmUnpairBtn'),
+                                  ),
+                                  H(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'sm-btn sm-btn-sm',
+                                      onClick: () => setConfirmAction(null),
+                                    },
+                                    t('cancelBtn'),
+                                  ),
+                                ),
+                              )
+                            : null,
+                        )
+                      : null,
+
+                    // Topic Directory Jump List
+                    roomTopics.length > 0
+                      ? H(
+                          'div',
+                          { className: 'sm-drawer-section' },
+                          H('span', { className: 'sm-drawer-label' }, `${t('topicsSectionTitle')} (${roomTopics.length})`),
+                          ...roomTopics.slice().reverse().map((tp, tIdx) =>
+                            H(
+                              'button',
+                              {
+                                key: tp.id,
+                                type: 'button',
+                                className: 'sm-topic-jump-btn',
+                                onClick: () => scrollToAnchor(tp.anchorId),
+                              },
+                              H(
+                                'span',
+                                { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                                tp.preview || `${t('topicItemLabel')} #${roomTopics.length - tIdx}`,
+                              ),
+                              H('span', { style: { fontSize: '10.5px', opacity: 0.65, flexShrink: 0 } }, formatClock(tp.createdAt)),
+                            ),
+                          ),
+                        )
+                      : null,
+
+                    // Leave / Dissolve Group
+                    activeRoom.type === 'group' && !isRoomUnpaired
+                      ? H(
+                          'div',
+                          { className: 'sm-drawer-section', style: { marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--sm-border-l1)' } },
+                          confirmAction?.type === 'leave-group'
+                            ? H(
+                                'div',
+                                { className: 'sm-confirm-bar' },
+                                H('span', null, t('confirmLeaveGroup')),
+                                H(
+                                  'div',
+                                  { className: 'sm-row', style: { gap: '6px' } },
+                                  H(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                      disabled: busy,
+                                      onClick: async () => {
+                                        setConfirmAction(null)
+                                        setRightPanel('')
+                                        await controller.leaveGroup(activeRoom.id)
+                                      },
+                                    },
+                                    isGroupCreator ? t('dissolveGroupBtn') : t('leaveGroupBtn'),
+                                  ),
+                                  H(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'sm-btn sm-btn-sm',
+                                      onClick: () => setConfirmAction(null),
+                                    },
+                                    t('cancelBtn'),
+                                  ),
+                                ),
+                              )
+                            : H(
+                                'button',
+                                {
+                                  type: 'button',
+                                  className: 'sm-btn sm-btn-sm sm-btn-danger',
+                                  disabled: busy,
+                                  onClick: () => setConfirmAction({ type: 'leave-group', roomId: activeRoom.id }),
+                                },
+                                isGroupCreator ? t('dissolveGroupBtn') : t('leaveGroupBtn'),
+                              ),
+                        )
+                      : null,
                   ),
-            ),
+            )
+          : null,
       ),
+
+      // Shared File Online Preview Modal
+      previewState
+        ? H(
+            'div',
+            {
+              className: 'sm-preview-backdrop',
+              onClick: (e) => {
+                if (e.target === e.currentTarget) setPreviewState(null)
+              },
+            },
+            H(
+              'div',
+              { className: 'sm-preview-modal', role: 'dialog', 'aria-label': previewState.name },
+              H(
+                'div',
+                { className: 'sm-preview-head' },
+                H(
+                  'div',
+                  { className: 'sm-row', style: { minWidth: 0 } },
+                  FileDocIcon({ React, size: 15 }),
+                  H('strong', { style: { fontSize: '13.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, previewState.name),
+                  H('span', { className: 'sm-badge' }, formatBytes(previewState.size)),
+                ),
+                H(
+                  'div',
+                  { className: 'sm-row', style: { gap: '6px' } },
+                  previewState.kind === 'markdown'
+                    ? H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn sm-btn-sm',
+                          onClick: () => setPreviewState((cur) => (cur ? { ...cur, rawMode: !cur.rawMode } : cur)),
+                        },
+                        previewState.rawMode ? t('previewRenderedBtn') : t('previewRawBtn'),
+                      )
+                    : null,
+                  previewState.text
+                    ? H(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-btn sm-btn-sm',
+                          onClick: () => void flashCopy(previewState.text, 'preview-copy'),
+                        },
+                        copiedKey === 'preview-copy' ? CheckIcon({ React, size: 12 }) : CopyIcon({ React, size: 12 }),
+                        copiedKey === 'preview-copy' ? t('copiedCodeBtn') : t('copyCodeBtn'),
+                      )
+                    : null,
+                  H(
+                    'a',
+                    {
+                      className: 'sm-btn sm-btn-sm sm-btn-primary',
+                      href: previewState.downloadUrl,
+                      download: previewState.name,
+                      style: { textDecoration: 'none' },
+                    },
+                    DownloadIcon({ React, size: 12 }),
+                    t('downloadBtn'),
+                  ),
+                  H(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'sm-btn-ghost',
+                      onClick: () => setPreviewState(null),
+                    },
+                    CloseIcon({ React, size: 14 }),
+                  ),
+                ),
+              ),
+              H(
+                'div',
+                { className: 'sm-preview-body' },
+                previewState.loading
+                  ? H('div', { style: { opacity: 0.72, fontSize: '12.5px' } }, t('previewLoading'))
+                  : previewState.error
+                    ? H('div', { className: 'sm-alert' }, previewState.error)
+                    : previewState.kind === 'image'
+                      ? H('img', { className: 'sm-preview-img', src: previewState.url, alt: previewState.name })
+                      : previewState.kind === 'markdown' && !previewState.rawMode
+                        ? renderMarkdownMessage(H, previewState.text, {
+                            keyPrefix: `prev-${previewState.msgId}`,
+                            onCopyCode: flashCopy,
+                            copiedCodeKey: copiedKey,
+                            t,
+                          })
+                        : previewState.kind === 'binary'
+                          ? H('div', { style: { opacity: 0.78, fontSize: '13px', textAlign: 'center', padding: '24px' } }, t('previewUnavailable'))
+                          : H('pre', { className: 'sm-preview-pre' }, previewState.text),
+              ),
+            ),
+          )
+        : null,
     )
   }
 }
 
 /**
- * Settings Section Page: Node Endpoint Info + 1-on-1 Pairing + Paired Peers Management.
+ * Settings Section Page: Node Agent Profile (with Quick Presets) + 1-on-1 Pairing + Connected Sandboxes.
  */
 export function createMeshSettingsPage({
   React,
@@ -1627,6 +2440,7 @@ export function createMeshSettingsPage({
     const [copiedField, setCopiedField] = useState('')
     const [confirmUnpairSlug, setConfirmUnpairSlug] = useState('')
     const [pingingSlug, setPingingSlug] = useState('')
+    const [pingingAll, setPingingAll] = useState(false)
     const initialSelf = controller.getSnapshot().state?.self || {}
     const [roleInput, setRoleInput] = useState(initialSelf.role || '')
     const [descInput, setDescInput] = useState(initialSelf.description || '')
@@ -1668,6 +2482,14 @@ export function createMeshSettingsPage({
     const peers = state.peers || []
     const rooms = state.rooms || []
 
+    const roleTemplates = [
+      { id: 'fe', role: t('tplFrontendRole'), desc: t('tplFrontendDesc') },
+      { id: 'be', role: t('tplBackendRole'), desc: t('tplBackendDesc') },
+      { id: 'qa', role: t('tplQaRole'), desc: t('tplQaDesc') },
+      { id: 'data', role: t('tplDataRole'), desc: t('tplDataDesc') },
+      { id: 'arch', role: t('tplArchRole'), desc: t('tplArchDesc') },
+    ]
+
     const copyText = async (key, value, inputRef) => {
       const res = await copyTextToClipboard(value, { fallbackInput: inputRef?.current || null })
       if (res.ok) {
@@ -1704,6 +2526,15 @@ export function createMeshSettingsPage({
       }
     }
 
+    const handlePingAll = async () => {
+      setPingingAll(true)
+      try {
+        await controller.pingAllPeers()
+      } finally {
+        setPingingAll(false)
+      }
+    }
+
     const ownedGroupsWithTarget = (targetSlug) =>
       rooms.filter(
         (r) => r.type === 'group' && !r.unpaired && r.createdBy === self.slug
@@ -1730,6 +2561,7 @@ export function createMeshSettingsPage({
             disabled: busy,
             onClick: () => void controller.syncFromHost(),
           },
+          RefreshIcon({ React, size: 12 }),
           t('refreshBtn'),
         ),
       ),
@@ -1792,6 +2624,27 @@ export function createMeshSettingsPage({
             },
           }),
         ),
+        H(
+          'div',
+          { className: 'sm-template-row' },
+          H('span', null, t('roleTemplatesLabel')),
+          ...roleTemplates.map((tpl) =>
+            H(
+              'button',
+              {
+                key: tpl.id,
+                type: 'button',
+                className: 'sm-template-pill',
+                onClick: () => {
+                  setProfileDirty(true)
+                  setRoleInput(tpl.role)
+                  setDescInput(tpl.desc)
+                },
+              },
+              tpl.role,
+            ),
+          ),
+        ),
         H('p', { className: 'sm-subtitle', style: { margin: 0 } }, t('cliHint')),
         H(
           'details',
@@ -1830,7 +2683,7 @@ export function createMeshSettingsPage({
         ),
       ),
 
-      // 2. 1-on-1 Pairing Card (Shared streamlined component with live countdown & reliable copy)
+      // 2. 1-on-1 Pairing Card
       H(
         'div',
         { className: 'sm-card' },
@@ -1854,7 +2707,23 @@ export function createMeshSettingsPage({
       H(
         'div',
         { className: 'sm-card' },
-        H('div', { className: 'sm-card-title' }, `${t('pairedPeersTitle')} (${peers.length})`),
+        H(
+          'div',
+          { className: 'sm-card-title' },
+          H('span', null, `${t('pairedPeersTitle')} (${peers.length})`),
+          peers.length > 0
+            ? H(
+                'button',
+                {
+                  type: 'button',
+                  className: 'sm-btn sm-btn-sm',
+                  disabled: busy || pingingAll,
+                  onClick: () => void handlePingAll(),
+                },
+                pingingAll ? t('pingingAllBtn') : t('pingAllBtn'),
+              )
+            : null,
+        ),
         peers.length === 0
           ? H('div', { style: { fontSize: '12.5px', opacity: 0.72 } }, t('noPairedPeersDesc'))
           : H(
@@ -1882,7 +2751,7 @@ export function createMeshSettingsPage({
                         peer.role
                           ? H('span', { className: 'sm-badge' }, peer.role)
                           : null,
-                        renderPeerStatusBadge(H, t, peer.status),
+                        renderPeerStatusBadge(H, t, peer.status, peer.lastLatencyMs),
                       ),
                       H(
                         'div',
@@ -1890,10 +2759,17 @@ export function createMeshSettingsPage({
                         peer.description || t('noSpecialtyYet'),
                       ),
                       H(
-                        'code',
+                        'div',
                         {
-                          className: 'sm-code-inline',
-                          style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                          style: {
+                            fontSize: '11px',
+                            opacity: 0.62,
+                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          },
+                          title: peer.endpointUrl || '',
                         },
                         peer.endpointUrl || '',
                       ),

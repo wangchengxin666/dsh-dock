@@ -682,11 +682,23 @@ class DockerService:
         node_script = """
 const fs = require('fs');
 const indexUrl = process.env.INDEX_URL;
+const npmRegistry = process.env.NPM_REGISTRY || '';
 try { fs.rmSync('/home/workspace/.cache/pnpm', { recursive: true, force: true }); } catch {}
 fs.mkdirSync('/home/workspace/.dsh-sandbox', { recursive: true });
 fs.writeFileSync('/home/workspace/.dsh-sandbox/plugin-index-url.txt', indexUrl + '\\n');
-const pkgPath = '/home/workspace/.dsh/profiles/web/package.json';
-const patchPath = '/home/workspace/.dsh/profiles/web/cordis.patch.yml';
+if (npmRegistry) {
+  fs.writeFileSync('/home/workspace/.dsh-sandbox/plugin-npm-registry.txt', npmRegistry + '\\n');
+}
+const profileDir = '/home/workspace/.dsh/profiles/web';
+const pkgPath = profileDir + '/package.json';
+const patchPath = profileDir + '/cordis.patch.yml';
+const npmrcPath = profileDir + '/.npmrc';
+if (npmRegistry && fs.existsSync(profileDir)) {
+  const existing = fs.existsSync(npmrcPath) ? fs.readFileSync(npmrcPath, 'utf8') : '';
+  const lines = existing.split(/\\r?\\n/).filter((l) => l.trim() !== '' && !/^registry\\s*=/.test(l.trim()));
+  lines.unshift('registry=' + npmRegistry);
+  fs.writeFileSync(npmrcPath, lines.join('\\n') + '\\n');
+}
 let installedDeps = [];
 if (fs.existsSync(pkgPath)) {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
@@ -719,7 +731,11 @@ console.log('INSTALLED_DEPS=' + JSON.stringify(installedDeps));
         ec1, out1 = container.exec_run(
             ["node", "-e", node_script],
             user="workspace",
-            environment={"INDEX_URL": index_url, "HOME": "/home/workspace"},
+            environment={
+                "INDEX_URL": index_url,
+                "NPM_REGISTRY": npm_registry,
+                "HOME": "/home/workspace",
+            },
         )
         text1 = out1.decode("utf-8", errors="replace").strip() if out1 else ""
         if ec1 != 0:

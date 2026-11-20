@@ -518,6 +518,9 @@ export function createMeshStore({
       threadSessions: !wasUnpaired && existingRoom?.threadSessions && typeof existingRoom.threadSessions === 'object'
         ? { ...existingRoom.threadSessions }
         : {},
+      threadCursors: !wasUnpaired && existingRoom?.threadCursors && typeof existingRoom.threadCursors === 'object'
+        ? { ...existingRoom.threadCursors }
+        : {},
     }
     state.rooms[rId] = room
     if (!Array.isArray(state.messages[rId])) {
@@ -541,12 +544,15 @@ export function createMeshStore({
     return true
   }
 
-  function touchPeer(rawSlug, { status = 'online', peerProfile = null, nowMs = Date.now() } = {}) {
+  function touchPeer(rawSlug, { status = 'online', peerProfile = null, latencyMs = null, nowMs = Date.now() } = {}) {
     const slug = sanitizeSlug(rawSlug)
     const peer = slug ? state.peers[slug] : null
     if (!peer) return null
     peer.status = String(status || 'online').trim() || 'online'
     peer.lastSeenAt = nowMs
+    if (typeof latencyMs === 'number' && Number.isFinite(latencyMs) && latencyMs >= 0) {
+      peer.lastLatencyMs = Math.round(latencyMs)
+    }
     if (peerProfile && typeof peerProfile === 'object') {
       if (typeof peerProfile.ownerName === 'string' && peerProfile.ownerName.trim()) {
         peer.ownerName = peerProfile.ownerName.trim().slice(0, 80)
@@ -747,6 +753,7 @@ export function createMeshStore({
       unreadCount: 0,
       agentSessionId: '',
       threadSessions: {},
+      threadCursors: {},
     }
     state.rooms[roomId] = room
     state.messages[roomId] = []
@@ -853,6 +860,9 @@ export function createMeshStore({
       threadSessions: existing?.threadSessions && typeof existing.threadSessions === 'object'
         ? { ...existing.threadSessions }
         : {},
+      threadCursors: existing?.threadCursors && typeof existing.threadCursors === 'object'
+        ? { ...existing.threadCursors }
+        : {},
     }
     state.rooms[roomId] = room
     if (!Array.isArray(state.messages[roomId])) {
@@ -874,6 +884,26 @@ export function createMeshStore({
         room.moderatorSlug = cleanMod
       }
     }
+    room.updatedAt = nowMs
+    persist()
+    return room
+  }
+
+  function renameGroupRoom(roomId, rawName, nowMs = Date.now()) {
+    const room = state.rooms[roomId]
+    if (!room || room.type !== 'group') {
+      throw new Error(`Group room "${roomId}" not found`)
+    }
+    const self = getSelf()
+    const isCreatorOrMod = !room.createdBy || self.slug === room.createdBy || self.slug === room.moderatorSlug
+    if (!isCreatorOrMod) {
+      throw new Error('Only the group creator or moderator can rename this group')
+    }
+    const cleanName = typeof rawName === 'string' ? rawName.trim().slice(0, 80) : ''
+    if (!cleanName) {
+      throw new Error('Group name is required')
+    }
+    room.name = cleanName
     room.updatedAt = nowMs
     persist()
     return room
@@ -1027,6 +1057,7 @@ export function createMeshStore({
         ? { ...rawMsg.delivery }
         : { deliveredTo: [], pendingPeers: [] },
       createdAt: Number(rawMsg.createdAt) > 0 ? Number(rawMsg.createdAt) : nowMs,
+      receivedAt: nowMs,
     }
 
     const wakeInfo = room.unpaired
@@ -1044,7 +1075,7 @@ export function createMeshStore({
       list.splice(0, list.length - maxMessagesPerRoom)
     }
     state.messages[roomId] = list
-    room.updatedAt = message.createdAt
+    room.updatedAt = Math.max(message.createdAt, nowMs)
     if (isIncoming && senderSlug !== self.slug) {
       room.unreadCount = (room.unreadCount || 0) + 1
       if (state.peers[senderSlug]) {
@@ -1062,6 +1093,11 @@ export function createMeshStore({
   function hasMessage(roomId, msgId) {
     if (!roomId || !msgId) return false
     return (state.messages[roomId] || []).some((m) => m.id === msgId)
+  }
+
+  function getMessage(roomId, msgId) {
+    if (!roomId || !msgId) return null
+    return (state.messages[roomId] || []).find((m) => m.id === msgId) || null
   }
 
   function updateMessageDelivery(roomId, msgId, delivery) {
@@ -1106,6 +1142,27 @@ export function createMeshStore({
       return room.threadSessions[threadId] || ''
     }
     return room.agentSessionId || ''
+  }
+
+  function getRoomThreadCursor(roomId, threadId = '') {
+    const room = state.rooms[roomId]
+    if (!room || !room.threadCursors || typeof room.threadCursors !== 'object') return ''
+    const key = String(threadId || '').trim() || '__default__'
+    return String(room.threadCursors[key] || '')
+  }
+
+  function setRoomThreadCursor(roomId, messageId, threadId = '') {
+    const room = state.rooms[roomId]
+    if (!room) return false
+    const key = String(threadId || '').trim() || '__default__'
+    const cleanMsgId = String(messageId || '').trim()
+    room.threadCursors = room.threadCursors && typeof room.threadCursors === 'object'
+      ? room.threadCursors
+      : {}
+    if (room.threadCursors[key] === cleanMsgId) return true
+    room.threadCursors[key] = cleanMsgId
+    persist()
+    return true
   }
 
   function findRoomBySessionId(sessionId) {
@@ -1231,6 +1288,7 @@ export function createMeshStore({
       endpointUrl: p.endpointUrl,
       pairedAt: p.pairedAt,
       lastSeenAt: p.lastSeenAt,
+      lastLatencyMs: typeof p.lastLatencyMs === 'number' ? p.lastLatencyMs : null,
       status: p.status || 'online',
     })).sort((a, b) => a.slug.localeCompare(b.slug))
 
@@ -1288,17 +1346,21 @@ export function createMeshStore({
     createGroupRoom,
     upsertGroupRoom,
     updateGroupModeration,
+    renameGroupRoom,
     rotateRoomThread,
     addMembersToGroup,
     removeGroupMember,
     resolveVerificationSecrets,
     isRoomMember,
     hasMessage,
+    getMessage,
     recordMessage,
     updateMessageDelivery,
     markRoomRead,
     setRoomAgentSessionId,
     getRoomAgentSessionId,
+    getRoomThreadCursor,
+    setRoomThreadCursor,
     findRoomBySessionId,
     ackAgentMessage,
     getAgentInbox,

@@ -118,6 +118,8 @@ def test_build_npm_packument_and_index_modes(tmp_path: Path):
 
     packument = svc.build_npm_packument(pkg, "https://mgr.example.com")
     assert packument["dist-tags"]["latest"] == "0.1.0"
+    assert "0.1.0" in packument["time"]
+    assert packument["time"]["0.1.0"].endswith("Z")
     dist = packument["versions"]["0.1.0"]["dist"]
     assert dist["tarball"] == "https://mgr.example.com/plugins/packages/alpha-0.1.0.tgz"
     assert dist["shasum"] == pkg.shasum
@@ -128,6 +130,7 @@ def test_build_npm_packument_and_index_modes(tmp_path: Path):
     entry = idx["plugins"][0]
     assert entry["author"] == "Custom Org"
     assert entry["icon"].startswith("data:image/svg+xml;base64,")
+    assert "repository" not in entry
     assert entry["versions"][0]["source"] == {
         "type": "npm",
         "registry": "http://localhost:9000/plugins/npm",
@@ -143,6 +146,10 @@ def test_build_npm_packument_and_index_modes(tmp_path: Path):
         )
     )
     git_idx = git_svc.build_index("https://mgr.example.com")
+    assert git_idx["plugins"][0]["repository"] == {
+        "url": "https://git.example.com/repo.git",
+        "directory": "plugins/alpha",
+    }
     assert git_idx["plugins"][0]["versions"][0]["source"] == {
         "type": "git",
         "url": "https://git.example.com/repo.git",

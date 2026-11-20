@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { readFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import {
@@ -22,22 +22,27 @@ import {
   sha256Hex,
 } from './src/host/crypto.js'
 import {
+  classifyAttachmentFile,
   createFileShareGuard,
   maxMeshBodyBytes,
   safeFileName,
   searchWorkspaceFiles,
+  uniqueFilePath,
 } from './src/host/files.js'
 import { createMeshStore, resolveStoragePath } from './src/host/store.js'
 import { installAgentBridge, syncSkillFile } from './src/host/agent-bridge.js'
 import { wireHarnessRuntime } from './src/host/harness-bridge.js'
 import {
   createIncomingMeshHandler,
+  FILE_DOWNLOAD_ENDPOINT,
+  FILE_UPLOAD_ENDPOINT,
   FILES_ENDPOINT,
   GROUP_CREATE_ENDPOINT,
   GROUP_INVITE_ENDPOINT,
   GROUP_LEAVE_ENDPOINT,
   GROUP_MODERATE_ENDPOINT,
   GROUP_REMOVE_ENDPOINT,
+  GROUP_RENAME_ENDPOINT,
   MARK_READ_ENDPOINT,
   NEW_TOPIC_ENDPOINT,
   PAIR_CLAIM_ENDPOINT,
@@ -58,6 +63,8 @@ export {
   STATE_ENDPOINT,
   PROFILE_ENDPOINT,
   FILES_ENDPOINT,
+  FILE_DOWNLOAD_ENDPOINT,
+  FILE_UPLOAD_ENDPOINT,
   PAIR_CODE_ENDPOINT,
   PAIR_CLAIM_ENDPOINT,
   GROUP_CREATE_ENDPOINT,
@@ -65,6 +72,7 @@ export {
   GROUP_MODERATE_ENDPOINT,
   GROUP_REMOVE_ENDPOINT,
   GROUP_LEAVE_ENDPOINT,
+  GROUP_RENAME_ENDPOINT,
   NEW_TOPIC_ENDPOINT,
   SEND_ENDPOINT,
   SEND_FILE_ENDPOINT,
@@ -150,7 +158,7 @@ export function createMeshService({
 
   const resolveShareableFile = createFileShareGuard({
     homeDir,
-    shareRoots: config.shareRoots,
+    shareRoots: config.shareRoots || [homeDir, inboxDir],
     protectedFiles: [storagePath, String(config.localTokenPath || '')],
   })
 
@@ -612,6 +620,27 @@ export function createMeshService({
     return { ok: true, room, sync: syncResult, state: getStateSnapshot() }
   }
 
+  async function renameGroup({ roomId, name: nextName, headers = null }) {
+    store.updateSelf(headers)
+    let room
+    try {
+      room = store.renameGroupRoom(roomId, nextName)
+    } catch (err) {
+      return { ok: false, status: 400, error: err?.message || String(err) }
+    }
+    const self = store.getSelf()
+    store.recordMessage({
+      roomId: room.id,
+      threadId: room.activeThreadId || '',
+      sender: { slug: self.slug, ownerName: self.ownerName, ownerEmail: self.ownerEmail, actor: 'system' },
+      kind: 'system',
+      text: `Renamed group to "${room.name}".`,
+    })
+    const syncResult = await broadcastGroupSync(room)
+    notifyCatalogChanged()
+    return { ok: true, room, sync: syncResult, state: getStateSnapshot() }
+  }
+
   function clearPeerRuntimeState({ slug = '', roomIds = [] } = {}) {
     const cleanSlug = sanitizeSlug(slug)
     if (cleanSlug) {
@@ -809,7 +838,7 @@ export function createMeshService({
     const latencyMs = Math.max(0, Date.now() - startedAt)
 
     if (res.ok) {
-      store.touchPeer(cleanSlug, { status: 'online', peerProfile: res.data?.peer || null })
+      store.touchPeer(cleanSlug, { status: 'online', peerProfile: res.data?.peer || null, latencyMs })
       return {
         ok: true,
         slug: cleanSlug,
@@ -1214,6 +1243,97 @@ export function createMeshService({
     }
   }
 
+  async function uploadAndSendFile({
+    roomId,
+    fileName,
+    contentBase64,
+    text = '',
+    threadId = '',
+    headers = null,
+  }) {
+    store.updateSelf(headers)
+    const room = store.getRoom(roomId)
+    if (!room) {
+      return { ok: false, status: 404, error: `Room "${roomId}" does not exist` }
+    }
+    if (room.unpaired) {
+      return { ok: false, status: 409, error: `Room "${roomId}" is unpaired; re-pair before sending messages` }
+    }
+    const cleanName = safeFileName(fileName || 'upload.bin')
+    const rawBase64 = String(contentBase64 || '').replace(/^data:[^;]+;base64,/, '').trim()
+    const fileBytes = Buffer.from(rawBase64, 'base64')
+    if (fileBytes.byteLength === 0) {
+      return { ok: false, status: 400, error: 'Uploaded file is empty' }
+    }
+    if (fileBytes.byteLength > maxFileBytes) {
+      return { ok: false, status: 413, error: `File exceeds ${maxFileBytes} byte limit` }
+    }
+
+    const uploadDir = join(inboxDir, 'uploads')
+    await mkdir(uploadDir, { recursive: true })
+    let savedPath = join(uploadDir, cleanName)
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const candidate = uniqueFilePath(uploadDir, cleanName)
+      try {
+        await writeFile(candidate, fileBytes, { flag: 'wx' })
+        savedPath = candidate
+        break
+      } catch (err) {
+        if (err?.code !== 'EEXIST' || attempt === 4) {
+          return { ok: false, status: 500, error: err?.message || 'Failed to save uploaded file' }
+        }
+      }
+    }
+
+    return sendFile({
+      roomId: room.id,
+      threadId,
+      filePath: savedPath,
+      text: String(text || '').trim(),
+      actor: 'human',
+      headers,
+    })
+  }
+
+  async function readAttachmentFile({ roomId, msgId } = {}) {
+    const cleanRoomId = String(roomId || '').trim()
+    const cleanMsgId = String(msgId || '').trim()
+    const msg = store.getMessage(cleanRoomId, cleanMsgId)
+    if (!msg || !msg.attachment) {
+      return { ok: false, status: 404, error: 'Attachment not found in room history' }
+    }
+    const candidatePath = msg.attachment.savedPath || msg.attachment.sourcePath || ''
+    if (!candidatePath) {
+      return { ok: false, status: 404, error: 'Attachment file path is unavailable locally' }
+    }
+    const resolved = resolveShareableFile(candidatePath, 'human')
+    if (!resolved.ok) {
+      return resolved
+    }
+    let fileStat
+    try {
+      fileStat = await stat(resolved.path)
+    } catch {
+      return { ok: false, status: 404, error: 'Attachment file no longer exists on disk' }
+    }
+    if (!fileStat.isFile()) {
+      return { ok: false, status: 400, error: 'Attachment target is not a regular file' }
+    }
+    if (fileStat.size > maxFileBytes) {
+      return { ok: false, status: 413, error: 'Attachment exceeds preview/download size cap' }
+    }
+    const bytes = await readFile(resolved.path)
+    const displayName = safeFileName(msg.attachment.name || basename(resolved.path))
+    const info = classifyAttachmentFile(displayName)
+    return {
+      ok: true,
+      name: displayName,
+      size: bytes.byteLength,
+      bytes,
+      ...info,
+    }
+  }
+
   async function updateProfile({ ownerName, role, description, headers = null }) {
     store.updateSelf(headers)
     const updatedSelf = store.updateSelfProfile({ ownerName, role, description })
@@ -1357,6 +1477,7 @@ export function createMeshService({
     createGroup,
     inviteToGroup,
     updateGroupModeration,
+    renameGroup,
     removeFromGroup,
     leaveGroup,
     handleRemoteGroupLeave,
@@ -1364,6 +1485,8 @@ export function createMeshService({
     startNewTopic,
     sendMessage,
     sendFile,
+    uploadAndSendFile,
+    readAttachmentFile,
     flushOutbox,
     handleIncomingMeshHttp,
   }

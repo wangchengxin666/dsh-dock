@@ -51,8 +51,8 @@ Bundled plugin defaults in [cordis.patch.yml](cordis.patch.yml):
 | [src/host/harness-bridge.js](src/host/harness-bridge.js) | Native Harness tools (`mesh_*`), dynamic Skill provider, `SessionController` wake driver, `ask_user_question` guard, live status hooks. |
 | [src/host/agent-bridge.js](src/host/agent-bridge.js) | Provisioning `sandbox-peer` CLI (`0755`), local loopback token (`0600`), and `SKILL.md`. |
 | [src/shared/protocol.js](src/shared/protocol.js) | Slug validation, mention/file-ref parsing, `evaluateAgentWake` routing, `canStartNewTopic`. |
-| [src/client/](src/client/) | React UI (`mesh-page.js`), state controller (`mesh-controller.js`), CSS (`styles.js`), `en`/`zh` copy (`locale.js`), SVG micro-icons (`icons.js`). |
-| [scripts/](scripts/) & [.test/](.test/) | Bundle builder and 6-suite test runner (`bundle-load`, `client-live`, `endpoint-names`, `host-live`, `icon-check`, `locale-check`). |
+| [src/client/](src/client/) | React UI (`mesh-page.js`), Markdown renderer (`markdown.js`), native DSH tool/prompt views (`tool-views.js`), state controller (`mesh-controller.js`), CSS (`styles.js`), `en`/`zh` copy (`locale.js`), SVG micro-icons (`icons.js`). |
+| [scripts/](scripts/) & [.test/](.test/) | Bundle builder and 7-suite test runner (`bundle-load`, `client-live`, `endpoint-names`, `host-live`, `icon-check`, `locale-check`, `security-and-reliability`). |
 
 ## Build & Test
 

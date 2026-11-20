@@ -13,6 +13,8 @@ const MODULE_FILES = [
   'client/locale.js',
   'client/styles.js',
   'client/icons.js',
+  'client/markdown.js',
+  'client/tool-views.js',
   'client/mesh-controller.js',
   'client/mesh-page.js',
 ]

@@ -165,11 +165,12 @@ window.__ModuleLoader__.load({
           trigCtx.effect(() => disposeTrigger, 'sandbox-mesh: native session @ trigger')
         })
 
-        // Register userText rule & chip renderer so `@[slug](dsh-mesh:slug)` renders as a clean chip in DSH Session chat history!
+        // Register userText rules & chip/card renderers so `@[slug](dsh-mesh:slug)`, legacy XML peer tags,
+        // and `[SANDBOX MESH INCOMING REQUEST]` wake prompts render cleanly in DSH Session chat history!
         ctx.inject(['uiConversation'], (convCtx) => {
           const uiConv = convCtx.uiConversation ?? convCtx.get?.('uiConversation')
           if (!uiConv?.userText?.register) return
-          const disposeRule = uiConv.userText.register({
+          const disposeMentionRule = uiConv.userText.register({
             id: 'sandbox-mesh',
             order: 8,
             match(text, from) {
@@ -185,8 +186,43 @@ window.__ModuleLoader__.load({
               }
             },
           })
-          const disposeNode = convCtx.slots.inject('conversation.user.text.node', () =>
-            convCtx.slots.register(
+          const disposeLegacyPeerRule = uiConv.userText.register({
+            id: 'sandbox-mesh-legacy-peer',
+            order: 7,
+            match(text, from) {
+              const pattern = /<sandbox-mesh-peer\b[^>]*slug="([^"]+)"[^>]*>[\s\S]*?<\/sandbox-mesh-peer>/gu
+              pattern.lastIndex = from
+              const m = pattern.exec(text)
+              if (!m) return undefined
+              return {
+                id: 'sandbox-mesh-legacy-peer',
+                start: m.index,
+                end: m.index + m[0].length,
+                data: { label: m[1], target: m[1] },
+              }
+            },
+          })
+          const disposeWakeRule = uiConv.userText.register({
+            id: 'sandbox-mesh-wake',
+            order: 6,
+            match(text, from) {
+              if (from !== 0) return undefined
+              const parsed = parseIncomingWakePrompt(text)
+              if (!parsed) return undefined
+              return {
+                id: 'sandbox-mesh-wake',
+                start: 0,
+                end: text.length,
+                data: parsed,
+              }
+            },
+          })
+          const MeshWakeCard = createMeshWakePromptView({
+            React,
+            getLocale: () => readActiveLocale(ctx.locale),
+          })
+          const disposeNodes = convCtx.slots.inject('conversation.user.text.node', () => {
+            const d1 = convCtx.slots.register(
               {
                 name: 'conversation.user.text.node',
                 key: 'sandbox-mesh',
@@ -204,16 +240,81 @@ window.__ModuleLoader__.load({
                   `@${label}`,
                 )
               },
-            ),
-          )
+            )
+            const d2 = convCtx.slots.register(
+              {
+                name: 'conversation.user.text.node',
+                key: 'sandbox-mesh-legacy-peer',
+                priority: 100,
+              },
+              function MeshLegacyPeerChip({ node }) {
+                const label = node?.data?.label || 'peer'
+                const t = createTranslator(readActiveLocale(ctx.locale))
+                return React.createElement(
+                  'span',
+                  {
+                    className: 'sm-inline-mention',
+                    title: `${t('legacyPeerChipDesc')}: @${label}`,
+                  },
+                  React.createElement(AgentIcon, { React, size: 12 }),
+                  `@${label}`,
+                )
+              },
+            )
+            const d3 = convCtx.slots.register(
+              {
+                name: 'conversation.user.text.node',
+                key: 'sandbox-mesh-wake',
+                priority: 100,
+              },
+              MeshWakeCard,
+            )
+            return () => {
+              d1?.()
+              d2?.()
+              d3?.()
+            }
+          })
           convCtx.effect(() => () => {
-            disposeRule?.()
-            disposeNode?.()
-          }, 'sandbox-mesh: userText chip rule')
+            disposeMentionRule?.()
+            disposeLegacyPeerRule?.()
+            disposeWakeRule?.()
+            disposeNodes?.()
+          }, 'sandbox-mesh: userText chip & wake card rules')
         })
       }
 
-      // Left Sidebar Main Slot: Pure IM Chat + Group Creation + Unified @ / # Composer
+      // Register native DSH tool call cards so `mesh_*` calls never dump raw JSON in main chat
+      const MeshToolCard = createMeshToolView({
+        React,
+        controller,
+        getLocale: () => readActiveLocale(ctx.locale),
+        subscribeLocale,
+      })
+      const MESH_TOOL_NAMES = [
+        'mesh_ask_peer',
+        'mesh_discuss_group',
+        'mesh_list_peers',
+        'mesh_send_message',
+        'mesh_share_file',
+      ]
+      ctx.slots.inject('tool.call.toolview', () => {
+        const disposers = MESH_TOOL_NAMES.map((toolKey) =>
+          ctx.slots.register(
+            {
+              name: 'tool.call.toolview',
+              key: toolKey,
+              priority: 100,
+            },
+            MeshToolCard,
+          ),
+        )
+        return () => {
+          for (const d of disposers) d?.()
+        }
+      })
+
+      // Left Sidebar Main Slot: Signature IM Chat + Group Collaboration + Unified @ / # / Upload Composer
       const MeshChatPage = createMeshChatPage({
         React,
         controller,
@@ -221,7 +322,7 @@ window.__ModuleLoader__.load({
         subscribeLocale,
       })
 
-      // Settings Section Slot: Node Endpoint Info + 1-on-1 Pairing + Paired Sandboxes Management
+      // Settings Section Slot: Node Agent Profile + 1-on-1 Pairing + Paired Sandboxes Management
       const MeshSettingsPage = createMeshSettingsPage({
         React,
         controller,
@@ -229,7 +330,31 @@ window.__ModuleLoader__.load({
         subscribeLocale,
       })
 
-      const PanelIcon = ({ size = 18 }) => MeshNavIcon({ React, size })
+      function PanelIcon({ size = 18 }) {
+        const [, setBadgeTick] = React.useState(0)
+        React.useEffect(() => {
+          const off = controller.subscribe(() => setBadgeTick((n) => n + 1))
+          const bgTimer = typeof setInterval === 'function'
+            ? setInterval(() => { void controller.syncFromHost() }, 12000)
+            : null
+          return () => {
+            off()
+            if (bgTimer) clearInterval(bgTimer)
+          }
+        }, [])
+        const summary = controller.getUnreadSummary ? controller.getUnreadSummary() : { totalUnread: 0, activeCount: 0 }
+        const showDot = summary.activeCount > 0 || summary.totalUnread > 0
+        return React.createElement(
+          'span',
+          { className: 'sm-nav-icon-wrap' },
+          MeshNavIcon({ React, size }),
+          showDot
+            ? React.createElement('span', {
+                className: `sm-nav-badge-dot${summary.activeCount > 0 ? ' live' : ''}`,
+              })
+            : null,
+        )
+      }
 
       ctx.slots.inject('sidebar.panellist', () =>
         ctx.slots.register(

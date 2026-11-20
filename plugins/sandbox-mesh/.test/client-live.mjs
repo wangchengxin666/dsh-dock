@@ -10,6 +10,17 @@ import {
   createMeshSettingsPage,
   detectComposerTrigger,
 } from '../src/client/mesh-page.js'
+import {
+  formatBytes,
+  localizeSystemMessage,
+  renderMarkdownMessage,
+  stripMarkdownForPreview,
+} from '../src/client/markdown.js'
+import {
+  createMeshToolView,
+  createMeshWakePromptView,
+  parseIncomingWakePrompt,
+} from '../src/client/tool-views.js'
 import { canStartNewTopic, parsePairInvite, resolveBrowserOriginUrl } from '../src/shared/protocol.js'
 import { MESH_CSS } from '../src/client/styles.js'
 
@@ -234,7 +245,7 @@ const ReactDOMServer = await importExternal('react-dom/server')
     subscribeLocale: () => () => {},
   })
   const freshHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(FreshChatPage, {}))
-  assert.ok(freshHtml.includes('disabled="" title="当前已是全新空话题，无需重复创建"'), 'New Topic button must be disabled on fresh empty thread')
+  assert.match(freshHtml, /disabled(?:="")?\s+title="当前已是全新空话题，无需重复创建"/, 'New Topic button must be disabled on fresh empty thread')
   freshController.dispose()
 
   // Active thread with existing message allows New Topic; fresh thread forbids duplicate New Topic
@@ -517,6 +528,7 @@ const ReactDOMServer = await importExternal('react-dom/server')
 
   const ctx = new Context()
   const registeredTriggerSources = []
+  const registeredUserTextRules = []
   ctx.plugin(MockSlots)
   ctx.provide('locale', {
     getSnapshot() { return { active: activeLang } },
@@ -535,6 +547,17 @@ const ReactDOMServer = await importExternal('react-dom/server')
       }
     },
   })
+  ctx.provide('uiConversation', {
+    userText: {
+      register(rule) {
+        registeredUserTextRules.push(rule)
+        return () => {
+          const i = registeredUserTextRules.indexOf(rule)
+          if (i >= 0) registeredUserTextRules.splice(i, 1)
+        }
+      },
+    },
+  })
 
   const fiber = ctx.plugin(exported)
   await fiber.inertia
@@ -544,6 +567,20 @@ const ReactDOMServer = await importExternal('react-dom/server')
   assert.equal(registeredTriggerSources.length, 1, 'Expected native Session @ trigger source to be registered')
   assert.equal(registeredTriggerSources[0].trigger, '@')
   assert.equal(registeredTriggerSources[0].name, 'sandbox-mesh')
+
+  // Verify userText rules (mention chip + legacy XML peer chip + incoming wake prompt card)
+  assert.equal(registeredUserTextRules.length, 3, 'Expected 3 uiConversation.userText rules')
+  assert.ok(registeredUserTextRules.some((r) => r.id === 'sandbox-mesh'))
+  assert.ok(registeredUserTextRules.some((r) => r.id === 'sandbox-mesh-legacy-peer'))
+  assert.ok(registeredUserTextRules.some((r) => r.id === 'sandbox-mesh-wake'))
+
+  // Verify native DSH tool.call.toolview slots for all 5 mesh_* tools
+  for (const toolKey of ['mesh_ask_peer', 'mesh_discuss_group', 'mesh_list_peers', 'mesh_send_message', 'mesh_share_file']) {
+    assert.ok(
+      regs.some((r) => r.opts.name === 'tool.call.toolview' && r.opts.key === toolKey),
+      `Expected tool.call.toolview registration for ${toolKey}`,
+    )
+  }
 
   const serializedRef = await registeredTriggerSources[0].codec.serialize('@[bob](dsh-mesh:bob)')
   assert.equal(serializedRef, '@[bob](dsh-mesh:bob)')
@@ -561,7 +598,215 @@ const ReactDOMServer = await importExternal('react-dom/server')
   assert.equal(appendedStyles.length, 0)
   assert.equal(regs.length, 0)
   assert.equal(registeredTriggerSources.length, 0)
+  assert.equal(registeredUserTextRules.length, 0)
   await ctx.fiber.dispose()
+}
+
+// 3. Rich Markdown, XSS safety, Delegation Collapse, System Pills, Theme Tokens, Tool Cards & Wake Cards
+{
+  // DSH real theme CSS tokens used (dark mode & custom-theme safe)
+  assert.ok(MESH_CSS.includes('--dsw-alias-label-primary'))
+  assert.ok(MESH_CSS.includes('--dsw-alias-bg-layer-1'))
+  assert.ok(MESH_CSS.includes('--dsw-alias-brand-primary'))
+  assert.ok(!MESH_CSS.includes('--dsw-alias-label-pri,'))
+  assert.ok(!MESH_CSS.includes('--dsw-alias-bg-surface'))
+  assert.ok(!MESH_CSS.includes('--dsw-alias-Interactive-pri'))
+
+  // Markdown renderer: headings, bold, inline code, fenced code block with copy button, GFM table, safe links, @mention & #file
+  const sampleMd = [
+    '## 汇总报告 (@alice)',
+    '',
+    '全部 **PASS**，检查 #README.md 和 `sha256sum`（邮箱 alice@example.com 不误判）并查看 [文档](https://example.com/docs) 与 [bad](javascript:alert(1))。',
+    '',
+    '| 节点 | 结果 |',
+    '|---|---|',
+    '| **alice** | `OK` |',
+    '',
+    '```bash',
+    'echo "hello"',
+    '```',
+  ].join('\n')
+
+  const mdHtml = ReactDOMServer.renderToStaticMarkup(
+    renderMarkdownMessage(React.createElement, sampleMd, {
+      keyPrefix: 'tmd',
+      onCopyCode: () => {},
+    }),
+  )
+  assert.ok(mdHtml.includes('sm-md-h2'), 'Should render Markdown H2 heading')
+  assert.ok(mdHtml.includes('<strong>PASS</strong>'), 'Should render Markdown bold')
+  assert.ok(mdHtml.includes('sm-md-inline-code'), 'Should render inline code')
+  assert.ok(mdHtml.includes('sm-md-table'), 'Should render GFM table')
+  assert.ok(mdHtml.includes('sm-md-codeblock'), 'Should render fenced code block')
+  assert.ok(mdHtml.includes('sm-md-copy-btn'), 'Should render copy button on fenced code block')
+  assert.ok(mdHtml.includes('https://example.com/docs'), 'Should render safe https link')
+  assert.ok(!mdHtml.includes('href="javascript:'), 'Must block javascript: URLs')
+  assert.ok(mdHtml.includes('sm-inline-mention'), 'Should preserve @mention chip')
+  assert.ok(mdHtml.includes('alice@example.com'), 'Email address must not be split into @mention chip')
+  assert.ok(mdHtml.includes('sm-inline-file'), 'Should preserve #file chip')
+
+  assert.equal(formatBytes(512), '512 B')
+  assert.equal(formatBytes(1536), '1.5 KB')
+  assert.equal(formatBytes(2 * 1024 * 1024), '2.00 MB')
+  assert.ok(!stripMarkdownForPreview('**bold** `code` node -e \'const x="123456789012345678901234567890"\'').includes('**'))
+
+  // Localized system pill & collapsible group delegation (phase='turn') + upgraded file card + topology bar
+  const richGroupState = {
+    self: { slug: 'alice', ownerName: 'Alice', endpointUrl: 'https://dock.example.com/s/alice/p/4090' },
+    peers: [{ slug: 'bob', ownerName: 'Bob', status: 'online', lastLatencyMs: 14 }],
+    rooms: [
+      {
+        id: 'grp_rich',
+        type: 'group',
+        name: '联调群',
+        createdBy: 'alice',
+        moderatorSlug: 'alice',
+        activeThreadId: 'thr_1',
+        members: [
+          { slug: 'alice', ownerName: 'Alice' },
+          { slug: 'bob', ownerName: 'Bob' },
+        ],
+      },
+    ],
+    messages: {
+      grp_rich: [
+        {
+          id: 'sys_1',
+          roomId: 'grp_rich',
+          threadId: 'thr_1',
+          sender: { slug: 'alice', ownerName: 'Alice', actor: 'system' },
+          kind: 'system',
+          text: 'Paired with Bob (bob) via Traefik mesh.',
+          createdAt: Date.now() - 5000,
+        },
+        {
+          id: 'turn_1',
+          roomId: 'grp_rich',
+          threadId: 'thr_1',
+          phase: 'turn',
+          sender: { slug: 'alice', ownerName: 'Alice', actor: 'agent' },
+          kind: 'task',
+          mentions: ['bob'],
+          text: '@bob 检查节点状态',
+          createdAt: Date.now() - 4000,
+        },
+        {
+          id: 'turn_2',
+          roomId: 'grp_rich',
+          threadId: 'thr_1',
+          phase: 'turn',
+          sender: { slug: 'bob', ownerName: 'Bob', actor: 'agent' },
+          kind: 'chat',
+          text: '全部正常',
+          createdAt: Date.now() - 3000,
+        },
+        {
+          id: 'file_1',
+          roomId: 'grp_rich',
+          threadId: 'thr_1',
+          sender: { slug: 'bob', ownerName: 'Bob', actor: 'agent' },
+          kind: 'file',
+          text: '检查报告',
+          attachment: { name: 'report.json', size: 2048, savedPath: '/home/workspace/mesh-inbox/grp_rich/report.json' },
+          createdAt: Date.now() - 2000,
+        },
+        {
+          id: 'sum_1',
+          roomId: 'grp_rich',
+          threadId: 'thr_1',
+          sender: { slug: 'alice', ownerName: 'Alice', actor: 'agent' },
+          kind: 'chat',
+          text: '## 汇总结论\n\n全部 **PASS**。',
+          createdAt: Date.now() - 1000,
+        },
+      ],
+    },
+    activeStatuses: {
+      grp_rich: [
+        { roomId: 'grp_rich', slug: 'alice', ownerName: 'Alice', stage: 'waiting_peer', detail: 'bob', isModerator: true, updatedAt: Date.now() },
+      ],
+    },
+  }
+  const richCtrl = createMeshController({
+    fetchImpl: async () => new Response(JSON.stringify({ ok: true, state: richGroupState }), { status: 200 }),
+  })
+  await richCtrl.syncFromHost()
+  const RichChat = createMeshChatPage({
+    React,
+    controller: richCtrl,
+    getLocale: () => 'zh-CN',
+    subscribeLocale: () => () => {},
+  })
+  const richHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(RichChat, {}))
+  assert.ok(richHtml.includes('sm-system-pill'), 'System events must render as centered pill')
+  assert.ok(richHtml.includes('已成功配对 Bob (bob)'), 'English system events should localize cleanly in zh-CN')
+  assert.ok(richHtml.includes('sm-collab-group'), 'Group phase=turn steps must render inside collapsible collaboration card')
+  assert.ok(richHtml.includes('协同调度过程'), 'Collaboration card header should render')
+  assert.ok(richHtml.includes('sm-topology-bar'), 'Live collaboration topology bar should render when active')
+  assert.ok(richHtml.includes('2.0 KB'), 'File card should display human-readable size')
+  assert.ok(richHtml.includes('预览') && richHtml.includes('下载'), 'File card must include Preview & Download actions')
+  assert.ok(!richHtml.includes('已存至：'), 'File card must not dump raw savedPath code inline')
+  assert.ok(richHtml.includes('<strong>PASS</strong>'), 'Final summary message must render Markdown')
+
+  // Native DSH tool.call.toolview card must render clean UI with ZERO raw JSON
+  const MeshToolCard = createMeshToolView({
+    React,
+    controller: richCtrl,
+    getLocale: () => 'zh-CN',
+    subscribeLocale: () => () => {},
+  })
+  const toolCardHtml = ReactDOMServer.renderToStaticMarkup(
+    React.createElement(MeshToolCard, {
+      callId: 'c1',
+      toolName: 'mesh_ask_peer',
+      phase: 'result',
+      block: {
+        kind: 'tool-result',
+        call: {
+          name: 'mesh_ask_peer',
+          argsRaw: JSON.stringify({ targetSlug: 'bob', roomId: 'pair:alice:bob', question: '请检查 API 健康状态' }),
+        },
+        content: [{ type: 'text', text: '[Remote Agent @bob · thread=thr_1]:\nAPI 全部正常' }],
+        isError: false,
+      },
+    }),
+  )
+  assert.ok(toolCardHtml.includes('跨沙箱协作'))
+  assert.ok(toolCardHtml.includes('@bob'))
+  assert.ok(toolCardHtml.includes('请检查 API 健康状态'))
+  assert.ok(toolCardHtml.includes('已回复'))
+  assert.ok(!toolCardHtml.includes('"targetSlug"'), 'Tool card must never expose raw JSON args')
+
+  // Incoming wake prompt card must hide raw XML tags by default
+  const wakeRaw = [
+    '[SANDBOX MESH INCOMING REQUEST]',
+    'You are the DSH Agent of sandbox "alice" (Alice).',
+    'Room: "联调群" (roomId: "grp_rich", type: group)',
+    'Sender: Bob (@bob, actor: human)',
+    '<remote-mesh-context>',
+    '(none)',
+    '</remote-mesh-context>',
+    '<remote-mesh-message>',
+    '请分析一下今天的性能报告',
+    '</remote-mesh-message>',
+    'Instructions:\n1. Do work.',
+  ].join('\n')
+  const parsedWake = parseIncomingWakePrompt(wakeRaw)
+  assert.equal(parsedWake?.senderSlug, 'bob')
+  assert.equal(parsedWake?.roomName, '联调群')
+  assert.equal(parsedWake?.body, '请分析一下今天的性能报告')
+  const WakeCard = createMeshWakePromptView({ React, getLocale: () => 'zh-CN' })
+  const wakeHtml = ReactDOMServer.renderToStaticMarkup(
+    React.createElement(WakeCard, { node: { data: parsedWake }, raw: wakeRaw }),
+  )
+  assert.ok(wakeHtml.includes('沙箱互联协作请求'))
+  assert.ok(wakeHtml.includes('请分析一下今天的性能报告'))
+  assert.ok(!wakeHtml.includes('&lt;remote-mesh-context&gt;'), 'Collapsed wake card must hide raw XML tags')
+
+  // Verify localizeSystemMessage helper
+  assert.equal(localizeSystemMessage('Renamed group to "New Name".', (k) => k), 'sysGroupRenamed「New Name」')
+
+  richCtrl.dispose()
 }
 
 console.log('client-live ok')
