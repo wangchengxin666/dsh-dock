@@ -9,6 +9,7 @@ import {
   createMeshChatPage,
   createMeshSettingsPage,
   detectComposerTrigger,
+  formatTaskArtifact,
 } from '../src/client/mesh-page.js'
 import {
   formatBytes,
@@ -948,6 +949,90 @@ const ReactDOMServer = await importExternal('react-dom/server')
   const approvedHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(TaskChatPage))
   assert.ok(approvedHtml.includes('已批准'), 'Approved card must show approved status')
   assert.ok(!approvedHtml.includes('批准继续'), 'Approved card must hide Approve button after decision')
+
+  // Verify progressive-disclosure Task Board drawer & artifact formatting
+  assert.deepEqual(
+    formatTaskArtifact('/home/workspace/collab-space/todo-mini/server.py'),
+    { full: '/home/workspace/collab-space/todo-mini/server.py', tag: '', label: 'todo-mini/server.py', isHttp: false },
+  )
+  assert.deepEqual(
+    formatTaskArtifact('branch:feat/v2'),
+    { full: 'branch:feat/v2', tag: 'branch', label: 'feat/v2', isHttp: false },
+  )
+  assert.deepEqual(
+    formatTaskArtifact('https://preview.local/auth'),
+    { full: 'https://preview.local/auth', tag: 'URL', label: 'preview.local/auth', isHttp: true },
+  )
+  const shaFmt = formatTaskArtifact('artifact-candidate: /home/workspace/collab-space/todo-mini/server.py (sha256 c9911ec84a718ffdb3cf0b7508896d74715e0fb4f0751e508481e1bb7d2e30ba)')
+  assert.equal(shaFmt.tag, 'artifact-candidate')
+  assert.ok(shaFmt.label.includes('c9911ec84a71…'), 'Long SHA256 hashes must be compacted in artifact labels')
+  assert.ok(!shaFmt.label.includes('/home/workspace/collab-space/'), 'Verbose workspace prefix should be stripped')
+
+  const denseBoardPayload = JSON.parse(JSON.stringify(taskStatePayload))
+  denseBoardPayload.state.tasks.grp_proj = [
+    {
+      id: 'tsk_active_dense',
+      title: '实现核心网关与全套回归验证',
+      description: 'LONG_SPEC_SHOULD_STAY_COLLAPSED_IN_CARD',
+      summary: 'HUGE_SUMMARY_SHOULD_BE_COLLAPSED_BY_DEFAULT_IN_BOARD',
+      status: 'in_progress',
+      priority: 'high',
+      assigneeSlug: 'bob',
+      artifacts: [
+        '/home/workspace/collab-space/app/a1.py',
+        '/home/workspace/collab-space/app/a2.py',
+        '/home/workspace/collab-space/app/a3.py',
+        '/home/workspace/collab-space/app/a4.py',
+        '/home/workspace/collab-space/app/a5.py',
+        '/home/workspace/collab-space/app/a6.py',
+      ],
+      updatedAt: Date.now(),
+    },
+    {
+      id: 'tsk_gate_dense',
+      title: '生产上线前最终人工审批',
+      approvalRequired: true,
+      approvalStatus: 'pending',
+      approvalPrompt: '请确认 61/61 单测与 102/102 E2E 全部通过后放行。',
+      status: 'in_review',
+      priority: 'urgent',
+      assigneeSlug: 'alice',
+      artifacts: [],
+      updatedAt: Date.now(),
+    },
+    {
+      id: 'tsk_done_hidden',
+      title: '已完成的前置初始化任务',
+      summary: 'COMPLETED_TASK_SUMMARY_SHOULD_START_GROUPED',
+      status: 'done',
+      priority: 'low',
+      assigneeSlug: 'bob',
+      artifacts: ['doc:init.md'],
+      updatedAt: Date.now() - 60000,
+    },
+  ]
+  const denseCtrl = createMeshController({
+    fetchImpl: async () => new Response(JSON.stringify(denseBoardPayload), { status: 200 }),
+  })
+  await denseCtrl.syncFromHost()
+  const OpenBoardPage = createMeshChatPage({
+    React,
+    controller: denseCtrl,
+    getLocale: () => 'zh-CN',
+    subscribeLocale: () => () => {},
+    initialRightPanel: 'tasks',
+  })
+  const boardHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(OpenBoardPage))
+  assert.ok(boardHtml.includes('sm-detail-drawer is-wide'), 'Task Board drawer must use wider layout')
+  assert.ok(boardHtml.includes('待处理'), 'Task Board must show Active filter tab')
+  assert.ok(boardHtml.includes('全部'), 'Task Board must show All filter tab')
+  assert.ok(boardHtml.includes('已完成 (1)'), 'Completed tasks must collapse into a grouped section when active tasks exist')
+  assert.ok(boardHtml.includes('实现核心网关与全套回归验证'), 'Active task title must be visible')
+  assert.ok(!boardHtml.includes('HUGE_SUMMARY_SHOULD_BE_COLLAPSED_BY_DEFAULT_IN_BOARD'), 'Long task summary must stay collapsed until clicked')
+  assert.ok(!boardHtml.includes('app/a5.py'), 'Artifact paths must not sprawl onto collapsed task cards')
+  assert.ok(!boardHtml.includes('已完成的前置初始化任务'), 'Completed task cards must stay tucked under the collapsible Completed group by default')
+  assert.ok(boardHtml.includes('生产上线前最终人工审批') && boardHtml.includes('批准继续'), 'Pending approval actions must remain directly actionable on collapsed cards')
+  denseCtrl.dispose()
 
   const TaskSettingsPage = createMeshSettingsPage({
     React,

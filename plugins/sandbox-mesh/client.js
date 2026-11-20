@@ -553,6 +553,26 @@ window.__ModuleLoader__.load({
       taskApprovalCommentPlaceholder: 'Optional note or feedback for the Agent…',
       taskApprovalDecidedBy: 'Decided by',
       taskApprovalBadgeShort: 'approval',
+      taskTabActive: 'Active',
+      taskTabAll: 'All',
+      taskTabDone: 'Done',
+      taskCompletedGroup: 'Completed',
+      taskNoActiveHint: 'All caught up — no active tasks.',
+      taskNoDoneHint: 'No completed tasks yet.',
+      taskNewShortBtn: '+ New',
+      taskStatusLabel: 'Status',
+      taskPriorityLabel: 'Priority',
+      taskSummaryLabel: 'Latest Progress',
+      taskSpecLabel: 'Task Requirements',
+      taskShowSpecBtn: 'Show task requirements',
+      taskHideSpecBtn: 'Hide task requirements',
+      taskWaitingDepsShort: 'Waiting deps',
+      taskShowMoreArtifactsPrefix: 'Show remaining',
+      taskShowMoreArtifactsSuffix: 'items',
+      taskCollapseArtifacts: 'Collapse deliverables',
+      taskScopeCurrentTopic: 'This topic',
+      taskScopeAllTopics: 'All topics',
+      taskNoDetailsHint: 'No progress notes or deliverables yet.',
       statusTaskCreated: 'Task created and synced!',
       statusTaskUpdated: 'Task updated.',
       statusApprovalApproved: 'Approved — Agent notified to proceed!',
@@ -821,6 +841,26 @@ window.__ModuleLoader__.load({
       taskApprovalCommentPlaceholder: '可选：补充审批意见或修改要求给 Agent…',
       taskApprovalDecidedBy: '审批人',
       taskApprovalBadgeShort: '待审批',
+      taskTabActive: '待处理',
+      taskTabAll: '全部',
+      taskTabDone: '已完成',
+      taskCompletedGroup: '已完成',
+      taskNoActiveHint: '当前没有待处理任务。',
+      taskNoDoneHint: '暂无已完成任务。',
+      taskNewShortBtn: '+ 新建',
+      taskStatusLabel: '状态',
+      taskPriorityLabel: '优先级',
+      taskSummaryLabel: '最新进展',
+      taskSpecLabel: '任务要求',
+      taskShowSpecBtn: '查看原始任务要求',
+      taskHideSpecBtn: '收起任务要求',
+      taskWaitingDepsShort: '等前置',
+      taskShowMoreArtifactsPrefix: '展开其余',
+      taskShowMoreArtifactsSuffix: '项',
+      taskCollapseArtifacts: '收起产物列表',
+      taskScopeCurrentTopic: '当前话题',
+      taskScopeAllTopics: '全部话题',
+      taskNoDetailsHint: '暂无进展说明或交付产物。',
       statusTaskCreated: '任务已创建并同步！',
       statusTaskUpdated: '任务状态已更新。',
       statusApprovalApproved: '已批准，已自动通知对应沙箱继续推进！',
@@ -1832,6 +1872,11 @@ window.__ModuleLoader__.load({
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      transition: width 0.16s ease;
+    }
+    .sm-detail-drawer.is-wide {
+      width: 356px;
+      max-width: 44vw;
     }
     @media (max-width: 980px) {
       .sm-detail-drawer {
@@ -1841,6 +1886,10 @@ window.__ModuleLoader__.load({
         bottom: 0;
         z-index: 50;
         box-shadow: -8px 0 28px rgba(0, 0, 0, 0.16);
+      }
+      .sm-detail-drawer.is-wide {
+        width: min(356px, 92vw);
+        max-width: 92vw;
       }
     }
     .sm-drawer-head {
@@ -1859,6 +1908,10 @@ window.__ModuleLoader__.load({
       display: flex;
       flex-direction: column;
       gap: 16px;
+    }
+    .sm-drawer-body.is-tasks {
+      padding: 12px;
+      gap: 10px;
     }
     .sm-drawer-section {
       display: flex;
@@ -2479,10 +2532,31 @@ window.__ModuleLoader__.load({
     .sm-task-progress-wrap {
       display: flex;
       flex-direction: column;
+      gap: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--sm-border-l1);
+    }
+    .sm-task-progress-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .sm-task-progress-nums {
+      display: inline-flex;
+      align-items: baseline;
       gap: 5px;
+      font-weight: 600;
+      color: var(--sm-fg-primary);
+    }
+    .sm-task-progress-pct {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--sm-fg-secondary);
     }
     .sm-task-progress-bar {
-      height: 6px;
+      height: 4px;
       border-radius: 999px;
       background: var(--sm-bg-layer2);
       overflow: hidden;
@@ -2491,31 +2565,185 @@ window.__ModuleLoader__.load({
       height: 100%;
       border-radius: 999px;
       background: var(--sm-accent);
-      transition: width 0.2s ease;
+      transition: width 0.22s ease;
+    }
+    .sm-task-progress-fill.is-complete {
+      background: #10b981;
+    }
+    .sm-task-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .sm-task-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 2px;
+      border-radius: 8px;
+      background: var(--sm-bg-layer2);
+      border: 1px solid var(--sm-border-l1);
+    }
+    .sm-task-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--sm-fg-secondary);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.14s ease, color 0.14s ease;
+    }
+    .sm-task-tab:hover {
+      color: var(--sm-fg-primary);
+    }
+    .sm-task-tab.is-active {
+      background: var(--sm-bg-layer1);
+      color: var(--sm-fg-primary);
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+    }
+    .sm-task-tab-count {
+      font-size: 10px;
+      opacity: 0.72;
+      font-variant-numeric: tabular-nums;
+    }
+    .sm-task-scope-btn {
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--sm-border-l1);
+      background: transparent;
+      color: var(--sm-fg-secondary);
+      font-size: 10.5px;
+      cursor: pointer;
+      transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+    }
+    .sm-task-scope-btn:hover {
+      border-color: var(--sm-border-l2);
+      color: var(--sm-fg-primary);
+      background: var(--sm-bg-layer2);
+    }
+    .sm-task-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sm-task-group-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      width: 100%;
+      padding: 6px 8px;
+      margin-top: 2px;
+      border: 1px dashed var(--sm-border-l2);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--sm-fg-secondary);
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+    }
+    .sm-task-group-toggle:hover {
+      background: var(--sm-bg-layer2);
+      color: var(--sm-fg-primary);
+    }
+    .sm-task-group-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
     .sm-task-card {
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      padding: 10px 11px;
       border-radius: 9px;
       border: 1px solid var(--sm-border-l1);
-      background: var(--sm-bg-layer2);
+      background: var(--sm-bg-layer1);
+      transition: border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+    }
+    .sm-task-card:hover {
+      border-color: var(--sm-border-l2);
+    }
+    .sm-task-card.is-expanded {
+      border-color: color-mix(in srgb, var(--sm-accent) 42%, var(--sm-border-l2));
+      background: var(--sm-bg-layer1);
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
     }
     .sm-task-card.is-approval-pending {
-      border-color: rgba(245, 158, 11, 0.5);
+      border-color: rgba(245, 158, 11, 0.52);
+      background: color-mix(in srgb, rgba(245, 158, 11, 0.08) 100%, var(--sm-bg-layer1));
     }
     .sm-task-card.is-blocked {
       border-color: rgba(239, 68, 68, 0.42);
     }
-    .sm-task-card.is-done {
-      opacity: 0.82;
+    .sm-task-card.is-done:not(.is-expanded) {
+      background: var(--sm-bg-layer2);
+      opacity: 0.88;
     }
-    .sm-task-top {
+    .sm-task-card.is-done:not(.is-expanded):hover {
+      opacity: 1;
+    }
+    .sm-task-head {
       display: flex;
       align-items: flex-start;
-      justify-content: space-between;
       gap: 8px;
+      width: 100%;
+      padding: 9px 10px;
+      border: none;
+      background: transparent;
+      color: inherit;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .sm-task-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      flex-shrink: 0;
+      margin-top: 4px;
+    }
+    .sm-task-dot.todo {
+      border: 1.5px solid var(--sm-fg-secondary);
+      background: transparent;
+      opacity: 0.7;
+    }
+    .sm-task-dot.in_progress {
+      background: var(--sm-accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--sm-accent) 18%, transparent);
+    }
+    .sm-task-dot.in_review {
+      background: #8b5cf6;
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
+    }
+    .sm-task-dot.blocked {
+      background: #ef4444;
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16);
+    }
+    .sm-task-dot.done {
+      background: #10b981;
+    }
+    .sm-task-dot.cancelled {
+      background: var(--sm-fg-secondary);
+      opacity: 0.45;
+    }
+    .sm-task-dot.approval {
+      background: #f59e0b;
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.22);
+    }
+    .sm-task-head-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
     .sm-task-title {
       font-size: 12.5px;
@@ -2524,28 +2752,59 @@ window.__ModuleLoader__.load({
       line-height: 1.38;
       word-break: break-word;
     }
+    .sm-task-card:not(.is-expanded) .sm-task-title {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .sm-task-card.is-done:not(.is-expanded) .sm-task-title {
+      font-weight: 500;
+      color: var(--sm-fg-secondary);
+    }
+    .sm-task-card.is-cancelled .sm-task-title {
+      text-decoration: line-through;
+      opacity: 0.7;
+    }
+    .sm-task-chevron {
+      flex-shrink: 0;
+      color: var(--sm-fg-secondary);
+      opacity: 0.65;
+      margin-top: 2px;
+    }
+    .sm-task-card:hover .sm-task-chevron,
+    .sm-task-card.is-expanded .sm-task-chevron {
+      opacity: 1;
+      color: var(--sm-fg-primary);
+    }
     .sm-task-meta {
       display: flex;
       align-items: center;
       gap: 5px;
       flex-wrap: wrap;
       font-size: 11px;
+      color: var(--sm-fg-secondary);
+    }
+    .sm-task-assignee {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--sm-fg-secondary);
     }
     .sm-task-status {
       display: inline-flex;
       align-items: center;
-      padding: 1px 7px;
+      padding: 1px 6px;
       border-radius: 999px;
-      font-size: 10.5px;
+      font-size: 10px;
       font-weight: 600;
+      line-height: 1.45;
     }
     .sm-task-status.todo {
-      background: var(--sm-bg-layer1);
+      background: var(--sm-bg-layer2);
       color: var(--sm-fg-secondary);
-      border: 1px solid var(--sm-border-l2);
     }
     .sm-task-status.in_progress {
-      background: color-mix(in srgb, var(--sm-accent) 15%, transparent);
+      background: color-mix(in srgb, var(--sm-accent) 14%, transparent);
       color: var(--sm-accent);
     }
     .sm-task-status.in_review {
@@ -2557,53 +2816,259 @@ window.__ModuleLoader__.load({
       color: #dc2626;
     }
     .sm-task-status.done {
-      background: rgba(16, 185, 129, 0.15);
+      background: rgba(16, 185, 129, 0.14);
       color: #059669;
     }
     .sm-task-status.cancelled {
-      background: var(--sm-bg-layer1);
+      background: var(--sm-bg-layer2);
       color: var(--sm-fg-secondary);
       text-decoration: line-through;
     }
     .sm-task-priority {
-      padding: 1px 6px;
+      padding: 1px 5px;
       border-radius: 999px;
       font-size: 10px;
       font-weight: 600;
-      background: var(--sm-bg-layer1);
+      background: var(--sm-bg-layer2);
       color: var(--sm-fg-secondary);
     }
     .sm-task-priority.high, .sm-task-priority.urgent {
-      background: rgba(239, 68, 68, 0.12);
+      background: rgba(239, 68, 68, 0.11);
       color: #dc2626;
     }
-    .sm-task-summary {
-      font-size: 11.5px;
+    .sm-task-pill-muted {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 5px;
+      border-radius: 5px;
+      font-size: 10px;
+      background: var(--sm-bg-layer2);
       color: var(--sm-fg-secondary);
-      line-height: 1.45;
-      word-break: break-word;
+      font-variant-numeric: tabular-nums;
     }
-    .sm-task-artifacts {
+    .sm-task-card.is-done:not(.is-expanded) .sm-task-pill-muted {
+      background: var(--sm-bg-layer1);
+    }
+    .sm-task-pill-wait {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 5px;
+      border-radius: 5px;
+      font-size: 10px;
+      background: rgba(245, 158, 11, 0.12);
+      color: #b45309;
+    }
+    .sm-task-approval-strip {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 0 10px 9px 26px;
+    }
+    .sm-task-approval-preview {
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: var(--sm-fg-secondary);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .sm-task-details {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      padding: 9px 10px 10px;
+      border-top: 1px solid var(--sm-border-l1);
+      background: color-mix(in srgb, var(--sm-bg-layer2) 48%, var(--sm-bg-layer1));
+      border-radius: 0 0 8px 8px;
+    }
+    .sm-task-control-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--sm-fg-secondary);
+    }
+    .sm-task-status-select {
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--sm-border-l2);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      font-family: inherit;
+    }
+    .sm-task-section {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .sm-task-section-label {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--sm-fg-secondary);
+      letter-spacing: 0.02em;
+    }
+    .sm-task-dep-list {
       display: flex;
       flex-wrap: wrap;
-      gap: 5px;
+      gap: 4px;
     }
-    .sm-task-artifact-chip {
+    .sm-task-dep-chip {
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      max-width: 100%;
       padding: 2px 7px;
       border-radius: 6px;
       font-size: 11px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       background: var(--sm-bg-layer1);
       border: 1px solid var(--sm-border-l1);
-      color: var(--sm-accent);
-      max-width: 100%;
+      color: var(--sm-fg-secondary);
+    }
+    .sm-task-dep-chip.is-met {
+      color: #059669;
+      border-color: rgba(16, 185, 129, 0.28);
+    }
+    .sm-task-dep-chip-title {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .sm-task-md-box {
+      padding: 8px 10px;
+      border-radius: 7px;
+      border: 1px solid var(--sm-border-l1);
+      background: var(--sm-bg-layer1);
+      font-size: 11.5px;
+      line-height: 1.5;
+      color: var(--sm-fg-primary);
+      max-height: 185px;
+      overflow-y: auto;
+      word-break: break-word;
+    }
+    .sm-task-md-box p {
+      margin: 0 0 6px;
+    }
+    .sm-task-md-box p:last-child {
+      margin-bottom: 0;
+    }
+    .sm-task-md-box ul,
+    .sm-task-md-box ol {
+      margin: 4px 0;
+      padding-left: 16px;
+    }
+    .sm-task-spec-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--sm-accent);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      align-self: flex-start;
+    }
+    .sm-task-spec-toggle:hover {
+      text-decoration: underline;
+    }
+    .sm-task-artifact-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .sm-task-artifact-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      padding: 5px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--sm-border-l1);
+      background: var(--sm-bg-layer1);
+      color: var(--sm-fg-primary);
+      font-size: 11px;
+      text-align: left;
       text-decoration: none;
+      cursor: pointer;
+      transition: border-color 0.14s ease, background 0.14s ease;
+      font-family: inherit;
+    }
+    .sm-task-artifact-row:hover {
+      border-color: var(--sm-accent);
+      background: var(--sm-bg-layer2);
+    }
+    .sm-task-artifact-tag {
+      flex-shrink: 0;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 9.5px;
+      font-weight: 600;
+      background: var(--sm-bg-layer2);
+      color: var(--sm-fg-secondary);
+      max-width: 96px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sm-task-artifact-text {
+      flex: 1;
+      min-width: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10.5px;
+      color: var(--sm-accent);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sm-task-artifact-action {
+      flex-shrink: 0;
+      font-size: 10px;
+      color: var(--sm-fg-secondary);
+      opacity: 0.72;
+    }
+    .sm-task-artifact-more {
+      align-self: flex-start;
+      padding: 2px 6px;
+      margin-top: 2px;
+      border: none;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--sm-accent);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .sm-task-artifact-more:hover {
+      background: var(--sm-bg-layer1);
+    }
+    .sm-task-approval-record {
+      padding: 6px 8px;
+      border-radius: 7px;
+      font-size: 11px;
+      line-height: 1.45;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: var(--sm-fg-primary);
+    }
+    .sm-task-approval-record.is-rejected {
+      background: rgba(239, 68, 68, 0.08);
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+    .sm-task-empty-state {
+      padding: 16px 10px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--sm-fg-secondary);
+      opacity: 0.82;
+      line-height: 1.5;
     }
     .sm-task-form {
       display: flex;
@@ -5053,6 +5518,40 @@ window.__ModuleLoader__.load({
       }
     }
 
+    function formatTaskArtifact(raw) {
+      const full = String(raw || '').trim()
+      if (!full) return { full: '', tag: '', label: '', isHttp: false }
+      if (/^https?:\/\//i.test(full)) {
+        return {
+          full,
+          tag: 'URL',
+          label: full.replace(/^https?:\/\//i, ''),
+          isHttp: true,
+        }
+      }
+      let tag = ''
+      let body = full
+      const colonMatch = full.match(/^([a-zA-Z0-9_\-\u4e00-\u9fff]{1,22}):\s*(.+)$/)
+      if (colonMatch && !/^[a-zA-Z]:[\\/]/.test(full)) {
+        tag = colonMatch[1]
+        body = colonMatch[2].trim()
+      }
+      body = body.replace(/\/home\/workspace\/(?:collab-space\/)?/g, '')
+      if (/^\/?[\w.\-/]+$/.test(body) && body.includes('/')) {
+        const parts = body.split('/').filter(Boolean)
+        if (parts.length > 2) {
+          body = parts.slice(-2).join('/')
+        }
+      }
+      body = body.replace(/\b([0-9a-f]{12})[0-9a-f]{28,52}\b/gi, '$1…')
+      return {
+        full,
+        tag,
+        label: body || full,
+        isHttp: false,
+      }
+    }
+
     function formatClock(ms) {
       if (!ms || typeof ms !== 'number') return ''
       try {
@@ -5532,6 +6031,7 @@ window.__ModuleLoader__.load({
       getLocale,
       subscribeLocale,
       openAgentSession = null,
+      initialRightPanel = '',
     }) {
       const H = React.createElement
       const { useState, useEffect, useRef } = React
@@ -5540,8 +6040,13 @@ window.__ModuleLoader__.load({
         const [, setTick] = useState(0)
         const [showNewGroup, setShowNewGroup] = useState(false)
         const [showPairDrawer, setShowPairDrawer] = useState(false)
-        const [rightPanel, setRightPanel] = useState('') // '' | 'tasks' | 'files' | 'details'
+        const [rightPanel, setRightPanel] = useState(initialRightPanel) // '' | 'tasks' | 'files' | 'details'
         const [taskFilterAll, setTaskFilterAll] = useState(false)
+        const [taskStatusTab, setTaskStatusTab] = useState('all') // 'active' | 'all' | 'done'
+        const [expandedTaskIds, setExpandedTaskIds] = useState({})
+        const [expandedArtifactTaskIds, setExpandedArtifactTaskIds] = useState({})
+        const [expandedSpecTaskIds, setExpandedSpecTaskIds] = useState({})
+        const [showCompletedTasks, setShowCompletedTasks] = useState(false)
         const [showNewTaskForm, setShowNewTaskForm] = useState(false)
         const [newTaskTitle, setNewTaskTitle] = useState('')
         const [newTaskDesc, setNewTaskDesc] = useState('')
@@ -5660,6 +6165,11 @@ window.__ModuleLoader__.load({
             setConfirmAction(null)
             setEditingName(false)
             setReplyTarget(null)
+            setExpandedTaskIds({})
+            setExpandedArtifactTaskIds({})
+            setExpandedSpecTaskIds({})
+            setShowCompletedTasks(false)
+            setTaskStatusTab('all')
           }
           if ((roomChanged || nearBottomRef.current) && typeof el.scrollHeight === 'number') {
             el.scrollTop = el.scrollHeight
@@ -5710,6 +6220,372 @@ window.__ModuleLoader__.load({
         const sortedVisibleTasks = visibleRoomTasks
           .slice()
           .sort((a, b) => (taskSortRank(a) - taskSortRank(b)) || ((b.updatedAt || 0) - (a.updatedAt || 0)))
+        const hasMultiThreadTasks = Boolean(
+          activeRoom?.activeThreadId
+          && allRoomTasks.some((tk) => tk.threadId && tk.threadId !== activeRoom.activeThreadId),
+        )
+        const isTaskCompletedBucket = (tk) => (
+          (tk.status === 'done' || tk.status === 'cancelled')
+          && !(tk.approvalRequired && tk.approvalStatus === 'pending')
+        )
+        const activeVisibleTasks = sortedVisibleTasks.filter((tk) => !isTaskCompletedBucket(tk))
+        const completedVisibleTasks = sortedVisibleTasks.filter((tk) => isTaskCompletedBucket(tk))
+        const drawerTotalCount = visibleRoomTasks.length
+        const drawerDoneCount = visibleRoomTasks.filter((tk) => tk.status === 'done').length
+        const drawerProgressPct = drawerTotalCount > 0 ? Math.round((drawerDoneCount / drawerTotalCount) * 100) : 0
+        const drawerPendingApprovals = visibleRoomTasks.filter(
+          (tk) => tk.approvalRequired && tk.approvalStatus === 'pending',
+        ).length
+        const isCompletedSectionOpen = activeVisibleTasks.length === 0 || showCompletedTasks
+
+        const renderTaskCard = (tk) => {
+          const isPendingAppr = Boolean(tk.approvalRequired && tk.approvalStatus === 'pending')
+          const deps = Array.isArray(tk.dependsOn) ? tk.dependsOn : []
+          const depsMet = areTaskDependenciesMet(tk, allRoomTasks)
+          const artifacts = Array.isArray(tk.artifacts) ? tk.artifacts.filter((a) => String(a || '').trim()) : []
+          const isExpanded = Boolean(expandedTaskIds[tk.id])
+          const isArtifactsExpanded = Boolean(expandedArtifactTaskIds[tk.id])
+          const isSpecExpanded = Boolean(expandedSpecTaskIds[tk.id])
+          const DEFAULT_ARTIFACT_LIMIT = 4
+          const visibleArtifacts = isArtifactsExpanded ? artifacts : artifacts.slice(0, DEFAULT_ARTIFACT_LIMIT)
+          const hiddenArtifactCount = Math.max(0, artifacts.length - visibleArtifacts.length)
+          const showHighPriority = tk.priority === 'urgent' || tk.priority === 'high'
+          const dotCls = isPendingAppr ? 'approval' : (tk.status || 'todo')
+          const cardCls = [
+            'sm-task-card',
+            isExpanded ? 'is-expanded' : '',
+            isPendingAppr ? 'is-approval-pending' : '',
+            tk.status === 'blocked' ? 'is-blocked' : '',
+            tk.status === 'done' ? 'is-done' : '',
+            tk.status === 'cancelled' ? 'is-cancelled' : '',
+          ].filter(Boolean).join(' ')
+          const approvalPreviewText = isPendingAppr
+            ? stripMarkdownForPreview(tk.approvalPrompt || tk.description || tk.summary || '')
+            : ''
+          const hasSummary = Boolean(String(tk.summary || '').trim())
+          const hasDistinctDesc = Boolean(
+            String(tk.description || '').trim()
+            && String(tk.description || '').trim() !== String(tk.summary || '').trim(),
+          )
+          const hasApprovalRecord = tk.approvalStatus === 'approved' || tk.approvalStatus === 'rejected'
+          const hasAnyDetails = hasSummary || hasDistinctDesc || deps.length > 0 || artifacts.length > 0 || hasApprovalRecord
+
+          return H(
+            'div',
+            { key: tk.id, className: cardCls },
+            H(
+              'button',
+              {
+                type: 'button',
+                className: 'sm-task-head',
+                'aria-expanded': isExpanded,
+                onClick: () => setExpandedTaskIds((prev) => ({ ...prev, [tk.id]: !prev[tk.id] })),
+              },
+              H('span', { className: `sm-task-dot ${dotCls}`, 'aria-hidden': 'true' }),
+              H(
+                'div',
+                { className: 'sm-task-head-main' },
+                H('span', { className: 'sm-task-title', title: tk.title }, tk.title),
+                H(
+                  'div',
+                  { className: 'sm-task-meta' },
+                  tk.assigneeSlug
+                    ? H('span', { className: 'sm-task-assignee' }, `@${tk.assigneeSlug}`)
+                    : H('span', { style: { opacity: 0.65 } }, t('taskAssigneeNone')),
+                  H('span', { className: `sm-task-status ${tk.status || 'todo'}` }, taskStatusLabel(t, tk.status)),
+                  showHighPriority
+                    ? H('span', { className: `sm-task-priority ${tk.priority}` }, taskPriorityLabel(t, tk.priority))
+                    : null,
+                  isPendingAppr
+                    ? H('span', { className: 'sm-badge sm-badge-approval' }, t('taskApprovalPending'))
+                    : tk.approvalStatus === 'approved'
+                      ? H('span', { className: 'sm-task-status done' }, t('taskApprovalApproved'))
+                      : tk.approvalStatus === 'rejected'
+                        ? H('span', { className: 'sm-task-status blocked' }, t('taskApprovalRejected'))
+                        : null,
+                  deps.length > 0 && !depsMet && tk.status !== 'done' && tk.status !== 'cancelled'
+                    ? H('span', { className: 'sm-task-pill-wait' }, `⏳ ${t('taskWaitingDepsShort')}`)
+                    : null,
+                  artifacts.length > 0
+                    ? H(
+                        'span',
+                        { className: 'sm-task-pill-muted', title: `${t('taskArtifactsLabel')} (${artifacts.length})` },
+                        ClipIcon({ React, size: 10 }),
+                        String(artifacts.length),
+                      )
+                    : null,
+                ),
+              ),
+              H(
+                'span',
+                { className: 'sm-task-chevron' },
+                ChevronIcon({ React, size: 12, rotated: isExpanded }),
+              ),
+            ),
+            // Always-accessible approval action bar when awaiting human sign-off
+            isPendingAppr
+              ? H(
+                  'div',
+                  { className: 'sm-task-approval-strip' },
+                  !isExpanded && approvalPreviewText
+                    ? H('div', { className: 'sm-task-approval-preview' }, approvalPreviewText)
+                    : null,
+                  !isRoomUnpaired
+                    ? H(
+                        'div',
+                        { className: 'sm-approval-btns' },
+                        H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'sm-btn sm-btn-sm sm-btn-approve',
+                            disabled: busy,
+                            onClick: () => void controller.decideApproval({
+                              roomId: activeRoom.id,
+                              taskId: tk.id,
+                              decision: 'approved',
+                            }),
+                          },
+                          CheckIcon({ React, size: 11 }),
+                          t('taskApproveBtn'),
+                        ),
+                        H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'sm-btn sm-btn-sm sm-btn-danger',
+                            disabled: busy,
+                            onClick: () => void controller.decideApproval({
+                              roomId: activeRoom.id,
+                              taskId: tk.id,
+                              decision: 'rejected',
+                            }),
+                          },
+                          CloseIcon({ React, size: 11 }),
+                          t('taskRejectBtn'),
+                        ),
+                      )
+                    : null,
+                )
+              : null,
+            // Progressive-disclosure detail drawer inside the card
+            isExpanded
+              ? H(
+                  'div',
+                  { className: 'sm-task-details' },
+                  // Status control + Priority + Updated time
+                  H(
+                    'div',
+                    { className: 'sm-task-control-row' },
+                    H(
+                      'div',
+                      { className: 'sm-row', style: { gap: '6px' } },
+                      !isRoomUnpaired
+                        ? H(
+                            'select',
+                            {
+                              className: `sm-task-status-select sm-task-status ${tk.status || 'todo'}`,
+                              'aria-label': t('taskStatusLabel'),
+                              value: tk.status || 'todo',
+                              disabled: busy,
+                              onChange: (e) => {
+                                const nextSt = e.target?.value
+                                if (nextSt && nextSt !== tk.status) {
+                                  void controller.updateTask({
+                                    roomId: activeRoom.id,
+                                    taskId: tk.id,
+                                    status: nextSt,
+                                  })
+                                }
+                              },
+                            },
+                            ...TASK_STATUSES.map((st) =>
+                              H('option', { key: st, value: st }, taskStatusLabel(t, st)),
+                            ),
+                          )
+                        : null,
+                      H(
+                        'span',
+                        { className: `sm-task-priority ${tk.priority || 'medium'}` },
+                        `${t('taskPriorityLabel')}: ${taskPriorityLabel(t, tk.priority)}`,
+                      ),
+                    ),
+                    tk.updatedAt || tk.createdAt
+                      ? H('span', { style: { fontSize: '10.5px', opacity: 0.72 } }, formatRelativeTime(tk.updatedAt || tk.createdAt, t))
+                      : null,
+                  ),
+                  // Dependencies chips
+                  deps.length > 0
+                    ? H(
+                        'div',
+                        { className: 'sm-task-section' },
+                        H('span', { className: 'sm-task-section-label' }, t('taskDepsLabel')),
+                        H(
+                          'div',
+                          { className: 'sm-task-dep-list' },
+                          ...deps.map((depId) => {
+                            const depTask = taskById.get(depId)
+                            const depDone = depTask?.status === 'done'
+                            const depTitle = depTask?.title || depId
+                            return H(
+                              'span',
+                              {
+                                key: `${tk.id}-dep-${depId}`,
+                                className: `sm-task-dep-chip${depDone ? ' is-met' : ''}`,
+                                title: depTitle,
+                              },
+                              H('span', null, depDone ? '✓' : '⏳'),
+                              H('span', { className: 'sm-task-dep-chip-title' }, depTitle),
+                            )
+                          }),
+                        ),
+                      )
+                    : null,
+                  // Approval decision record
+                  hasApprovalRecord
+                    ? H(
+                        'div',
+                        { className: `sm-task-approval-record${tk.approvalStatus === 'rejected' ? ' is-rejected' : ''}` },
+                        H(
+                          'div',
+                          { style: { fontWeight: 600 } },
+                          `${tk.approvalStatus === 'approved' ? t('taskApprovalApproved') : t('taskApprovalRejected')}${tk.approvalDecidedBy ? ` · ${t('taskApprovalDecidedBy')}: ${tk.approvalDecidedBy}` : ''}`,
+                        ),
+                        tk.approvalComment
+                          ? H('div', { style: { marginTop: '3px', opacity: 0.88 } }, tk.approvalComment)
+                          : null,
+                      )
+                    : null,
+                  // Latest progress summary (rendered Markdown in scrollable box)
+                  hasSummary
+                    ? H(
+                        'div',
+                        { className: 'sm-task-section' },
+                        H('span', { className: 'sm-task-section-label' }, t('taskSummaryLabel')),
+                        H(
+                          'div',
+                          { className: 'sm-task-md-box' },
+                          renderMarkdownMessage(H, tk.summary, {
+                            keyPrefix: `tsum-${tk.id}`,
+                            onCopyCode: flashCopy,
+                            copiedCodeKey: copiedKey,
+                            t,
+                          }),
+                        ),
+                        hasDistinctDesc
+                          ? H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-task-spec-toggle',
+                                onClick: () => setExpandedSpecTaskIds((prev) => ({ ...prev, [tk.id]: !prev[tk.id] })),
+                              },
+                              ChevronIcon({ React, size: 11, rotated: isSpecExpanded }),
+                              isSpecExpanded ? t('taskHideSpecBtn') : t('taskShowSpecBtn'),
+                            )
+                          : null,
+                        hasDistinctDesc && isSpecExpanded
+                          ? H(
+                              'div',
+                              { className: 'sm-task-md-box' },
+                              renderMarkdownMessage(H, tk.description, {
+                                keyPrefix: `tdesc-${tk.id}`,
+                                onCopyCode: flashCopy,
+                                copiedCodeKey: copiedKey,
+                                t,
+                              }),
+                            )
+                          : null,
+                      )
+                    : hasDistinctDesc
+                      ? H(
+                          'div',
+                          { className: 'sm-task-section' },
+                          H('span', { className: 'sm-task-section-label' }, t('taskSpecLabel')),
+                          H(
+                            'div',
+                            { className: 'sm-task-md-box' },
+                            renderMarkdownMessage(H, tk.description, {
+                              keyPrefix: `tdesc-${tk.id}`,
+                              onCopyCode: flashCopy,
+                              copiedCodeKey: copiedKey,
+                              t,
+                            }),
+                          ),
+                        )
+                      : null,
+                  // Compact vertical deliverables list (capped at 4 with expand toggle)
+                  artifacts.length > 0
+                    ? H(
+                        'div',
+                        { className: 'sm-task-section' },
+                        H('span', { className: 'sm-task-section-label' }, `${t('taskArtifactsLabel')} (${artifacts.length})`),
+                        H(
+                          'div',
+                          { className: 'sm-task-artifact-list' },
+                          ...visibleArtifacts.map((art, aIdx) => {
+                            const fmt = formatTaskArtifact(art)
+                            const copyId = `art-${tk.id}-${aIdx}`
+                            const isCopied = copiedKey === copyId
+                            if (fmt.isHttp) {
+                              return H(
+                                'a',
+                                {
+                                  key: copyId,
+                                  className: 'sm-task-artifact-row',
+                                  href: fmt.full,
+                                  target: '_blank',
+                                  rel: 'noopener noreferrer',
+                                  title: fmt.full,
+                                },
+                                fmt.tag ? H('span', { className: 'sm-task-artifact-tag' }, fmt.tag) : null,
+                                H('span', { className: 'sm-task-artifact-text' }, fmt.label),
+                                H('span', { className: 'sm-task-artifact-action' }, '↗'),
+                              )
+                            }
+                            return H(
+                              'button',
+                              {
+                                key: copyId,
+                                type: 'button',
+                                className: 'sm-task-artifact-row',
+                                title: fmt.full,
+                                onClick: () => void flashCopy(fmt.full, copyId),
+                              },
+                              fmt.tag
+                                ? H('span', { className: 'sm-task-artifact-tag' }, fmt.tag)
+                                : FileDocIcon({ React, size: 11 }),
+                              H('span', { className: 'sm-task-artifact-text' }, fmt.label),
+                              H(
+                                'span',
+                                { className: 'sm-task-artifact-action' },
+                                isCopied ? t('copiedBtn') : CopyIcon({ React, size: 11 }),
+                              ),
+                            )
+                          }),
+                        ),
+                        hiddenArtifactCount > 0 || (isArtifactsExpanded && artifacts.length > DEFAULT_ARTIFACT_LIMIT)
+                          ? H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-task-artifact-more',
+                                onClick: () => setExpandedArtifactTaskIds((prev) => ({ ...prev, [tk.id]: !prev[tk.id] })),
+                              },
+                              isArtifactsExpanded
+                                ? t('taskCollapseArtifacts')
+                                : `+ ${t('taskShowMoreArtifactsPrefix')} ${hiddenArtifactCount} ${t('taskShowMoreArtifactsSuffix')}`,
+                            )
+                          : null,
+                      )
+                    : null,
+                  !hasAnyDetails
+                    ? H('div', { style: { fontSize: '11.5px', opacity: 0.7 } }, t('taskNoDetailsHint'))
+                    : null,
+                )
+              : null,
+          )
+        }
 
         const { items: renderItems, topics: roomTopics } = buildMessageRenderItems(activeMessages, {
           isGroup: activeRoom?.type === 'group',
@@ -7149,7 +8025,7 @@ window.__ModuleLoader__.load({
             activeRoom && rightPanel
               ? H(
                   'aside',
-                  { className: 'sm-detail-drawer' },
+                  { className: `sm-detail-drawer${rightPanel === 'tasks' ? ' is-wide' : ''}` },
                   H(
                     'div',
                     { className: 'sm-drawer-head' },
@@ -7180,61 +8056,84 @@ window.__ModuleLoader__.load({
                   rightPanel === 'tasks'
                     ? H(
                         'div',
-                        { className: 'sm-drawer-body' },
-                        // Progress Summary + Filter + New Task button
+                        { className: 'sm-drawer-body is-tasks' },
+                        // Compact Progress Header + Status Filter Tabs + New Task trigger
                         H(
                           'div',
                           { className: 'sm-task-progress-wrap' },
                           H(
                             'div',
-                            { className: 'sm-row', style: { justifyContent: 'space-between', fontSize: '11.5px' } },
-                            H('span', { style: { fontWeight: 600 } }, `${t('tasksProgressLabel')}: ${taskSummary.done}/${taskSummary.total}`),
-                            taskSummary.pendingApprovals > 0
-                              ? H('span', { className: 'sm-badge sm-badge-approval' }, `${taskSummary.pendingApprovals} ${t('taskApprovalBadgeShort')}`)
-                              : null,
-                          ),
-                          H(
-                            'div',
-                            { className: 'sm-task-progress-bar' },
-                            H('div', {
-                              className: 'sm-task-progress-fill',
-                              style: { width: `${taskSummary.total > 0 ? Math.round((taskSummary.done / taskSummary.total) * 100) : 0}%` },
-                            }),
-                          ),
-                          H(
-                            'div',
-                            { className: 'sm-row', style: { justifyContent: 'space-between', gap: '6px', marginTop: '4px' } },
+                            { className: 'sm-task-progress-row' },
                             H(
                               'div',
-                              { className: 'sm-row', style: { gap: '4px' } },
+                              { className: 'sm-row', style: { gap: '6px' } },
                               H(
-                                'button',
-                                {
-                                  type: 'button',
-                                  className: `sm-btn sm-btn-sm${!taskFilterAll ? ' sm-btn-primary' : ''}`,
-                                  onClick: () => setTaskFilterAll(false),
-                                },
-                                t('tasksFilterThread'),
+                                'span',
+                                { className: 'sm-task-progress-nums' },
+                                `${t('tasksProgressLabel')} ${drawerDoneCount}/${drawerTotalCount}`,
+                                drawerTotalCount > 0
+                                  ? H('span', { className: 'sm-task-progress-pct' }, `${drawerProgressPct}%`)
+                                  : null,
                               ),
-                              H(
-                                'button',
-                                {
-                                  type: 'button',
-                                  className: `sm-btn sm-btn-sm${taskFilterAll ? ' sm-btn-primary' : ''}`,
-                                  onClick: () => setTaskFilterAll(true),
-                                },
-                                t('tasksFilterAll'),
-                              ),
+                              drawerPendingApprovals > 0
+                                ? H('span', { className: 'sm-badge sm-badge-approval' }, `${drawerPendingApprovals} ${t('taskApprovalBadgeShort')}`)
+                                : null,
                             ),
                             !isRoomUnpaired
                               ? H(
                                   'button',
                                   {
                                     type: 'button',
-                                    className: 'sm-btn sm-btn-sm',
+                                    className: `sm-btn sm-btn-sm${showNewTaskForm ? '' : ' sm-btn-primary'}`,
                                     onClick: () => setShowNewTaskForm((v) => !v),
                                   },
-                                  showNewTaskForm ? t('cancelBtn') : t('taskNewBtn'),
+                                  showNewTaskForm ? t('cancelBtn') : t('taskNewShortBtn'),
+                                )
+                              : null,
+                          ),
+                          H(
+                            'div',
+                            { className: 'sm-task-progress-bar' },
+                            H('div', {
+                              className: `sm-task-progress-fill${drawerTotalCount > 0 && drawerDoneCount === drawerTotalCount ? ' is-complete' : ''}`,
+                              style: { width: `${drawerProgressPct}%` },
+                            }),
+                          ),
+                          H(
+                            'div',
+                            { className: 'sm-task-toolbar' },
+                            H(
+                              'div',
+                              { className: 'sm-task-tabs', role: 'tablist' },
+                              ...[
+                                { key: 'active', label: t('taskTabActive'), count: activeVisibleTasks.length },
+                                { key: 'all', label: t('taskTabAll'), count: sortedVisibleTasks.length },
+                                { key: 'done', label: t('taskTabDone'), count: completedVisibleTasks.length },
+                              ].map((tab) =>
+                                H(
+                                  'button',
+                                  {
+                                    key: tab.key,
+                                    type: 'button',
+                                    role: 'tab',
+                                    'aria-selected': taskStatusTab === tab.key,
+                                    className: `sm-task-tab${taskStatusTab === tab.key ? ' is-active' : ''}`,
+                                    onClick: () => setTaskStatusTab(tab.key),
+                                  },
+                                  tab.label,
+                                  H('span', { className: 'sm-task-tab-count' }, String(tab.count)),
+                                ),
+                              ),
+                            ),
+                            hasMultiThreadTasks
+                              ? H(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    className: 'sm-task-scope-btn',
+                                    onClick: () => setTaskFilterAll((v) => !v),
+                                  },
+                                  taskFilterAll ? t('taskScopeAllTopics') : t('taskScopeCurrentTopic'),
                                 )
                               : null,
                           ),
@@ -7328,143 +8227,52 @@ window.__ModuleLoader__.load({
                               ),
                             )
                           : null,
-                        // Task Cards List
+                        // Grouped & Progressive-Disclosure Task List
                         sortedVisibleTasks.length === 0
-                          ? H('div', { style: { fontSize: '12px', opacity: 0.72, lineHeight: 1.5 } }, t('tasksEmptyHint'))
-                          : sortedVisibleTasks.map((tk) => {
-                              const isPendingAppr = Boolean(tk.approvalRequired && tk.approvalStatus === 'pending')
-                              const depsMet = areTaskDependenciesMet(tk, allRoomTasks)
-                              const cardCls = `sm-task-card${isPendingAppr ? ' is-approval-pending' : ''}${tk.status === 'blocked' ? ' is-blocked' : ''}${tk.status === 'done' ? ' is-done' : ''}`
-                              return H(
-                                'div',
-                                { key: tk.id, className: cardCls },
-                                H(
+                          ? H('div', { className: 'sm-task-empty-state' }, t('tasksEmptyHint'))
+                          : taskStatusTab === 'active'
+                            ? activeVisibleTasks.length === 0
+                              ? H('div', { className: 'sm-task-empty-state' }, t('taskNoActiveHint'))
+                              : H('div', { className: 'sm-task-list' }, ...activeVisibleTasks.map(renderTaskCard))
+                            : taskStatusTab === 'done'
+                              ? completedVisibleTasks.length === 0
+                                ? H('div', { className: 'sm-task-empty-state' }, t('taskNoDoneHint'))
+                                : H('div', { className: 'sm-task-list' }, ...completedVisibleTasks.map(renderTaskCard))
+                              : H(
                                   'div',
-                                  { className: 'sm-task-top' },
-                                  H('span', { className: 'sm-task-title' }, tk.title),
-                                  H('span', { className: `sm-task-priority ${tk.priority || 'medium'}` }, taskPriorityLabel(t, tk.priority)),
-                                ),
-                                H(
-                                  'div',
-                                  { className: 'sm-task-meta' },
-                                  !isRoomUnpaired
+                                  { className: 'sm-task-list' },
+                                  ...activeVisibleTasks.map(renderTaskCard),
+                                  completedVisibleTasks.length > 0
                                     ? H(
-                                        'select',
-                                        {
-                                          className: `sm-task-status ${tk.status}`,
-                                          style: { border: '1px solid var(--sm-border-l2)', cursor: 'pointer' },
-                                          value: tk.status,
-                                          disabled: busy,
-                                          onChange: (e) => {
-                                            const nextSt = e.target?.value
-                                            if (nextSt && nextSt !== tk.status) {
-                                              void controller.updateTask({
-                                                roomId: activeRoom.id,
-                                                taskId: tk.id,
-                                                status: nextSt,
-                                              })
-                                            }
-                                          },
-                                        },
-                                        ...TASK_STATUSES.map((st) =>
-                                          H('option', { key: st, value: st }, taskStatusLabel(t, st)),
-                                        ),
-                                      )
-                                    : H('span', { className: `sm-task-status ${tk.status}` }, taskStatusLabel(t, tk.status)),
-                                  tk.assigneeSlug
-                                    ? H('span', { className: 'sm-badge' }, `@${tk.assigneeSlug}`)
-                                    : H('span', { style: { opacity: 0.6 } }, t('taskAssigneeNone')),
-                                  isPendingAppr
-                                    ? H('span', { className: 'sm-badge sm-badge-approval' }, t('taskApprovalPending'))
-                                    : tk.approvalStatus === 'approved'
-                                      ? H('span', { className: 'sm-task-status done' }, t('taskApprovalApproved'))
-                                      : tk.approvalStatus === 'rejected'
-                                        ? H('span', { className: 'sm-task-status blocked' }, t('taskApprovalRejected'))
-                                        : null,
-                                ),
-                                Array.isArray(tk.dependsOn) && tk.dependsOn.length > 0
-                                  ? H(
-                                      'div',
-                                      { style: { fontSize: '11px', opacity: 0.78 } },
-                                      `${t('taskDepsLabel')}: ${tk.dependsOn.map((id) => taskById.get(id)?.title || id).join(', ')} (${depsMet ? '✓' : '⏳'})`,
-                                    )
-                                  : null,
-                                tk.summary
-                                  ? H('div', { className: 'sm-task-summary' }, tk.summary)
-                                  : tk.description
-                                    ? H('div', { className: 'sm-task-summary' }, tk.description)
-                                    : null,
-                                Array.isArray(tk.artifacts) && tk.artifacts.length > 0
-                                  ? H(
-                                      'div',
-                                      { className: 'sm-task-artifacts' },
-                                      ...tk.artifacts.map((art, aIdx) => {
-                                        const isHttp = /^https?:\/\//i.test(art)
-                                        return isHttp
+                                        React.Fragment || 'div',
+                                        null,
+                                        activeVisibleTasks.length > 0
                                           ? H(
-                                              'a',
-                                              {
-                                                key: `${tk.id}-art-${aIdx}`,
-                                                className: 'sm-task-artifact-chip',
-                                                href: art,
-                                                target: '_blank',
-                                                rel: 'noopener noreferrer',
-                                                title: art,
-                                              },
-                                              art,
-                                            )
-                                          : H(
                                               'button',
                                               {
-                                                key: `${tk.id}-art-${aIdx}`,
                                                 type: 'button',
-                                                className: 'sm-task-artifact-chip',
-                                                title: art,
-                                                onClick: () => void flashCopy(art, `art-${tk.id}-${aIdx}`),
+                                                className: 'sm-task-group-toggle',
+                                                'aria-expanded': isCompletedSectionOpen,
+                                                onClick: () => setShowCompletedTasks((v) => !v),
                                               },
-                                              copiedKey === `art-${tk.id}-${aIdx}` ? t('copiedBtn') : art,
+                                              H(
+                                                'span',
+                                                { className: 'sm-task-group-label' },
+                                                ChevronIcon({ React, size: 11, rotated: isCompletedSectionOpen }),
+                                                `${t('taskCompletedGroup')} (${completedVisibleTasks.length})`,
+                                              ),
                                             )
-                                      }),
-                                    )
-                                  : null,
-                                isPendingAppr && !isRoomUnpaired
-                                  ? H(
-                                      'div',
-                                      { className: 'sm-approval-btns', style: { marginTop: '4px' } },
-                                      H(
-                                        'button',
-                                        {
-                                          type: 'button',
-                                          className: 'sm-btn sm-btn-sm sm-btn-approve',
-                                          disabled: busy,
-                                          onClick: () => void controller.decideApproval({
-                                            roomId: activeRoom.id,
-                                            taskId: tk.id,
-                                            decision: 'approved',
-                                          }),
-                                        },
-                                        CheckIcon({ React, size: 11 }),
-                                        t('taskApproveBtn'),
-                                      ),
-                                      H(
-                                        'button',
-                                        {
-                                          type: 'button',
-                                          className: 'sm-btn sm-btn-sm sm-btn-danger',
-                                          disabled: busy,
-                                          onClick: () => void controller.decideApproval({
-                                            roomId: activeRoom.id,
-                                            taskId: tk.id,
-                                            decision: 'rejected',
-                                          }),
-                                        },
-                                        CloseIcon({ React, size: 11 }),
-                                        t('taskRejectBtn'),
-                                      ),
-                                    )
-                                  : null,
-                              )
-                            }),
+                                          : null,
+                                        isCompletedSectionOpen
+                                          ? H(
+                                              'div',
+                                              { className: 'sm-task-list' },
+                                              ...completedVisibleTasks.map(renderTaskCard),
+                                            )
+                                          : null,
+                                      )
+                                    : null,
+                                ),
                       )
                     : rightPanel === 'files'
                     ? H(

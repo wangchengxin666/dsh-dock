@@ -64,6 +64,40 @@ function taskPriorityLabel(t, priority) {
   }
 }
 
+export function formatTaskArtifact(raw) {
+  const full = String(raw || '').trim()
+  if (!full) return { full: '', tag: '', label: '', isHttp: false }
+  if (/^https?:\/\//i.test(full)) {
+    return {
+      full,
+      tag: 'URL',
+      label: full.replace(/^https?:\/\//i, ''),
+      isHttp: true,
+    }
+  }
+  let tag = ''
+  let body = full
+  const colonMatch = full.match(/^([a-zA-Z0-9_\-\u4e00-\u9fff]{1,22}):\s*(.+)$/)
+  if (colonMatch && !/^[a-zA-Z]:[\\/]/.test(full)) {
+    tag = colonMatch[1]
+    body = colonMatch[2].trim()
+  }
+  body = body.replace(/\/home\/workspace\/(?:collab-space\/)?/g, '')
+  if (/^\/?[\w.\-/]+$/.test(body) && body.includes('/')) {
+    const parts = body.split('/').filter(Boolean)
+    if (parts.length > 2) {
+      body = parts.slice(-2).join('/')
+    }
+  }
+  body = body.replace(/\b([0-9a-f]{12})[0-9a-f]{28,52}\b/gi, '$1…')
+  return {
+    full,
+    tag,
+    label: body || full,
+    isHttp: false,
+  }
+}
+
 function formatClock(ms) {
   if (!ms || typeof ms !== 'number') return ''
   try {
@@ -543,6 +577,7 @@ export function createMeshChatPage({
   getLocale,
   subscribeLocale,
   openAgentSession = null,
+  initialRightPanel = '',
 }) {
   const H = React.createElement
   const { useState, useEffect, useRef } = React
@@ -551,8 +586,13 @@ export function createMeshChatPage({
     const [, setTick] = useState(0)
     const [showNewGroup, setShowNewGroup] = useState(false)
     const [showPairDrawer, setShowPairDrawer] = useState(false)
-    const [rightPanel, setRightPanel] = useState('') // '' | 'tasks' | 'files' | 'details'
+    const [rightPanel, setRightPanel] = useState(initialRightPanel) // '' | 'tasks' | 'files' | 'details'
     const [taskFilterAll, setTaskFilterAll] = useState(false)
+    const [taskStatusTab, setTaskStatusTab] = useState('all') // 'active' | 'all' | 'done'
+    const [expandedTaskIds, setExpandedTaskIds] = useState({})
+    const [expandedArtifactTaskIds, setExpandedArtifactTaskIds] = useState({})
+    const [expandedSpecTaskIds, setExpandedSpecTaskIds] = useState({})
+    const [showCompletedTasks, setShowCompletedTasks] = useState(false)
     const [showNewTaskForm, setShowNewTaskForm] = useState(false)
     const [newTaskTitle, setNewTaskTitle] = useState('')
     const [newTaskDesc, setNewTaskDesc] = useState('')
@@ -671,6 +711,11 @@ export function createMeshChatPage({
         setConfirmAction(null)
         setEditingName(false)
         setReplyTarget(null)
+        setExpandedTaskIds({})
+        setExpandedArtifactTaskIds({})
+        setExpandedSpecTaskIds({})
+        setShowCompletedTasks(false)
+        setTaskStatusTab('all')
       }
       if ((roomChanged || nearBottomRef.current) && typeof el.scrollHeight === 'number') {
         el.scrollTop = el.scrollHeight
@@ -721,6 +766,372 @@ export function createMeshChatPage({
     const sortedVisibleTasks = visibleRoomTasks
       .slice()
       .sort((a, b) => (taskSortRank(a) - taskSortRank(b)) || ((b.updatedAt || 0) - (a.updatedAt || 0)))
+    const hasMultiThreadTasks = Boolean(
+      activeRoom?.activeThreadId
+      && allRoomTasks.some((tk) => tk.threadId && tk.threadId !== activeRoom.activeThreadId),
+    )
+    const isTaskCompletedBucket = (tk) => (
+      (tk.status === 'done' || tk.status === 'cancelled')
+      && !(tk.approvalRequired && tk.approvalStatus === 'pending')
+    )
+    const activeVisibleTasks = sortedVisibleTasks.filter((tk) => !isTaskCompletedBucket(tk))
+    const completedVisibleTasks = sortedVisibleTasks.filter((tk) => isTaskCompletedBucket(tk))
+    const drawerTotalCount = visibleRoomTasks.length
+    const drawerDoneCount = visibleRoomTasks.filter((tk) => tk.status === 'done').length
+    const drawerProgressPct = drawerTotalCount > 0 ? Math.round((drawerDoneCount / drawerTotalCount) * 100) : 0
+    const drawerPendingApprovals = visibleRoomTasks.filter(
+      (tk) => tk.approvalRequired && tk.approvalStatus === 'pending',
+    ).length
+    const isCompletedSectionOpen = activeVisibleTasks.length === 0 || showCompletedTasks
+
+    const renderTaskCard = (tk) => {
+      const isPendingAppr = Boolean(tk.approvalRequired && tk.approvalStatus === 'pending')
+      const deps = Array.isArray(tk.dependsOn) ? tk.dependsOn : []
+      const depsMet = areTaskDependenciesMet(tk, allRoomTasks)
+      const artifacts = Array.isArray(tk.artifacts) ? tk.artifacts.filter((a) => String(a || '').trim()) : []
+      const isExpanded = Boolean(expandedTaskIds[tk.id])
+      const isArtifactsExpanded = Boolean(expandedArtifactTaskIds[tk.id])
+      const isSpecExpanded = Boolean(expandedSpecTaskIds[tk.id])
+      const DEFAULT_ARTIFACT_LIMIT = 4
+      const visibleArtifacts = isArtifactsExpanded ? artifacts : artifacts.slice(0, DEFAULT_ARTIFACT_LIMIT)
+      const hiddenArtifactCount = Math.max(0, artifacts.length - visibleArtifacts.length)
+      const showHighPriority = tk.priority === 'urgent' || tk.priority === 'high'
+      const dotCls = isPendingAppr ? 'approval' : (tk.status || 'todo')
+      const cardCls = [
+        'sm-task-card',
+        isExpanded ? 'is-expanded' : '',
+        isPendingAppr ? 'is-approval-pending' : '',
+        tk.status === 'blocked' ? 'is-blocked' : '',
+        tk.status === 'done' ? 'is-done' : '',
+        tk.status === 'cancelled' ? 'is-cancelled' : '',
+      ].filter(Boolean).join(' ')
+      const approvalPreviewText = isPendingAppr
+        ? stripMarkdownForPreview(tk.approvalPrompt || tk.description || tk.summary || '')
+        : ''
+      const hasSummary = Boolean(String(tk.summary || '').trim())
+      const hasDistinctDesc = Boolean(
+        String(tk.description || '').trim()
+        && String(tk.description || '').trim() !== String(tk.summary || '').trim(),
+      )
+      const hasApprovalRecord = tk.approvalStatus === 'approved' || tk.approvalStatus === 'rejected'
+      const hasAnyDetails = hasSummary || hasDistinctDesc || deps.length > 0 || artifacts.length > 0 || hasApprovalRecord
+
+      return H(
+        'div',
+        { key: tk.id, className: cardCls },
+        H(
+          'button',
+          {
+            type: 'button',
+            className: 'sm-task-head',
+            'aria-expanded': isExpanded,
+            onClick: () => setExpandedTaskIds((prev) => ({ ...prev, [tk.id]: !prev[tk.id] })),
+          },
+          H('span', { className: `sm-task-dot ${dotCls}`, 'aria-hidden': 'true' }),
+          H(
+            'div',
+            { className: 'sm-task-head-main' },
+            H('span', { className: 'sm-task-title', title: tk.title }, tk.title),
+            H(
+              'div',
+              { className: 'sm-task-meta' },
+              tk.assigneeSlug
+                ? H('span', { className: 'sm-task-assignee' }, `@${tk.assigneeSlug}`)
+                : H('span', { style: { opacity: 0.65 } }, t('taskAssigneeNone')),
+              H('span', { className: `sm-task-status ${tk.status || 'todo'}` }, taskStatusLabel(t, tk.status)),
+              showHighPriority
+                ? H('span', { className: `sm-task-priority ${tk.priority}` }, taskPriorityLabel(t, tk.priority))
+                : null,
+              isPendingAppr
+                ? H('span', { className: 'sm-badge sm-badge-approval' }, t('taskApprovalPending'))
+                : tk.approvalStatus === 'approved'
+                  ? H('span', { className: 'sm-task-status done' }, t('taskApprovalApproved'))
+                  : tk.approvalStatus === 'rejected'
+                    ? H('span', { className: 'sm-task-status blocked' }, t('taskApprovalRejected'))
+                    : null,
+              deps.length > 0 && !depsMet && tk.status !== 'done' && tk.status !== 'cancelled'
+                ? H('span', { className: 'sm-task-pill-wait' }, `⏳ ${t('taskWaitingDepsShort')}`)
+                : null,
+              artifacts.length > 0
+                ? H(
+                    'span',
+                    { className: 'sm-task-pill-muted', title: `${t('taskArtifactsLabel')} (${artifacts.length})` },
+                    ClipIcon({ React, size: 10 }),
+                    String(artifacts.length),
+                  )
+                : null,
+            ),
+          ),
+          H(
+            'span',
+            { className: 'sm-task-chevron' },
+            ChevronIcon({ React, size: 12, rotated: isExpanded }),
+          ),
+        ),
+        // Always-accessible approval action bar when awaiting human sign-off
+        isPendingAppr
+          ? H(
+              'div',
+              { className: 'sm-task-approval-strip' },
+              !isExpanded && approvalPreviewText
+                ? H('div', { className: 'sm-task-approval-preview' }, approvalPreviewText)
+                : null,
+              !isRoomUnpaired
+                ? H(
+                    'div',
+                    { className: 'sm-approval-btns' },
+                    H(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'sm-btn sm-btn-sm sm-btn-approve',
+                        disabled: busy,
+                        onClick: () => void controller.decideApproval({
+                          roomId: activeRoom.id,
+                          taskId: tk.id,
+                          decision: 'approved',
+                        }),
+                      },
+                      CheckIcon({ React, size: 11 }),
+                      t('taskApproveBtn'),
+                    ),
+                    H(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'sm-btn sm-btn-sm sm-btn-danger',
+                        disabled: busy,
+                        onClick: () => void controller.decideApproval({
+                          roomId: activeRoom.id,
+                          taskId: tk.id,
+                          decision: 'rejected',
+                        }),
+                      },
+                      CloseIcon({ React, size: 11 }),
+                      t('taskRejectBtn'),
+                    ),
+                  )
+                : null,
+            )
+          : null,
+        // Progressive-disclosure detail drawer inside the card
+        isExpanded
+          ? H(
+              'div',
+              { className: 'sm-task-details' },
+              // Status control + Priority + Updated time
+              H(
+                'div',
+                { className: 'sm-task-control-row' },
+                H(
+                  'div',
+                  { className: 'sm-row', style: { gap: '6px' } },
+                  !isRoomUnpaired
+                    ? H(
+                        'select',
+                        {
+                          className: `sm-task-status-select sm-task-status ${tk.status || 'todo'}`,
+                          'aria-label': t('taskStatusLabel'),
+                          value: tk.status || 'todo',
+                          disabled: busy,
+                          onChange: (e) => {
+                            const nextSt = e.target?.value
+                            if (nextSt && nextSt !== tk.status) {
+                              void controller.updateTask({
+                                roomId: activeRoom.id,
+                                taskId: tk.id,
+                                status: nextSt,
+                              })
+                            }
+                          },
+                        },
+                        ...TASK_STATUSES.map((st) =>
+                          H('option', { key: st, value: st }, taskStatusLabel(t, st)),
+                        ),
+                      )
+                    : null,
+                  H(
+                    'span',
+                    { className: `sm-task-priority ${tk.priority || 'medium'}` },
+                    `${t('taskPriorityLabel')}: ${taskPriorityLabel(t, tk.priority)}`,
+                  ),
+                ),
+                tk.updatedAt || tk.createdAt
+                  ? H('span', { style: { fontSize: '10.5px', opacity: 0.72 } }, formatRelativeTime(tk.updatedAt || tk.createdAt, t))
+                  : null,
+              ),
+              // Dependencies chips
+              deps.length > 0
+                ? H(
+                    'div',
+                    { className: 'sm-task-section' },
+                    H('span', { className: 'sm-task-section-label' }, t('taskDepsLabel')),
+                    H(
+                      'div',
+                      { className: 'sm-task-dep-list' },
+                      ...deps.map((depId) => {
+                        const depTask = taskById.get(depId)
+                        const depDone = depTask?.status === 'done'
+                        const depTitle = depTask?.title || depId
+                        return H(
+                          'span',
+                          {
+                            key: `${tk.id}-dep-${depId}`,
+                            className: `sm-task-dep-chip${depDone ? ' is-met' : ''}`,
+                            title: depTitle,
+                          },
+                          H('span', null, depDone ? '✓' : '⏳'),
+                          H('span', { className: 'sm-task-dep-chip-title' }, depTitle),
+                        )
+                      }),
+                    ),
+                  )
+                : null,
+              // Approval decision record
+              hasApprovalRecord
+                ? H(
+                    'div',
+                    { className: `sm-task-approval-record${tk.approvalStatus === 'rejected' ? ' is-rejected' : ''}` },
+                    H(
+                      'div',
+                      { style: { fontWeight: 600 } },
+                      `${tk.approvalStatus === 'approved' ? t('taskApprovalApproved') : t('taskApprovalRejected')}${tk.approvalDecidedBy ? ` · ${t('taskApprovalDecidedBy')}: ${tk.approvalDecidedBy}` : ''}`,
+                    ),
+                    tk.approvalComment
+                      ? H('div', { style: { marginTop: '3px', opacity: 0.88 } }, tk.approvalComment)
+                      : null,
+                  )
+                : null,
+              // Latest progress summary (rendered Markdown in scrollable box)
+              hasSummary
+                ? H(
+                    'div',
+                    { className: 'sm-task-section' },
+                    H('span', { className: 'sm-task-section-label' }, t('taskSummaryLabel')),
+                    H(
+                      'div',
+                      { className: 'sm-task-md-box' },
+                      renderMarkdownMessage(H, tk.summary, {
+                        keyPrefix: `tsum-${tk.id}`,
+                        onCopyCode: flashCopy,
+                        copiedCodeKey: copiedKey,
+                        t,
+                      }),
+                    ),
+                    hasDistinctDesc
+                      ? H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'sm-task-spec-toggle',
+                            onClick: () => setExpandedSpecTaskIds((prev) => ({ ...prev, [tk.id]: !prev[tk.id] })),
+                          },
+                          ChevronIcon({ React, size: 11, rotated: isSpecExpanded }),
+                          isSpecExpanded ? t('taskHideSpecBtn') : t('taskShowSpecBtn'),
+                        )
+                      : null,
+                    hasDistinctDesc && isSpecExpanded
+                      ? H(
+                          'div',
+                          { className: 'sm-task-md-box' },
+                          renderMarkdownMessage(H, tk.description, {
+                            keyPrefix: `tdesc-${tk.id}`,
+                            onCopyCode: flashCopy,
+                            copiedCodeKey: copiedKey,
+                            t,
+                          }),
+                        )
+                      : null,
+                  )
+                : hasDistinctDesc
+                  ? H(
+                      'div',
+                      { className: 'sm-task-section' },
+                      H('span', { className: 'sm-task-section-label' }, t('taskSpecLabel')),
+                      H(
+                        'div',
+                        { className: 'sm-task-md-box' },
+                        renderMarkdownMessage(H, tk.description, {
+                          keyPrefix: `tdesc-${tk.id}`,
+                          onCopyCode: flashCopy,
+                          copiedCodeKey: copiedKey,
+                          t,
+                        }),
+                      ),
+                    )
+                  : null,
+              // Compact vertical deliverables list (capped at 4 with expand toggle)
+              artifacts.length > 0
+                ? H(
+                    'div',
+                    { className: 'sm-task-section' },
+                    H('span', { className: 'sm-task-section-label' }, `${t('taskArtifactsLabel')} (${artifacts.length})`),
+                    H(
+                      'div',
+                      { className: 'sm-task-artifact-list' },
+                      ...visibleArtifacts.map((art, aIdx) => {
+                        const fmt = formatTaskArtifact(art)
+                        const copyId = `art-${tk.id}-${aIdx}`
+                        const isCopied = copiedKey === copyId
+                        if (fmt.isHttp) {
+                          return H(
+                            'a',
+                            {
+                              key: copyId,
+                              className: 'sm-task-artifact-row',
+                              href: fmt.full,
+                              target: '_blank',
+                              rel: 'noopener noreferrer',
+                              title: fmt.full,
+                            },
+                            fmt.tag ? H('span', { className: 'sm-task-artifact-tag' }, fmt.tag) : null,
+                            H('span', { className: 'sm-task-artifact-text' }, fmt.label),
+                            H('span', { className: 'sm-task-artifact-action' }, '↗'),
+                          )
+                        }
+                        return H(
+                          'button',
+                          {
+                            key: copyId,
+                            type: 'button',
+                            className: 'sm-task-artifact-row',
+                            title: fmt.full,
+                            onClick: () => void flashCopy(fmt.full, copyId),
+                          },
+                          fmt.tag
+                            ? H('span', { className: 'sm-task-artifact-tag' }, fmt.tag)
+                            : FileDocIcon({ React, size: 11 }),
+                          H('span', { className: 'sm-task-artifact-text' }, fmt.label),
+                          H(
+                            'span',
+                            { className: 'sm-task-artifact-action' },
+                            isCopied ? t('copiedBtn') : CopyIcon({ React, size: 11 }),
+                          ),
+                        )
+                      }),
+                    ),
+                    hiddenArtifactCount > 0 || (isArtifactsExpanded && artifacts.length > DEFAULT_ARTIFACT_LIMIT)
+                      ? H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'sm-task-artifact-more',
+                            onClick: () => setExpandedArtifactTaskIds((prev) => ({ ...prev, [tk.id]: !prev[tk.id] })),
+                          },
+                          isArtifactsExpanded
+                            ? t('taskCollapseArtifacts')
+                            : `+ ${t('taskShowMoreArtifactsPrefix')} ${hiddenArtifactCount} ${t('taskShowMoreArtifactsSuffix')}`,
+                        )
+                      : null,
+                  )
+                : null,
+              !hasAnyDetails
+                ? H('div', { style: { fontSize: '11.5px', opacity: 0.7 } }, t('taskNoDetailsHint'))
+                : null,
+            )
+          : null,
+      )
+    }
 
     const { items: renderItems, topics: roomTopics } = buildMessageRenderItems(activeMessages, {
       isGroup: activeRoom?.type === 'group',
@@ -2160,7 +2571,7 @@ export function createMeshChatPage({
         activeRoom && rightPanel
           ? H(
               'aside',
-              { className: 'sm-detail-drawer' },
+              { className: `sm-detail-drawer${rightPanel === 'tasks' ? ' is-wide' : ''}` },
               H(
                 'div',
                 { className: 'sm-drawer-head' },
@@ -2191,61 +2602,84 @@ export function createMeshChatPage({
               rightPanel === 'tasks'
                 ? H(
                     'div',
-                    { className: 'sm-drawer-body' },
-                    // Progress Summary + Filter + New Task button
+                    { className: 'sm-drawer-body is-tasks' },
+                    // Compact Progress Header + Status Filter Tabs + New Task trigger
                     H(
                       'div',
                       { className: 'sm-task-progress-wrap' },
                       H(
                         'div',
-                        { className: 'sm-row', style: { justifyContent: 'space-between', fontSize: '11.5px' } },
-                        H('span', { style: { fontWeight: 600 } }, `${t('tasksProgressLabel')}: ${taskSummary.done}/${taskSummary.total}`),
-                        taskSummary.pendingApprovals > 0
-                          ? H('span', { className: 'sm-badge sm-badge-approval' }, `${taskSummary.pendingApprovals} ${t('taskApprovalBadgeShort')}`)
-                          : null,
-                      ),
-                      H(
-                        'div',
-                        { className: 'sm-task-progress-bar' },
-                        H('div', {
-                          className: 'sm-task-progress-fill',
-                          style: { width: `${taskSummary.total > 0 ? Math.round((taskSummary.done / taskSummary.total) * 100) : 0}%` },
-                        }),
-                      ),
-                      H(
-                        'div',
-                        { className: 'sm-row', style: { justifyContent: 'space-between', gap: '6px', marginTop: '4px' } },
+                        { className: 'sm-task-progress-row' },
                         H(
                           'div',
-                          { className: 'sm-row', style: { gap: '4px' } },
+                          { className: 'sm-row', style: { gap: '6px' } },
                           H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: `sm-btn sm-btn-sm${!taskFilterAll ? ' sm-btn-primary' : ''}`,
-                              onClick: () => setTaskFilterAll(false),
-                            },
-                            t('tasksFilterThread'),
+                            'span',
+                            { className: 'sm-task-progress-nums' },
+                            `${t('tasksProgressLabel')} ${drawerDoneCount}/${drawerTotalCount}`,
+                            drawerTotalCount > 0
+                              ? H('span', { className: 'sm-task-progress-pct' }, `${drawerProgressPct}%`)
+                              : null,
                           ),
-                          H(
-                            'button',
-                            {
-                              type: 'button',
-                              className: `sm-btn sm-btn-sm${taskFilterAll ? ' sm-btn-primary' : ''}`,
-                              onClick: () => setTaskFilterAll(true),
-                            },
-                            t('tasksFilterAll'),
-                          ),
+                          drawerPendingApprovals > 0
+                            ? H('span', { className: 'sm-badge sm-badge-approval' }, `${drawerPendingApprovals} ${t('taskApprovalBadgeShort')}`)
+                            : null,
                         ),
                         !isRoomUnpaired
                           ? H(
                               'button',
                               {
                                 type: 'button',
-                                className: 'sm-btn sm-btn-sm',
+                                className: `sm-btn sm-btn-sm${showNewTaskForm ? '' : ' sm-btn-primary'}`,
                                 onClick: () => setShowNewTaskForm((v) => !v),
                               },
-                              showNewTaskForm ? t('cancelBtn') : t('taskNewBtn'),
+                              showNewTaskForm ? t('cancelBtn') : t('taskNewShortBtn'),
+                            )
+                          : null,
+                      ),
+                      H(
+                        'div',
+                        { className: 'sm-task-progress-bar' },
+                        H('div', {
+                          className: `sm-task-progress-fill${drawerTotalCount > 0 && drawerDoneCount === drawerTotalCount ? ' is-complete' : ''}`,
+                          style: { width: `${drawerProgressPct}%` },
+                        }),
+                      ),
+                      H(
+                        'div',
+                        { className: 'sm-task-toolbar' },
+                        H(
+                          'div',
+                          { className: 'sm-task-tabs', role: 'tablist' },
+                          ...[
+                            { key: 'active', label: t('taskTabActive'), count: activeVisibleTasks.length },
+                            { key: 'all', label: t('taskTabAll'), count: sortedVisibleTasks.length },
+                            { key: 'done', label: t('taskTabDone'), count: completedVisibleTasks.length },
+                          ].map((tab) =>
+                            H(
+                              'button',
+                              {
+                                key: tab.key,
+                                type: 'button',
+                                role: 'tab',
+                                'aria-selected': taskStatusTab === tab.key,
+                                className: `sm-task-tab${taskStatusTab === tab.key ? ' is-active' : ''}`,
+                                onClick: () => setTaskStatusTab(tab.key),
+                              },
+                              tab.label,
+                              H('span', { className: 'sm-task-tab-count' }, String(tab.count)),
+                            ),
+                          ),
+                        ),
+                        hasMultiThreadTasks
+                          ? H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-task-scope-btn',
+                                onClick: () => setTaskFilterAll((v) => !v),
+                              },
+                              taskFilterAll ? t('taskScopeAllTopics') : t('taskScopeCurrentTopic'),
                             )
                           : null,
                       ),
@@ -2339,143 +2773,52 @@ export function createMeshChatPage({
                           ),
                         )
                       : null,
-                    // Task Cards List
+                    // Grouped & Progressive-Disclosure Task List
                     sortedVisibleTasks.length === 0
-                      ? H('div', { style: { fontSize: '12px', opacity: 0.72, lineHeight: 1.5 } }, t('tasksEmptyHint'))
-                      : sortedVisibleTasks.map((tk) => {
-                          const isPendingAppr = Boolean(tk.approvalRequired && tk.approvalStatus === 'pending')
-                          const depsMet = areTaskDependenciesMet(tk, allRoomTasks)
-                          const cardCls = `sm-task-card${isPendingAppr ? ' is-approval-pending' : ''}${tk.status === 'blocked' ? ' is-blocked' : ''}${tk.status === 'done' ? ' is-done' : ''}`
-                          return H(
-                            'div',
-                            { key: tk.id, className: cardCls },
-                            H(
+                      ? H('div', { className: 'sm-task-empty-state' }, t('tasksEmptyHint'))
+                      : taskStatusTab === 'active'
+                        ? activeVisibleTasks.length === 0
+                          ? H('div', { className: 'sm-task-empty-state' }, t('taskNoActiveHint'))
+                          : H('div', { className: 'sm-task-list' }, ...activeVisibleTasks.map(renderTaskCard))
+                        : taskStatusTab === 'done'
+                          ? completedVisibleTasks.length === 0
+                            ? H('div', { className: 'sm-task-empty-state' }, t('taskNoDoneHint'))
+                            : H('div', { className: 'sm-task-list' }, ...completedVisibleTasks.map(renderTaskCard))
+                          : H(
                               'div',
-                              { className: 'sm-task-top' },
-                              H('span', { className: 'sm-task-title' }, tk.title),
-                              H('span', { className: `sm-task-priority ${tk.priority || 'medium'}` }, taskPriorityLabel(t, tk.priority)),
-                            ),
-                            H(
-                              'div',
-                              { className: 'sm-task-meta' },
-                              !isRoomUnpaired
+                              { className: 'sm-task-list' },
+                              ...activeVisibleTasks.map(renderTaskCard),
+                              completedVisibleTasks.length > 0
                                 ? H(
-                                    'select',
-                                    {
-                                      className: `sm-task-status ${tk.status}`,
-                                      style: { border: '1px solid var(--sm-border-l2)', cursor: 'pointer' },
-                                      value: tk.status,
-                                      disabled: busy,
-                                      onChange: (e) => {
-                                        const nextSt = e.target?.value
-                                        if (nextSt && nextSt !== tk.status) {
-                                          void controller.updateTask({
-                                            roomId: activeRoom.id,
-                                            taskId: tk.id,
-                                            status: nextSt,
-                                          })
-                                        }
-                                      },
-                                    },
-                                    ...TASK_STATUSES.map((st) =>
-                                      H('option', { key: st, value: st }, taskStatusLabel(t, st)),
-                                    ),
-                                  )
-                                : H('span', { className: `sm-task-status ${tk.status}` }, taskStatusLabel(t, tk.status)),
-                              tk.assigneeSlug
-                                ? H('span', { className: 'sm-badge' }, `@${tk.assigneeSlug}`)
-                                : H('span', { style: { opacity: 0.6 } }, t('taskAssigneeNone')),
-                              isPendingAppr
-                                ? H('span', { className: 'sm-badge sm-badge-approval' }, t('taskApprovalPending'))
-                                : tk.approvalStatus === 'approved'
-                                  ? H('span', { className: 'sm-task-status done' }, t('taskApprovalApproved'))
-                                  : tk.approvalStatus === 'rejected'
-                                    ? H('span', { className: 'sm-task-status blocked' }, t('taskApprovalRejected'))
-                                    : null,
-                            ),
-                            Array.isArray(tk.dependsOn) && tk.dependsOn.length > 0
-                              ? H(
-                                  'div',
-                                  { style: { fontSize: '11px', opacity: 0.78 } },
-                                  `${t('taskDepsLabel')}: ${tk.dependsOn.map((id) => taskById.get(id)?.title || id).join(', ')} (${depsMet ? '✓' : '⏳'})`,
-                                )
-                              : null,
-                            tk.summary
-                              ? H('div', { className: 'sm-task-summary' }, tk.summary)
-                              : tk.description
-                                ? H('div', { className: 'sm-task-summary' }, tk.description)
-                                : null,
-                            Array.isArray(tk.artifacts) && tk.artifacts.length > 0
-                              ? H(
-                                  'div',
-                                  { className: 'sm-task-artifacts' },
-                                  ...tk.artifacts.map((art, aIdx) => {
-                                    const isHttp = /^https?:\/\//i.test(art)
-                                    return isHttp
+                                    React.Fragment || 'div',
+                                    null,
+                                    activeVisibleTasks.length > 0
                                       ? H(
-                                          'a',
-                                          {
-                                            key: `${tk.id}-art-${aIdx}`,
-                                            className: 'sm-task-artifact-chip',
-                                            href: art,
-                                            target: '_blank',
-                                            rel: 'noopener noreferrer',
-                                            title: art,
-                                          },
-                                          art,
-                                        )
-                                      : H(
                                           'button',
                                           {
-                                            key: `${tk.id}-art-${aIdx}`,
                                             type: 'button',
-                                            className: 'sm-task-artifact-chip',
-                                            title: art,
-                                            onClick: () => void flashCopy(art, `art-${tk.id}-${aIdx}`),
+                                            className: 'sm-task-group-toggle',
+                                            'aria-expanded': isCompletedSectionOpen,
+                                            onClick: () => setShowCompletedTasks((v) => !v),
                                           },
-                                          copiedKey === `art-${tk.id}-${aIdx}` ? t('copiedBtn') : art,
+                                          H(
+                                            'span',
+                                            { className: 'sm-task-group-label' },
+                                            ChevronIcon({ React, size: 11, rotated: isCompletedSectionOpen }),
+                                            `${t('taskCompletedGroup')} (${completedVisibleTasks.length})`,
+                                          ),
                                         )
-                                  }),
-                                )
-                              : null,
-                            isPendingAppr && !isRoomUnpaired
-                              ? H(
-                                  'div',
-                                  { className: 'sm-approval-btns', style: { marginTop: '4px' } },
-                                  H(
-                                    'button',
-                                    {
-                                      type: 'button',
-                                      className: 'sm-btn sm-btn-sm sm-btn-approve',
-                                      disabled: busy,
-                                      onClick: () => void controller.decideApproval({
-                                        roomId: activeRoom.id,
-                                        taskId: tk.id,
-                                        decision: 'approved',
-                                      }),
-                                    },
-                                    CheckIcon({ React, size: 11 }),
-                                    t('taskApproveBtn'),
-                                  ),
-                                  H(
-                                    'button',
-                                    {
-                                      type: 'button',
-                                      className: 'sm-btn sm-btn-sm sm-btn-danger',
-                                      disabled: busy,
-                                      onClick: () => void controller.decideApproval({
-                                        roomId: activeRoom.id,
-                                        taskId: tk.id,
-                                        decision: 'rejected',
-                                      }),
-                                    },
-                                    CloseIcon({ React, size: 11 }),
-                                    t('taskRejectBtn'),
-                                  ),
-                                )
-                              : null,
-                          )
-                        }),
+                                      : null,
+                                    isCompletedSectionOpen
+                                      ? H(
+                                          'div',
+                                          { className: 'sm-task-list' },
+                                          ...completedVisibleTasks.map(renderTaskCard),
+                                        )
+                                      : null,
+                                  )
+                                : null,
+                            ),
                   )
                 : rightPanel === 'files'
                 ? H(
