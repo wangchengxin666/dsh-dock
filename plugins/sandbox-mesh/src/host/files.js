@@ -184,7 +184,11 @@ export function createFileShareGuard({ homeDir, shareRoots, protectedFiles }) {
   return function resolveShareableFile(rawRef, actor = 'human') {
     const trimmed = String(rawRef || '').trim().replace(/^#/, '')
     if (!trimmed) return { ok: false, status: 400, error: 'A local file path is required' }
-    const candidate = isAbsolute(trimmed) ? resolve(trimmed) : resolve(homeDir, trimmed)
+    let candidate = isAbsolute(trimmed) ? resolve(trimmed) : resolve(homeDir, trimmed)
+    if (!isAbsolute(trimmed) && !existsSync(candidate)) {
+      const collabCandidate = resolve(homeDir, 'collab-space', trimmed)
+      if (existsSync(collabCandidate)) candidate = collabCandidate
+    }
     if (!existsSync(candidate)) return { ok: false, status: 404, error: `File not found: ${trimmed}` }
 
     const real = realpathOrResolve(candidate)

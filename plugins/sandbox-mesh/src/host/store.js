@@ -1590,7 +1590,7 @@ export function createMeshStore({
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       unreadCount: r.unreadCount || 0,
-      agentSessionId: r.agentSessionId || '',
+      agentSessionId: (r.activeThreadId && r.threadSessions?.[r.activeThreadId]) || r.agentSessionId || '',
     })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
 
     return {

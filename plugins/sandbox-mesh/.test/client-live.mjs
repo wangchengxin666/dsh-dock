@@ -924,14 +924,19 @@ const ReactDOMServer = await importExternal('react-dom/server')
   await taskCtrl.syncFromHost()
   assert.equal(taskCtrl.getUnreadSummary().pendingApprovals, 1)
 
+  const openedSessions = []
+  taskStatePayload.state.rooms[0].agentSessionId = 'session-mesh-demo-log'
+  await taskCtrl.syncFromHost()
   const TaskChatPage = createMeshChatPage({
     React,
     controller: taskCtrl,
     getLocale: () => 'zh-CN',
     subscribeLocale: () => () => {},
+    openAgentSession: (sid) => openedSessions.push(sid),
   })
   const pendingHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(TaskChatPage))
   assert.ok(pendingHtml.includes('任务板 1/2'), 'Header must show live task progress 1/2')
+  assert.ok(pendingHtml.includes('执行日志'), 'Header must show Agent Log button when active room has agentSessionId')
   assert.ok(pendingHtml.includes('生产发布确认'), 'Inline approval card must render linked task title')
   assert.ok(pendingHtml.includes('批准继续'), 'Pending approval card must show Approve button')
   assert.ok(pendingHtml.includes('驳回修改'), 'Pending approval card must show Reject button')

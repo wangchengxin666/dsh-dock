@@ -324,6 +324,12 @@ window.__ModuleLoader__.load({
         controller,
         getLocale: () => readActiveLocale(ctx.locale),
         subscribeLocale,
+        openAgentSession: (sessionId) => {
+          const uiWorkspace = ctx.get?.('uiWorkspace')
+          if (sessionId && uiWorkspace && typeof uiWorkspace.openSession === 'function') {
+            uiWorkspace.openSession(sessionId)
+          }
+        },
       })
 
       // Settings Section Slot: Node Agent Profile + 1-on-1 Pairing + Paired Sandboxes Management

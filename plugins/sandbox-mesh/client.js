@@ -519,6 +519,8 @@ window.__ModuleLoader__.load({
       wakeCardHideRaw: 'Hide full prompt',
       legacyPeerChipDesc: 'Mentioned remote sandbox',
       // Shared Task Board, Human Approval Gates & Role SOP
+      agentLogBtn: 'Agent Log',
+      agentLogHint: 'Inspect this topic’s background Agent execution session & tool calls',
       tasksBtn: 'Tasks',
       tasksDrawerTitle: 'Shared Task Board',
       tasksEmptyHint: 'No tracked tasks yet. Ask the Moderator to break down a project or create one directly below.',
@@ -785,6 +787,8 @@ window.__ModuleLoader__.load({
       wakeCardHideRaw: '收起完整提示词',
       legacyPeerChipDesc: '跨沙箱远程节点',
       // Shared Task Board, Human Approval Gates & Role SOP
+      agentLogBtn: '执行日志',
+      agentLogHint: '查看本话题后台 Agent 的完整思考与工具执行记录',
       tasksBtn: '任务板',
       tasksDrawerTitle: '共享任务板',
       tasksEmptyHint: '当前暂无跟踪任务。可直接在群里让主持人拆解任务，或点击下方手动创建指派。',
@@ -5527,6 +5531,7 @@ window.__ModuleLoader__.load({
       controller,
       getLocale,
       subscribeLocale,
+      openAgentSession = null,
     }) {
       const H = React.createElement
       const { useState, useEffect, useRef } = React
@@ -6424,6 +6429,19 @@ window.__ModuleLoader__.load({
                             ? H('span', { className: 'sm-badge sm-badge-approval', style: { marginLeft: '3px', padding: '0 5px' } }, String(taskSummary.pendingApprovals))
                             : null,
                         ),
+                        activeRoom.agentSessionId && typeof openAgentSession === 'function'
+                          ? H(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'sm-btn sm-btn-sm',
+                                title: t('agentLogHint'),
+                                onClick: () => openAgentSession(activeRoom.agentSessionId),
+                              },
+                              EyeIcon({ React, size: 12 }),
+                              t('agentLogBtn'),
+                            )
+                          : null,
                         H(
                           'button',
                           {
@@ -8694,6 +8712,12 @@ window.__ModuleLoader__.load({
         controller,
         getLocale: () => readActiveLocale(ctx.locale),
         subscribeLocale,
+        openAgentSession: (sessionId) => {
+          const uiWorkspace = ctx.get?.('uiWorkspace')
+          if (sessionId && uiWorkspace && typeof uiWorkspace.openSession === 'function') {
+            uiWorkspace.openSession(sessionId)
+          }
+        },
       })
 
       // Settings Section Slot: Node Agent Profile + 1-on-1 Pairing + Paired Sandboxes Management

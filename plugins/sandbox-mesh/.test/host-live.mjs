@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { importExternal } from './deps.mjs'
@@ -1479,6 +1479,86 @@ try {
       assert.equal(alice.store.getRoom(starRoomId)?.name, 'Star Squad v2')
       assert.equal(charlie.store.getRoom(starRoomId)?.name, 'Star Squad v2')
       assert.equal(charlie.store.getRoom(starRoomId)?.groupSecret, secretBeforeRename)
+
+      // 14g. Dedicated collab-space workspace hygiene, auto-archive of idle session-mesh-*, and collab-space relative file sharing
+      {
+        const collabFile = join(aliceDir, 'collab-space', 'demo-note.txt')
+        mkdirSync(join(aliceDir, 'collab-space'), { recursive: true })
+        writeFileSync(collabFile, 'hello from collab-space', 'utf8')
+        const sharedCollab = await alice.sendFile({
+          roomId: starRoomId,
+          filePath: 'demo-note.txt',
+          text: 'collab-space relative path',
+          actor: 'agent',
+        })
+        assert.equal(sharedCollab.ok, true, 'Relative files inside collab-space/ must resolve cleanly for mesh_share_file')
+
+        const wsHome = {
+          id: 'ws_home',
+          path: aliceDir,
+          title: '沙箱互联 (Sandbox Mesh)',
+          sessionIds: ['session-normal-1', 'session-mesh-legacy-1'],
+          async setTitle(next) { this.title = next },
+          async attachSession(sid) { if (!this.sessionIds.includes(sid)) this.sessionIds.push(sid) },
+        }
+        const wsList = [wsHome]
+        const archivedIds = []
+        const movedToEnd = []
+        const fakeWsRegistry = {
+          get archivedSessionIds() { return archivedIds },
+          list() { return wsList },
+          async resolveByPath(p) { return wsList.find((w) => w.path === p) || null },
+          async create(p, title) {
+            let found = wsList.find((w) => w.path === p)
+            if (!found) {
+              found = {
+                id: 'ws_collab',
+                path: p,
+                title,
+                sessionIds: [],
+                async setTitle(next) { this.title = next },
+                async attachSession(sid) { if (!this.sessionIds.includes(sid)) this.sessionIds.push(sid) },
+              }
+              wsList.unshift(found)
+            }
+            return found
+          },
+          async insertBefore(id, beforeId) {
+            movedToEnd.push({ id, beforeId })
+            const idx = wsList.findIndex((w) => w.id === id)
+            if (idx >= 0 && beforeId === undefined) {
+              const [item] = wsList.splice(idx, 1)
+              wsList.push(item)
+            }
+          },
+          async archiveSession(sid) {
+            if (!archivedIds.includes(String(sid))) archivedIds.push(String(sid))
+          },
+          async unarchiveSession(sid) {
+            const idx = archivedIds.indexOf(String(sid))
+            if (idx >= 0) archivedIds.splice(idx, 1)
+          },
+        }
+        const wsCtx = new Context()
+        wsCtx.provide('agents', {})
+        wsCtx.provide('sessions', {})
+        wsCtx.provide('sessionController', {
+          async resolveAgent() { return null },
+          async create() {},
+        })
+        wsCtx.provide('workspaceRegistry', fakeWsRegistry)
+        const { wireHarnessRuntime } = await import('../src/host/harness-bridge.js')
+        wireHarnessRuntime(wsCtx, alice, { logger: console })
+        await new Promise((r) => setTimeout(r, 80))
+        assert.notEqual(wsHome.title, '沙箱互联 (Sandbox Mesh)', 'Legacy home workspace title must be restored')
+        const collabWs = wsList.find((w) => w.path === join(aliceDir, 'collab-space'))
+        assert.ok(collabWs, 'Dedicated collab-space workspace must be created')
+        assert.equal(collabWs.title, '协同空间')
+        assert.equal(wsList[wsList.length - 1].id, 'ws_collab', 'Collab Space workspace must be placed after normal workspaces')
+        assert.equal(archivedIds.includes('session-mesh-legacy-1'), true, 'Legacy idle session-mesh-* must be auto-archived out of normal workspace')
+        assert.equal(archivedIds.includes('session-normal-1'), false, 'Normal user chat sessions must NEVER be archived')
+        await wsCtx.fiber.dispose()
+      }
 
       await aliceCtx.fiber.dispose()
       await bobCtx.fiber.dispose()

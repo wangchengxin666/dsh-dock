@@ -542,6 +542,7 @@ export function createMeshChatPage({
   controller,
   getLocale,
   subscribeLocale,
+  openAgentSession = null,
 }) {
   const H = React.createElement
   const { useState, useEffect, useRef } = React
@@ -1439,6 +1440,19 @@ export function createMeshChatPage({
                         ? H('span', { className: 'sm-badge sm-badge-approval', style: { marginLeft: '3px', padding: '0 5px' } }, String(taskSummary.pendingApprovals))
                         : null,
                     ),
+                    activeRoom.agentSessionId && typeof openAgentSession === 'function'
+                      ? H(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'sm-btn sm-btn-sm',
+                            title: t('agentLogHint'),
+                            onClick: () => openAgentSession(activeRoom.agentSessionId),
+                          },
+                          EyeIcon({ React, size: 12 }),
+                          t('agentLogBtn'),
+                        )
+                      : null,
                     H(
                       'button',
                       {

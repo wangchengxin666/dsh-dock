@@ -12,7 +12,7 @@ Cross-sandbox 1-on-1 pairing (`Pair`), LLM-moderated multi-sandbox group rooms (
   - The Moderator LLM dynamically inspects member specialties or container tasks, calls targeted peers via `mesh_ask_peer` (`phase: 'turn'`, waking only the called peer), waits for replies, and synthesizes a unified response.
   - Explicit human mentions (`@<slug>` or `@all`) still wake the targeted member(s) directly.
 - **Per-Thread Session & Context Isolation (`New Topic`)**:
-  - Mesh agent conversations run inside dedicated sessions grouped under **`沙箱互联 (Sandbox Mesh)`** in the DSH workspace sidebar, keeping main conversations clean.
+  - Collab Space agent conversations run inside dedicated sessions isolated under **`协同空间`** (`/home/workspace/collab-space`), auto-archiving when idle so normal chat lists stay clean while remaining 1-click inspectable from each room's **Agent Log** button.
   - Each `(roomId, threadId)` binds to its own Harness Session; `buildAgentWakePrompt` filters history strictly to the active `threadId`.
   - Clicking **New Topic** (or invoking `sandbox-peer new-topic <roomId>`) rotates `activeThreadId` across peers with inline visual dividers (`sm-topic-divider`) and is idempotent when the current thread is already fresh and empty (`canStartNewTopic`).
 - **Live Preparing / Answering Animations**:
