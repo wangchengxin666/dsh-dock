@@ -1563,6 +1563,26 @@ try {
         assert.equal(archivedIds.includes('session-normal-1'), false, 'Normal active user chat sessions must NEVER be archived')
         assert.equal(archivedIds.includes('session-normal-archived'), true, 'User-archived normal chat sessions must NEVER be unarchived')
         await wsCtx.fiber.dispose()
+
+        // Simulate user renaming the Collab Space workspace and dragging it to the top -> restart must preserve both!
+        await collabWs.setTitle('我的研发团队')
+        const [movedCollab] = wsList.splice(wsList.indexOf(collabWs), 1)
+        wsList.unshift(movedCollab)
+        const moveCountBeforeRestart = movedToEnd.length
+        const wsCtx2 = new Context()
+        wsCtx2.provide('agents', {})
+        wsCtx2.provide('sessions', {})
+        wsCtx2.provide('sessionController', {
+          async resolveAgent() { return null },
+          async create() {},
+        })
+        wsCtx2.provide('workspaceRegistry', fakeWsRegistry)
+        wireHarnessRuntime(wsCtx2, alice, { logger: console })
+        await new Promise((r) => setTimeout(r, 80))
+        assert.equal(collabWs.title, '我的研发团队', 'User-renamed Collab Space workspace title must NEVER be overwritten')
+        assert.equal(wsList[0].id, 'ws_collab', 'User custom workspace ordering must NEVER be overwritten on restart')
+        assert.equal(movedToEnd.length, moveCountBeforeRestart, 'insertBefore must not be called for an already-existing workspace')
+        await wsCtx2.fiber.dispose()
       }
 
       await aliceCtx.fiber.dispose()

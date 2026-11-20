@@ -147,8 +147,8 @@
       ],
       "versions": [
         {
-          "version": "0.3.8",
-          "publishTimestamp": 1795188000,
+          "version": "0.3.9",
+          "publishTimestamp": 1795189000,
           "source": {
             "type": "npm",
             "registry": "http://localhost:9000/plugins/npm"

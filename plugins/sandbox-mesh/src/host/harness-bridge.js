@@ -1671,8 +1671,8 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
     const LEGACY_WORKSPACE_TITLES = new Set([
       '沙箱互联 (Sandbox Mesh)',
       '协同空间 (Collab Space)',
-      '协同空间',
     ])
+    let checkedLegacyHomeTitle = false
 
     function resolveCollabWorkspacePath() {
       const homeDir = service.homeDir || '/home/workspace'
@@ -1687,30 +1687,44 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
       const homeDir = service.homeDir || '/home/workspace'
       const collabDir = resolveCollabWorkspacePath()
 
-      // Restore legacy `/home/workspace` title if an older version renamed it to Sandbox Mesh / Collab Space
-      if (typeof workspaceRegistry.resolveByPath === 'function') {
-        try {
-          const homeWs = await workspaceRegistry.resolveByPath(homeDir)
-          if (homeWs && LEGACY_WORKSPACE_TITLES.has(String(homeWs.title || '').trim()) && typeof homeWs.setTitle === 'function') {
-            await homeWs.setTitle(basename(homeDir) || 'workspace')
-          }
-        } catch {}
+      // One-time migration: restore legacy `/home/workspace` title if a pre-0.3.4 version renamed it
+      if (!checkedLegacyHomeTitle) {
+        checkedLegacyHomeTitle = true
+        if (typeof workspaceRegistry.resolveByPath === 'function') {
+          try {
+            const homeWs = await workspaceRegistry.resolveByPath(homeDir)
+            if (homeWs && LEGACY_WORKSPACE_TITLES.has(String(homeWs.title || '').trim()) && typeof homeWs.setTitle === 'function') {
+              await homeWs.setTitle(basename(homeDir) || 'workspace')
+            }
+          } catch {}
+        }
       }
 
       try {
-        let ws = null
+        // Workspaces are matched by canonical path (`/home/workspace/collab-space`), not by title.
+        // If it already exists, reuse it untouched so user renames and custom sidebar ordering are preserved.
+        if (typeof workspaceRegistry.resolveByPath === 'function') {
+          const existing = await workspaceRegistry.resolveByPath(collabDir)
+          if (existing) {
+            if (LEGACY_WORKSPACE_TITLES.has(String(existing.title || '').trim()) && typeof existing.setTitle === 'function') {
+              try { await existing.setTitle(COLLAB_WORKSPACE_TITLE) } catch {}
+            }
+            return existing
+          }
+        }
+
         if (typeof workspaceRegistry.create === 'function') {
-          ws = await workspaceRegistry.create(collabDir, COLLAB_WORKSPACE_TITLE)
-        } else if (typeof workspaceRegistry.resolveByPath === 'function') {
-          ws = await workspaceRegistry.resolveByPath(collabDir)
+          const existingTitles = new Set(
+            (typeof workspaceRegistry.list === 'function' ? workspaceRegistry.list() || [] : [])
+              .map((w) => String(w?.title || '').trim()),
+          )
+          const initialTitle = existingTitles.has(COLLAB_WORKSPACE_TITLE) ? 'collab-space' : COLLAB_WORKSPACE_TITLE
+          const ws = await workspaceRegistry.create(collabDir, initialTitle)
+          if (ws?.id && typeof workspaceRegistry.insertBefore === 'function') {
+            try { await workspaceRegistry.insertBefore(ws.id, undefined) } catch {}
+          }
+          return ws
         }
-        if (ws && ws.title !== COLLAB_WORKSPACE_TITLE && typeof ws.setTitle === 'function') {
-          try { await ws.setTitle(COLLAB_WORKSPACE_TITLE) } catch {}
-        }
-        if (ws?.id && typeof workspaceRegistry.insertBefore === 'function') {
-          try { await workspaceRegistry.insertBefore(ws.id, undefined) } catch {}
-        }
-        return ws
       } catch {}
       return null
     }
