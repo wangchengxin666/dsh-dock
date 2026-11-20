@@ -1665,7 +1665,7 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
     }, 'sandbox-mesh: native harness tools')
   })
 
-  // 2. Wire native SessionController + Agent wakeup driver (isolated Collab Space workspace + auto-archived idle background sessions)
+  // 2. Wire native SessionController + Agent wakeup driver (isolated Collab Space workspace, keeping sessions unarchived so Agent Log is always viewable)
   ctx.inject(['agents', 'sessions', 'sessionController'], (agentCtx) => {
     const COLLAB_WORKSPACE_TITLE = '协同空间'
     const LEGACY_WORKSPACE_TITLES = new Set([
@@ -1673,8 +1673,6 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
       '协同空间 (Collab Space)',
       '协同空间',
     ])
-    const activeSessionCounts = new Map()
-    const pendingArchiveTimers = new Map()
 
     function resolveCollabWorkspacePath() {
       const homeDir = service.homeDir || '/home/workspace'
@@ -1720,11 +1718,6 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
     async function unarchiveSessionIfNeeded(sessionId) {
       const sid = String(sessionId || '')
       if (!sid) return
-      const pending = pendingArchiveTimers.get(sid)
-      if (pending) {
-        clearTimeout(pending)
-        pendingArchiveTimers.delete(sid)
-      }
       const workspaceRegistry = agentCtx.get?.('workspaceRegistry')
       if (!workspaceRegistry || typeof workspaceRegistry.unarchiveSession !== 'function') return
       const archived = Array.isArray(workspaceRegistry.archivedSessionIds) ? workspaceRegistry.archivedSessionIds : []
@@ -1735,62 +1728,36 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
       } catch {}
     }
 
-    async function archiveSessionIfIdle(sessionId) {
-      const sid = String(sessionId || '')
-      if (!sid || (activeSessionCounts.get(sid) || 0) > 0) return
-      const workspaceRegistry = agentCtx.get?.('workspaceRegistry')
-      if (!workspaceRegistry || typeof workspaceRegistry.archiveSession !== 'function') return
-      const archived = Array.isArray(workspaceRegistry.archivedSessionIds) ? workspaceRegistry.archivedSessionIds : []
-      if (archived.includes(sid)) return
-      try {
-        const { toSessionId } = await getPrimitives()
-        await workspaceRegistry.archiveSession(toSessionId(sid))
-      } catch {}
-    }
-
-    function scheduleAutoArchive(sessionId, delayMs = 600) {
-      const sid = String(sessionId || '')
-      if (!sid) return
-      const prev = pendingArchiveTimers.get(sid)
-      if (prev) clearTimeout(prev)
-      const timer = setTimeout(() => {
-        pendingArchiveTimers.delete(sid)
-        void archiveSessionIfIdle(sid)
-      }, delayMs)
-      timer.unref?.()
-      pendingArchiveTimers.set(sid, timer)
-    }
-
-    // One-time startup hygiene: restore `/home/workspace` title, create dedicated `协同空间` workspace
-    // below normal workspaces, and archive idle `session-mesh-*` background sessions so they never mix
-    // into normal conversations in the left sidebar.
+    // One-time startup hygiene: restore `/home/workspace` title, ensure dedicated `协同空间` workspace
+    // sits below normal workspaces, and restore any `session-mesh-*` sessions previously auto-archived
+    // by earlier versions so clicking "Agent Log" always opens them cleanly.
     void (async () => {
       const workspaceRegistry = agentCtx.get?.('workspaceRegistry')
-      await ensureMeshWorkspace()
-      if (!workspaceRegistry || typeof workspaceRegistry.archiveSession !== 'function') return
+      const collabWs = await ensureMeshWorkspace()
+      if (!workspaceRegistry) return
       const { toSessionId } = await getPrimitives()
-      const sidsToArchive = new Set()
+      const archived = new Set(Array.isArray(workspaceRegistry.archivedSessionIds) ? workspaceRegistry.archivedSessionIds : [])
+      const meshSids = new Set()
       const snap = service.store.getSnapshot()
       for (const r of snap.rooms || []) {
         const fullRoom = service.store.getRoom(r.id)
-        if (fullRoom?.agentSessionId) sidsToArchive.add(String(fullRoom.agentSessionId))
+        if (fullRoom?.agentSessionId) meshSids.add(String(fullRoom.agentSessionId))
         for (const sid of Object.values(fullRoom?.threadSessions || {})) {
-          if (sid) sidsToArchive.add(String(sid))
+          if (sid) meshSids.add(String(sid))
         }
       }
-      if (typeof workspaceRegistry.list === 'function') {
-        for (const ws of workspaceRegistry.list() || []) {
-          for (const sid of ws?.sessionIds || []) {
-            if (String(sid || '').startsWith('session-mesh-')) {
-              sidsToArchive.add(String(sid))
-            }
-          }
+      for (const sid of archived) {
+        if (String(sid || '').startsWith('session-mesh-')) {
+          meshSids.add(String(sid))
         }
       }
-      const archived = new Set(Array.isArray(workspaceRegistry.archivedSessionIds) ? workspaceRegistry.archivedSessionIds : [])
-      for (const sid of sidsToArchive) {
-        if (archived.has(sid) || (activeSessionCounts.get(sid) || 0) > 0) continue
-        try { await workspaceRegistry.archiveSession(toSessionId(sid)) } catch {}
+      for (const sid of meshSids) {
+        if (archived.has(sid) && typeof workspaceRegistry.unarchiveSession === 'function') {
+          try { await workspaceRegistry.unarchiveSession(toSessionId(sid)) } catch {}
+        }
+        if (collabWs && typeof collabWs.attachSession === 'function') {
+          try { await collabWs.attachSession(toSessionId(sid)) } catch {}
+        }
       }
     })().catch(() => {})
 
@@ -1874,7 +1841,6 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
 
         const runTurn = async () => {
           const { agent, sessionCreated, sessionId: activeSid } = await resolveOrCreateRoomAgent(room, message)
-          activeSessionCounts.set(activeSid, (activeSessionCounts.get(activeSid) || 0) + 1)
           const self = service.store.getSelf()
           const snap = service.store.getSnapshot()
           const recentMessages = snap.messages?.[room.id] || []
@@ -1999,13 +1965,6 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
           } finally {
             if (activityHeartbeat) clearInterval(activityHeartbeat)
             endTurn?.()
-            const nextCount = Math.max(0, (activeSessionCounts.get(activeSid) || 1) - 1)
-            if (nextCount === 0) {
-              activeSessionCounts.delete(activeSid)
-              scheduleAutoArchive(activeSid)
-            } else {
-              activeSessionCounts.set(activeSid, nextCount)
-            }
           }
         }
 
@@ -2063,8 +2022,6 @@ export function wireHarnessRuntime(ctx, service, { logger = null } = {}) {
 
     agentCtx.effect(() => () => {
       service.setAgentWakeHandler(null)
-      for (const timer of pendingArchiveTimers.values()) clearTimeout(timer)
-      pendingArchiveTimers.clear()
     }, 'sandbox-mesh: harness agent wake driver')
   })
 }

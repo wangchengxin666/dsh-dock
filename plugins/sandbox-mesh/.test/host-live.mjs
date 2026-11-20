@@ -1481,7 +1481,7 @@ try {
       assert.equal(charlie.store.getRoom(starRoomId)?.name, 'Star Squad v2')
       assert.equal(charlie.store.getRoom(starRoomId)?.groupSecret, secretBeforeRename)
 
-      // 14g. Dedicated collab-space workspace hygiene, auto-archive of idle session-mesh-*, and collab-space relative file sharing
+      // 14g. Dedicated collab-space workspace hygiene, unarchiving previously archived session-mesh-* for Agent Log access, and collab-space relative file sharing
       {
         const collabDirPath = join(aliceDir, 'collab-space')
         const collabFile = join(collabDirPath, 'demo-note.txt')
@@ -1499,12 +1499,13 @@ try {
           id: 'ws_home',
           path: aliceDir,
           title: '沙箱互联 (Sandbox Mesh)',
-          sessionIds: ['session-normal-1', 'session-mesh-legacy-1'],
+          sessionIds: ['session-normal-1', 'session-normal-archived'],
           async setTitle(next) { this.title = next },
           async attachSession(sid) { if (!this.sessionIds.includes(sid)) this.sessionIds.push(sid) },
         }
         const wsList = [wsHome]
-        const archivedIds = []
+        // Simulate a mesh session previously auto-archived by an older version plus a user-archived normal session
+        const archivedIds = ['session-mesh-legacy-1', 'session-normal-archived']
         const movedToEnd = []
         const fakeWsRegistry = {
           get archivedSessionIds() { return archivedIds },
@@ -1557,8 +1558,10 @@ try {
         assert.ok(collabWs, 'Dedicated collab-space workspace must be created')
         assert.equal(collabWs.title, '协同空间')
         assert.equal(wsList[wsList.length - 1].id, 'ws_collab', 'Collab Space workspace must be placed after normal workspaces')
-        assert.equal(archivedIds.includes('session-mesh-legacy-1'), true, 'Legacy idle session-mesh-* must be auto-archived out of normal workspace')
-        assert.equal(archivedIds.includes('session-normal-1'), false, 'Normal user chat sessions must NEVER be archived')
+        assert.equal(archivedIds.includes('session-mesh-legacy-1'), false, 'Previously auto-archived session-mesh-* must be unarchived so Agent Log stays viewable')
+        assert.equal(collabWs.sessionIds.includes('session-mesh-legacy-1'), true, 'Restored session-mesh-* must be attached to dedicated Collab Space workspace')
+        assert.equal(archivedIds.includes('session-normal-1'), false, 'Normal active user chat sessions must NEVER be archived')
+        assert.equal(archivedIds.includes('session-normal-archived'), true, 'User-archived normal chat sessions must NEVER be unarchived')
         await wsCtx.fiber.dispose()
       }
 

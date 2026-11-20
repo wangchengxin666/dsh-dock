@@ -9514,6 +9514,18 @@ window.__ModuleLoader__.load({
         }
       })
 
+      // Bind uiWorkspace reactively so "Agent Log" navigation works reliably across Cordis scopes
+      const uiWorkspaceRef = { current: null }
+      if (typeof ctx.inject === 'function') {
+        ctx.inject(['uiWorkspace'], (wsCtx) => {
+          const svc = wsCtx.uiWorkspace ?? wsCtx.get?.('uiWorkspace') ?? null
+          uiWorkspaceRef.current = svc
+          wsCtx.effect(() => () => {
+            if (uiWorkspaceRef.current === svc) uiWorkspaceRef.current = null
+          }, 'sandbox-mesh: uiWorkspace navigation ref')
+        })
+      }
+
       // Left Sidebar Main Slot: Signature IM Chat + Group Collaboration + Unified @ / # / Upload Composer
       const MeshChatPage = createMeshChatPage({
         React,
@@ -9521,10 +9533,18 @@ window.__ModuleLoader__.load({
         getLocale: () => readActiveLocale(ctx.locale),
         subscribeLocale,
         openAgentSession: (sessionId) => {
-          const uiWorkspace = ctx.get?.('uiWorkspace')
-          if (sessionId && uiWorkspace && typeof uiWorkspace.openSession === 'function') {
-            uiWorkspace.openSession(sessionId)
+          const uiWorkspace = uiWorkspaceRef.current ?? ctx.get?.('uiWorkspace') ?? ctx.uiWorkspace
+          if (!sessionId || !uiWorkspace || typeof uiWorkspace.openSession !== 'function') return
+          const archived = ctx.get?.('workspaces')?.list?.getSnapshot?.()?.archivedSessionIds
+          if (Array.isArray(archived) && archived.includes(sessionId) && typeof uiWorkspace.unarchiveSession === 'function') {
+            Promise.resolve(uiWorkspace.unarchiveSession(sessionId))
+              .catch(() => {})
+              .finally(() => {
+                uiWorkspace.openSession(sessionId)
+              })
+            return
           }
+          uiWorkspace.openSession(sessionId)
         },
       })
 
