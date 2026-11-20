@@ -121,7 +121,7 @@ if [ -f "${profile_patch}" ]; then
       if (validEfforts.has(reasoningEffort)) {
         lines.push("        reasoning: " + JSON.stringify(reasoningEffort));
       }
-      if (thinkingFormat) {
+      if (thinkingFormat && api === "openai-completions") {
         lines.push("        compat:");
         lines.push("          thinkingFormat: " + JSON.stringify(thinkingFormat));
       }

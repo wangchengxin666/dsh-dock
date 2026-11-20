@@ -404,3 +404,32 @@ def test_sync_llm_profile_exec_payload_and_stopped_skip():
     second_call = running_container.exec_run.call_args_list[1]
     assert second_call.args[0] == ["supervisorctl", "restart", "dsh"]
     assert second_call.kwargs["user"] == "root"
+
+    # 3. Non-completions protocols (e.g. anthropic-messages / openai-responses) must NOT emit thinkingFormat
+    anthropic_profile = LlmProfile(
+        id="11223344-5566-7788-99aa-bbccddeeff00",
+        name="Claude",
+        base_url="https://api.anthropic.com",
+        model="claude-sonnet-4-5",
+        api_protocol="anthropic-messages",
+        context_window=1000000,
+        max_tokens=64000,
+        supports_image=True,
+        reasoning_effort="high",
+        thinking_format="qwen",  # stale value must be stripped for non-completions protocols
+        api_key_ciphertext=encrypt_secret("sk-ant-test"),
+    )
+    running_container.exec_run.reset_mock()
+    running_container.exec_run.side_effect = [
+        (0, b"LLM_SYNC_OK:mgr-112233445566:claude-sonnet-4-5\n"),
+        (0, b"dsh: stopped\ndsh: started\n"),
+    ]
+    res_ant = svc.sync_llm_profile(sbx, anthropic_profile)
+    assert res_ant["ok"] is True
+    ant_payload = json.loads(running_container.exec_run.call_args_list[0].kwargs["environment"]["LLM_PUSH_PAYLOAD"])
+    assert ant_payload["apiProtocol"] == "anthropic-messages"
+    assert ant_payload["thinkingFormat"] == ""
+    assert ant_payload["contextWindow"] == 1000000
+    assert ant_payload["maxTokens"] == 64000
+    sbx_ant = _make_sandbox(slug="claude-box", llm_profile=anthropic_profile)
+    assert "DSH_DEFAULT_LLM_THINKING_FORMAT" not in svc.environment(sbx_ant)

@@ -2113,7 +2113,10 @@ function AdminConsoleView({
                       max_tokens: Number.isFinite(maxNum as number) ? maxNum : null,
                       supports_image: Boolean(llmForm.supports_image),
                       reasoning_effort: llmForm.reasoning_effort || null,
-                      thinking_format: llmForm.thinking_format || null,
+                      thinking_format:
+                        (llmForm.api_protocol || 'openai-completions') === 'openai-completions'
+                          ? llmForm.thinking_format || null
+                          : null,
                     }
                     if (!editingLlmId || llmForm.api_key.trim()) {
                       body.api_key = llmForm.api_key.trim()
@@ -2152,7 +2155,15 @@ function AdminConsoleView({
                   <Label>{t('admin.llm.apiProtocolLabel')}</Label>
                   <Select
                     value={llmForm.api_protocol}
-                    onChange={(e) => setLlmForm({ ...llmForm, api_protocol: e.target.value })}
+                    onChange={(e) => {
+                      const nextProto = e.target.value
+                      setLlmForm({
+                        ...llmForm,
+                        api_protocol: nextProto,
+                        thinking_format:
+                          nextProto === 'openai-completions' ? llmForm.thinking_format : '',
+                      })
+                    }}
                   >
                     <option value="openai-completions">OpenAI Completions (v1/chat/completions)</option>
                     <option value="openai-responses">OpenAI Responses (v1/responses)</option>
@@ -2192,7 +2203,7 @@ function AdminConsoleView({
                       type="number"
                       min={1024}
                       max={10000000}
-                      step={1024}
+                      step={1}
                       placeholder="128000"
                       value={llmForm.context_window}
                       onChange={(e) => setLlmForm({ ...llmForm, context_window: e.target.value })}
@@ -2216,7 +2227,7 @@ function AdminConsoleView({
                       type="number"
                       min={128}
                       max={1000000}
-                      step={256}
+                      step={1}
                       placeholder="8192"
                       value={llmForm.max_tokens}
                       onChange={(e) => setLlmForm({ ...llmForm, max_tokens: e.target.value })}
@@ -2255,10 +2266,19 @@ function AdminConsoleView({
                   <div className="space-y-1">
                     <Label>{t('admin.llm.thinkingFormatLabel')}</Label>
                     <Select
-                      value={llmForm.thinking_format}
+                      disabled={llmForm.api_protocol !== 'openai-completions'}
+                      value={
+                        llmForm.api_protocol === 'openai-completions'
+                          ? llmForm.thinking_format
+                          : ''
+                      }
                       onChange={(e) => setLlmForm({ ...llmForm, thinking_format: e.target.value })}
                     >
-                      <option value="">{t('admin.llm.thinkingFormatAuto')}</option>
+                      <option value="">
+                        {llmForm.api_protocol === 'openai-completions'
+                          ? t('admin.llm.thinkingFormatAuto')
+                          : t('admin.llm.thinkingFormatCompletionsOnly')}
+                      </option>
                       <option value="openai">openai (reasoning_effort)</option>
                       <option value="deepseek">deepseek (thinking)</option>
                       <option value="qwen">qwen (enable_thinking)</option>

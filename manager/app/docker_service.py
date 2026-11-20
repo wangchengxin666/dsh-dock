@@ -220,7 +220,7 @@ class DockerService:
             env["DSH_DEFAULT_LLM_SUPPORTS_IMAGE"] = "true" if prof.supports_image else "false"
             if prof.reasoning_effort:
                 env["DSH_DEFAULT_LLM_REASONING_EFFORT"] = prof.reasoning_effort
-            if prof.thinking_format:
+            if prof.thinking_format and (prof.api_protocol or "openai-completions") == "openai-completions":
                 env["DSH_DEFAULT_LLM_THINKING_FORMAT"] = prof.thinking_format
             if prof.api_key_ciphertext:
                 try:
@@ -863,11 +863,12 @@ console.log('INSTALLED_DEPS=' + JSON.stringify(installedDeps));
             except ValueError:
                 api_key = ""
 
+        api_protocol = (profile.api_protocol or "openai-completions").strip()
         payload = {
             "providerKey": provider_key,
             "credRef": cred_ref,
             "displayName": profile.name,
-            "apiProtocol": profile.api_protocol or "openai-completions",
+            "apiProtocol": api_protocol,
             "baseUrl": profile.base_url,
             "model": profile.model,
             "apiKey": api_key or "local-no-key",
@@ -875,7 +876,11 @@ console.log('INSTALLED_DEPS=' + JSON.stringify(installedDeps));
             "maxTokens": profile.max_tokens,
             "supportsImage": bool(profile.supports_image),
             "reasoningEffort": (profile.reasoning_effort or "").strip().lower(),
-            "thinkingFormat": (profile.thinking_format or "").strip(),
+            "thinkingFormat": (
+                (profile.thinking_format or "").strip()
+                if api_protocol == "openai-completions"
+                else ""
+            ),
             "setAsDefault": bool(set_as_default),
             "replaceManaged": bool(replace_managed),
         }
@@ -973,7 +978,7 @@ const providerObj = {
 if (validEfforts.has(cfg.reasoningEffort)) {
   providerObj.reasoning = cfg.reasoningEffort;
 }
-if (cfg.thinkingFormat) {
+if (cfg.thinkingFormat && providerObj.api === 'openai-completions') {
   providerObj.compat = { thinkingFormat: cfg.thinkingFormat };
 }
 providerObj.models = [modelEntry];

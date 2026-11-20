@@ -592,13 +592,18 @@ def create_llm_profile(
     reasoning_effort: str | None = None,
     thinking_format: str | None = None,
 ) -> LlmProfile:
+    clean_protocol = (api_protocol or "openai-completions").strip()
     clean_reasoning = (reasoning_effort or "").strip() or None
-    clean_thinking_fmt = (thinking_format or "").strip() or None
+    clean_thinking_fmt = (
+        (thinking_format or "").strip() or None
+        if clean_protocol == "openai-completions"
+        else None
+    )
     profile = LlmProfile(
         name=name.strip(),
         base_url=base_url.strip(),
         model=model.strip(),
-        api_protocol=(api_protocol or "openai-completions").strip(),
+        api_protocol=clean_protocol,
         context_window=context_window,
         max_tokens=max_tokens,
         supports_image=bool(supports_image),
@@ -652,6 +657,8 @@ def update_llm_profile(
         profile.reasoning_effort = (reasoning_effort or "").strip() or None
     if "thinking_format" in provided or thinking_format is not None:
         profile.thinking_format = (thinking_format or "").strip() or None
+    if (profile.api_protocol or "openai-completions") != "openai-completions":
+        profile.thinking_format = None
     db.commit()
     db.refresh(profile)
     return profile
