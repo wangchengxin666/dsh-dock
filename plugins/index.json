@@ -99,21 +99,21 @@
           "official"
         ],
         "sortKeys": {
-          "updated": 1795883338,
+          "updated": 1795883426,
           "name": 10
         }
       },
       "versions": [
         {
           "version": "0.1.0",
-          "publishTimestamp": 1795883348,
+          "publishTimestamp": 1795883436,
           "engines": {
             "dsh": ">=0.2.0 <0.3.0"
           },
           "source": {
             "type": "git",
             "url": "https://github.com/wangchengxin666/dsh-dock",
-            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "commit": "af2a7826029adf65dbf4a848cee86f336bea4652",
             "path": "plugins/custom-theme"
           }
         }
@@ -139,21 +139,21 @@
           "official"
         ],
         "sortKeys": {
-          "updated": 1795883328,
+          "updated": 1795883416,
           "name": 20
         }
       },
       "versions": [
         {
           "version": "1.0.0",
-          "publishTimestamp": 1795883348,
+          "publishTimestamp": 1795883436,
           "engines": {
             "dsh": ">=0.2.0 <0.3.0"
           },
           "source": {
             "type": "git",
             "url": "https://github.com/wangchengxin666/dsh-dock",
-            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "commit": "af2a7826029adf65dbf4a848cee86f336bea4652",
             "path": "plugins/file-manager"
           }
         }
@@ -187,21 +187,21 @@
           "self-evolving"
         ],
         "sortKeys": {
-          "updated": 1795883318,
+          "updated": 1795883406,
           "name": 30
         }
       },
       "versions": [
         {
           "version": "0.1.1",
-          "publishTimestamp": 1795883348,
+          "publishTimestamp": 1795883436,
           "engines": {
             "dsh": ">=0.2.0 <0.3.0"
           },
           "source": {
             "type": "git",
             "url": "https://github.com/wangchengxin666/dsh-dock",
-            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "commit": "af2a7826029adf65dbf4a848cee86f336bea4652",
             "path": "plugins/sandbox-memory"
           }
         }
@@ -233,21 +233,21 @@
           "official"
         ],
         "sortKeys": {
-          "updated": 1795883308,
+          "updated": 1795883396,
           "name": 40
         }
       },
       "versions": [
         {
           "version": "0.1.0",
-          "publishTimestamp": 1795883348,
+          "publishTimestamp": 1795883436,
           "engines": {
             "dsh": ">=0.2.0 <0.3.0"
           },
           "source": {
             "type": "git",
             "url": "https://github.com/wangchengxin666/dsh-dock",
-            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "commit": "af2a7826029adf65dbf4a848cee86f336bea4652",
             "path": "plugins/app-gateway"
           }
         }
@@ -279,21 +279,21 @@
           "official"
         ],
         "sortKeys": {
-          "updated": 1795883298,
+          "updated": 1795883386,
           "name": 50
         }
       },
       "versions": [
         {
           "version": "0.1.0",
-          "publishTimestamp": 1795883348,
+          "publishTimestamp": 1795883436,
           "engines": {
             "dsh": ">=0.2.0 <0.3.0"
           },
           "source": {
             "type": "git",
             "url": "https://github.com/wangchengxin666/dsh-dock",
-            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "commit": "af2a7826029adf65dbf4a848cee86f336bea4652",
             "path": "plugins/webhook-triggers"
           }
         }
@@ -326,21 +326,21 @@
           "self-evolving"
         ],
         "sortKeys": {
-          "updated": 1795883288,
+          "updated": 1795883376,
           "name": 60
         }
       },
       "versions": [
         {
           "version": "0.1.0",
-          "publishTimestamp": 1795883348,
+          "publishTimestamp": 1795883436,
           "engines": {
             "dsh": ">=0.2.0 <0.3.0"
           },
           "source": {
             "type": "git",
             "url": "https://github.com/wangchengxin666/dsh-dock",
-            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "commit": "af2a7826029adf65dbf4a848cee86f336bea4652",
             "path": "plugins/self-evolve"
           }
         }
