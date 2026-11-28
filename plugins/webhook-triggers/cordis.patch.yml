@@ -1,0 +1,4 @@
+- insert:
+    - id: webhook-triggers
+      name: '@dsh-dock/webhook-triggers'
+      config: {}

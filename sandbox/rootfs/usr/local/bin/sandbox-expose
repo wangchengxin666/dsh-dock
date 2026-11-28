@@ -1,0 +1,262 @@
+#!/usr/bin/env bash
+# Expose a loopback service through the container Caddy proxy with public/caddy access control.
+#
+#   sandbox-expose [--auth public|caddy] <name> <port> [prefix]   add/update a route
+#   sandbox-expose --set-auth <name> <public|caddy>               toggle app auth policy
+#   sandbox-expose --remove <name>                                remove route
+#   sandbox-expose --list [--json]                                list managed routes
+#   sandbox-expose --info                                         show public origin & URLs
+set -euo pipefail
+
+apps_dir=${SANDBOX_APPS_DIR:-/home/workspace/.dsh-sandbox/caddy/apps.d}
+config=${SANDBOX_CADDY_CONFIG:-/etc/caddy/Caddyfile}
+state_dir="/home/workspace/.dsh-sandbox"
+
+origin_file="${state_dir}/public-origin.txt"
+if [ -z "${SANDBOX_PUBLIC_ORIGIN:-}" ] && [ -f "${origin_file}" ]; then
+  SANDBOX_PUBLIC_ORIGIN=$(tr -d '\r\n' <"${origin_file}")
+fi
+if [ -z "${SANDBOX_PUBLIC_ORIGIN:-}" ] && [ -n "${DSH_PUBLIC_URL:-}" ]; then
+  if [[ "${DSH_PUBLIC_URL}" =~ ^(https?://[^/]+) ]]; then
+    SANDBOX_PUBLIC_ORIGIN="${BASH_REMATCH[1]}"
+  fi
+fi
+SANDBOX_PUBLIC_ORIGIN=${SANDBOX_PUBLIC_ORIGIN:-http://localhost:${CADDY_PORT:-8080}}
+SANDBOX_PUBLIC_ORIGIN=${SANDBOX_PUBLIC_ORIGIN%/}
+
+die() { printf 'sandbox-expose: %s\n' "$*" >&2; exit 1; }
+reload_caddy() {
+  caddy validate --config "${config}" --adapter caddyfile >/dev/null &&
+    caddy reload --config "${config}" --adapter caddyfile >/dev/null
+}
+
+write_app_caddy() {
+  local name=$1
+  local port=$2
+  local prefix=$3
+  local auth_mode=$4
+
+  local matcher="@app_${name}Bare"
+  matcher=${matcher//-/_}
+  local auth_line=""
+  if [ "${auth_mode}" = "caddy" ]; then
+    auth_line=$'\timport auth_guard\n'
+  fi
+
+  local file="${apps_dir}/${name}.caddy"
+  local backup=""
+  if [ -f "${file}" ]; then
+    backup=$(mktemp "${apps_dir}/.${name}.bak.XXXXXX")
+    cp "${file}" "${backup}"
+  fi
+
+  local tmp
+  tmp=$(mktemp "${apps_dir}/.${name}.XXXXXX")
+  trap 'rm -f "${tmp}" "${backup:-}"' EXIT
+
+  cat >"${tmp}" <<EOF
+# Managed by sandbox-expose(1); regenerate instead of editing by hand.
+# App: ${name} -> 127.0.0.1:${port} mounted at ${prefix}/
+# Auth: ${auth_mode}
+
+${matcher} path ${prefix}
+redir ${matcher} ${prefix}/ 308
+
+handle_path ${prefix}/* {
+${auth_line}	reverse_proxy 127.0.0.1:${port} {
+		header_up X-Forwarded-Prefix ${prefix}
+	}
+}
+EOF
+
+  mv "${tmp}" "${file}"
+  chmod 0644 "${file}"
+
+  if ! reload_caddy; then
+    if [ -n "${backup}" ] && [ -f "${backup}" ]; then
+      mv "${backup}" "${file}"
+    else
+      rm -f "${file}"
+    fi
+    die "Caddy rejected the route update; rolled back"
+  fi
+  [ -z "${backup}" ] || rm -f "${backup}"
+  trap - EXIT
+}
+
+list_routes_json() {
+  shopt -s nullglob
+  local first=1
+  printf '['
+  for file in "${apps_dir}"/*.caddy; do
+    [ "$(basename "${file}")" = "00-empty.caddy" ] && continue
+    local app_line
+    app_line=$(grep -m1 '^# App:' "${file}" 2>/dev/null || true)
+    if [[ "${app_line}" =~ ^#\ App:\ ([^\ ]+)\ -\>\ ([^\ ]+)\ mounted\ at\ ([^\ ]+) ]]; then
+      local r_name=${BASH_REMATCH[1]}
+      local r_target=${BASH_REMATCH[2]}
+      local r_mount=${BASH_REMATCH[3]}
+      local r_port="${r_target##*:}"
+      local r_auth="public"
+      local auth_hdr
+      auth_hdr=$(grep -m1 '^# Auth:' "${file}" 2>/dev/null || true)
+      if [[ "${auth_hdr}" =~ ^#\ Auth:\ (public|caddy) ]]; then
+        r_auth=${BASH_REMATCH[1]}
+      elif grep -q 'import auth_guard' "${file}" 2>/dev/null; then
+        r_auth="caddy"
+      fi
+      [ "${first}" -eq 1 ] || printf ','
+      first=0
+      jq -cn \
+        --arg name "${r_name}" \
+        --arg target "${r_target}" \
+        --argjson port "${r_port}" \
+        --arg mount_path "${r_mount}" \
+        --arg url "${SANDBOX_PUBLIC_ORIGIN}${r_mount}" \
+        --arg auth_mode "${r_auth}" \
+        '{name: $name, target: $target, port: $port, mount_path: $mount_path, url: $url, auth_mode: $auth_mode}'
+    fi
+  done
+  printf ']\n'
+}
+
+case "${1:-}" in
+  --info)
+    if [ -f "${state_dir}/info.json" ]; then
+      cat "${state_dir}/info.json"
+    else
+      printf 'SANDBOX_PUBLIC_ORIGIN=%s\n' "${SANDBOX_PUBLIC_ORIGIN}"
+      printf 'APPS_BASE_URL=%s/apps/\n' "${SANDBOX_PUBLIC_ORIGIN}"
+      printf 'PORT_PROXY_BASE_URL=%s/p/\n' "${SANDBOX_PUBLIC_ORIGIN}"
+      printf 'HOOKS_BASE_URL=%s/hooks/\n' "${SANDBOX_PUBLIC_ORIGIN}"
+    fi
+    exit 0
+    ;;
+  --list)
+    if [ "${2:-}" = "--json" ]; then
+      list_routes_json
+      exit 0
+    fi
+    shopt -s nullglob
+    found=0
+    for file in "${apps_dir}"/*.caddy; do
+      [ "$(basename "${file}")" = "00-empty.caddy" ] && continue
+      found=1
+      app_line=$(grep -m1 '^# App:' "${file}" 2>/dev/null || true)
+      if [[ "${app_line}" =~ ^#\ App:\ ([^\ ]+)\ -\>\ ([^\ ]+)\ mounted\ at\ ([^\ ]+) ]]; then
+        r_name=${BASH_REMATCH[1]}
+        r_target=${BASH_REMATCH[2]}
+        r_mount=${BASH_REMATCH[3]}
+        r_auth="public"
+        auth_hdr=$(grep -m1 '^# Auth:' "${file}" 2>/dev/null || true)
+        if [[ "${auth_hdr}" =~ ^#\ Auth:\ (public|caddy) ]]; then
+          r_auth=${BASH_REMATCH[1]}
+        elif grep -q 'import auth_guard' "${file}" 2>/dev/null; then
+          r_auth="caddy"
+        fi
+        printf '%-16s -> %-16s  [%s]  path: %-20s  url: %s%s\n' \
+          "${r_name}" "${r_target}" "${r_auth}" "${r_mount}" "${SANDBOX_PUBLIC_ORIGIN}" "${r_mount}"
+      else
+        printf '%s\n' "${file}"
+      fi
+    done
+    [ "${found}" -eq 1 ] || echo "no exposed services"
+    exit 0
+    ;;
+  --json)
+    list_routes_json
+    exit 0
+    ;;
+  --set-auth)
+    name=${2:-}
+    new_auth=${3:-}
+    [ -n "${name}" ] && [ -n "${new_auth}" ] || die "usage: sandbox-expose --set-auth <name> <public|caddy>"
+    case "${new_auth}" in
+      public|caddy) ;;
+      *) die "invalid auth mode: ${new_auth} (expected public or caddy)" ;;
+    esac
+    file="${apps_dir}/${name}.caddy"
+    [ -f "${file}" ] || die "no such route: ${name}"
+    app_line=$(grep -m1 '^# App:' "${file}" 2>/dev/null || true)
+    if [[ "${app_line}" =~ ^#\ App:\ ([^\ ]+)\ -\>\ 127\.0\.0\.1:([0-9]+)\ mounted\ at\ ([^\ ]+) ]]; then
+      r_port=${BASH_REMATCH[2]}
+      r_mount=${BASH_REMATCH[3]%/}
+      write_app_caddy "${name}" "${r_port}" "${r_mount}" "${new_auth}"
+      printf 'updated %s auth -> %s\n' "${name}" "${new_auth}"
+      exit 0
+    fi
+    die "cannot parse metadata header in ${file}"
+    ;;
+  --remove)
+    name=${2:-}
+    [ -n "${name}" ] || die "usage: sandbox-expose --remove <name>"
+    file="${apps_dir}/${name}.caddy"
+    [ -f "${file}" ] || die "no such route: ${name}"
+    rm -f "${file}"
+    reload_caddy
+    printf 'removed %s\n' "${name}"
+    exit 0
+    ;;
+  ''|-h|--help)
+    sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+esac
+
+auth_mode="${SANDBOX_EXPOSE_DEFAULT_AUTH:-public}"
+pos_args=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --auth)
+      shift
+      [ "$#" -gt 0 ] || die "--auth requires 'public' or 'caddy'"
+      auth_mode="$1"
+      shift
+      ;;
+    --auth=*)
+      auth_mode="${1#--auth=}"
+      shift
+      ;;
+    -*)
+      die "unknown option: $1"
+      ;;
+    *)
+      pos_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+case "${auth_mode}" in
+  public|caddy) ;;
+  *) die "invalid --auth mode: ${auth_mode} (expected public or caddy)" ;;
+esac
+
+name=${pos_args[0]:-}
+port=${pos_args[1]:-}
+raw_prefix=${pos_args[2]:-/apps/${name}}
+
+case "${name}" in
+  *[!a-z0-9_-]*|'') die "name must match [a-z0-9_-]+" ;;
+esac
+case "${port}" in
+  ''|*[!0-9]*) die "port must be numeric" ;;
+esac
+[ "${port}" -ge 1 ] && [ "${port}" -le 65535 ] || die "port must be 1..65535"
+for reserved in 2019 3080 4095 8080; do
+  [ "${port}" != "${reserved}" ] || die "port ${port} is reserved (Caddy admin / DSH / Webhook / Caddy)"
+done
+case "${raw_prefix}" in
+  /*) ;;
+  *) die "prefix must start with /" ;;
+esac
+raw_prefix=${raw_prefix%/}
+[ -n "${raw_prefix}" ] || die "prefix must not be /"
+
+mkdir -p "${apps_dir}"
+write_app_caddy "${name}" "${port}" "${raw_prefix}" "${auth_mode}"
+
+printf 'exposed %s -> 127.0.0.1:%s (auth: %s)\n' "${name}" "${port}" "${auth_mode}"
+printf '  URL:         %s%s/\n' "${SANDBOX_PUBLIC_ORIGIN}" "${raw_prefix}"
+printf '  port URL:    %s/p/%s/\n' "${SANDBOX_PUBLIC_ORIGIN}" "${port}"
+printf '  mount path:  %s/\n' "${raw_prefix}"

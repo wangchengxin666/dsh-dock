@@ -1,0 +1,4 @@
+{
+  "name": "Webhook 触发器",
+  "description": "在 /hooks/<slug> 接收经过签名校验的外部 Webhook 事件、留存投递日志并一键重放，异步唤醒 AI 会话执行任务。"
+}

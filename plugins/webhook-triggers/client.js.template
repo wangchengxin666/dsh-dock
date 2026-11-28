@@ -1,0 +1,85 @@
+// Template compiled by scripts/bundle-client.mjs into client.js.
+window.__ModuleLoader__.load({
+  id: '@dsh-dock/webhook-triggers',
+  factory(require) {
+    const React = require('react')
+
+    function readActiveLocale(localeSvc) {
+      if (!localeSvc) return 'en'
+      if (typeof localeSvc.getSnapshot === 'function') return localeSvc.getSnapshot()?.active || 'en'
+      if (typeof localeSvc.getLocale === 'function') return localeSvc.getLocale()?.active || 'en'
+      if (typeof localeSvc.get === 'function') return localeSvc.get() || 'en'
+      return localeSvc.current || localeSvc.locale || 'en'
+    }
+
+    // __CLIENT_MODULES__
+
+    let cleanupStyles = null
+    return {
+      inject: ['slots', 'locale'],
+      apply(ctx) {
+        cleanupStyles = installStyles()
+        if (ctx.locale && typeof ctx.locale.register === 'function') {
+          const disposeLocale = ctx.locale.register('webhookTriggers', { en, zh })
+          ctx.effect(() => disposeLocale, 'webhook-triggers: locale')
+        }
+        const controller = createWebhookController()
+
+        const subscribeLocale = (cb) => {
+          if (typeof ctx.locale?.subscribe === 'function') return ctx.locale.subscribe(() => cb())
+          if (typeof ctx.on === 'function') return ctx.on('locale/change', () => cb())
+          return () => {}
+        }
+
+        const WebhookToolCard = createWebhookToolView({
+          React,
+          getLocale: () => readActiveLocale(ctx.locale),
+          subscribeLocale,
+        })
+        const TOOL_NAMES = ['webhook_list', 'webhook_create', 'webhook_recent_deliveries']
+        ctx.slots.inject('tool.call.toolview', () => {
+          const disposers = TOOL_NAMES.map((toolKey) =>
+            ctx.slots.register({ name: 'tool.call.toolview', key: toolKey, priority: 100 }, WebhookToolCard),
+          )
+          return () => { for (const d of disposers) d?.() }
+        })
+
+        const WebhookMainPage = createWebhookPage({
+          React,
+          controller,
+          getLocale: () => readActiveLocale(ctx.locale),
+          subscribeLocale,
+        })
+
+        function PanelIcon({ size = 18 }) {
+          return WebhookNavIcon({ React, size })
+        }
+
+        ctx.slots.inject('sidebar.panellist', () =>
+          ctx.slots.register(
+            {
+              name: 'sidebar.panellist',
+              id: 'webhook-triggers',
+              order: 24,
+              label: () => createTranslator(readActiveLocale(ctx.locale))('panel'),
+              locale: 'webhookTriggers',
+            },
+            PanelIcon,
+          ),
+        )
+
+        ctx.slots.inject('main', () =>
+          ctx.slots.register(
+            { name: 'main', key: 'webhook-triggers', locale: 'webhookTriggers' },
+            WebhookMainPage,
+          ),
+        )
+
+        ctx.effect(() => () => {
+          controller.dispose()
+          if (typeof cleanupStyles === 'function') { cleanupStyles(); cleanupStyles = null }
+        }, 'webhook-triggers: client cleanup')
+      },
+    }
+  },
+})

@@ -1,0 +1,4 @@
+- insert:
+    - id: app-gateway
+      name: '@dsh-dock/app-gateway'
+      config: {}

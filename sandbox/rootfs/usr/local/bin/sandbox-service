@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# Manage long-running dev services with the user-level supervisord.
+set -euo pipefail
+
+: "${HOME:=/home/workspace}"
+services_dir="${HOME}/.dsh-sandbox/services"
+conf_dir="${services_dir}/conf.d"
+config="${services_dir}/supervisord.conf"
+logs_dir="${HOME}/logs"
+
+die() { echo "sandbox-service: $*" >&2; exit 1; }
+ctl() { supervisorctl -c "${config}" "$@"; }
+
+valid_name() {
+  case "${1:-}" in
+    ''|*[!a-z0-9_-]*) return 1 ;;
+  esac
+}
+
+usage() {
+  cat <<'EOF'
+usage:
+  sandbox-service add <name> <command...>
+  sandbox-service list
+  sandbox-service status [name]
+  sandbox-service restart <name>
+  sandbox-service stop <name>
+  sandbox-service remove <name>
+  sandbox-service logs <name>
+
+The command runs from the current directory, with autostart/autorestart.
+Expose its loopback port separately:
+  sandbox-expose <name> <port>
+
+Use a shell when the command needs pipes/redirection:
+  sandbox-service add web "bash -lc 'cd ~/web && npm run dev -- --host 127.0.0.1 --port 5173'"
+EOF
+}
+
+[ -f "${config}" ] || die "user supervisord is not initialized: ${config}"
+mkdir -p "${conf_dir}" "${logs_dir}"
+
+cmd=${1:-}
+shift || true
+case "${cmd}" in
+  add)
+    name=${1:-}; shift || true
+    valid_name "${name}" || die "name must match [a-z0-9_-]+"
+    [ "$#" -gt 0 ] || die "add needs a command"
+    conf="${conf_dir}/${name}.conf"
+    [ -e "${conf}" ] && die "service ${name} already exists"
+    command_string="$*"
+    directory="$(pwd)"
+    cat >"${conf}" <<EOF
+[program:${name}]
+command=${command_string}
+directory=${directory}
+autostart=true
+autorestart=true
+startsecs=2
+startretries=5
+stopasgroup=true
+killasgroup=true
+stdout_logfile=${logs_dir}/${name}.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=3
+stderr_logfile=${logs_dir}/${name}.err
+stderr_logfile_maxbytes=10MB
+stderr_logfile_backups=3
+environment=HOME="${HOME}"
+EOF
+    ctl reread >/dev/null
+    ctl update >/dev/null || true
+    echo "added ${name}"
+    ctl status "${name}" || true
+    ;;
+  list)
+    if compgen -G "${conf_dir}/*.conf" >/dev/null; then
+      ctl status || true
+    else
+      echo "no user services"
+    fi
+    ;;
+  status)
+    if [ "$#" -gt 0 ]; then ctl status "$1" || true; else ctl status || true; fi
+    ;;
+  restart)
+    name=${1:-}; valid_name "${name}" || die "restart needs a valid name"; ctl restart "${name}"
+    ;;
+  stop)
+    name=${1:-}; valid_name "${name}" || die "stop needs a valid name"; ctl stop "${name}"
+    ;;
+  remove)
+    name=${1:-}; valid_name "${name}" || die "remove needs a valid name"
+    conf="${conf_dir}/${name}.conf"
+    [ -e "${conf}" ] || die "no such service: ${name}"
+    ctl stop "${name}" >/dev/null 2>&1 || true
+    rm -f "${conf}"
+    ctl reread >/dev/null
+    ctl update >/dev/null || true
+    echo "removed ${name}"
+    ;;
+  logs)
+    name=${1:-}; valid_name "${name}" || die "logs needs a valid name"
+    tail -n 100 -f "${logs_dir}/${name}.log" "${logs_dir}/${name}.err"
+    ;;
+  ''|-h|--help|help)
+    usage
+    ;;
+  *)
+    die "unknown command: ${cmd} (try --help)"
+    ;;
+esac

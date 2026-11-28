@@ -1,0 +1,6 @@
+- insert:
+    - id: file-manager
+      name: '@dsh-dock/file-manager'
+      config:
+        roots: []
+        allowOutsideRoots: false

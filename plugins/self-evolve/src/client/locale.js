@@ -1,0 +1,98 @@
+const MESSAGES = {
+  en: {
+    panel: 'Self-Evolve',
+    title: 'Self-Evolution Center',
+    subtitle: 'Manage ~/.dsh/skills/, track self-evolution milestones, run test gates, and perform 1-click rollback.',
+    refresh: 'Refresh',
+    refreshing: 'Refreshing...',
+    newSkillBtn: '+ Add / Update Skill',
+    cancel: 'Cancel',
+    saveSkill: 'Save & Verify Skill',
+    slugPlaceholder: 'Skill slug (lowercase e.g. deploy-check)',
+    reasonPlaceholder: 'Evolution reason (optional)',
+    verifyPlaceholder: 'Optional verify command (e.g. bash ~/.dsh/skills/deploy-check/scripts/test.sh)',
+    skillMdPlaceholder: 'Full SKILL.md content (including YAML --- frontmatter)...',
+    statSkills: 'Active Skills',
+    statTotal: 'Evolutions',
+    statVerified: 'Verified',
+    statRollbacks: 'Rolled Back',
+    skillsTitle: 'Workspace Skills (~/.dsh/skills/)',
+    skillsEmpty: 'No custom skills yet. Save one here or teach the AI assistant to author reusable skills.',
+    filesCount: '{count} files',
+    journalTitle: 'Evolution Journal & Snapshots',
+    journalEmpty: 'No evolution milestones recorded yet.',
+    rollback: 'Rollback',
+    deleteSkill: 'Delete',
+    addLessonBtn: '+ Log Lesson',
+    lessonTitlePlaceholder: 'Lesson or improvement title...',
+    lessonSummaryPlaceholder: 'Summary or rule to remember...',
+    saveLesson: 'Save Entry',
+    toastSaved: 'Skill saved',
+    toastDeleted: 'Skill removed (snapshot kept)',
+    toastRolledBack: 'Snapshot restored cleanly',
+    toastLessonSaved: 'Evolution entry recorded',
+    toastError: 'Evolution failed: {detail}',
+    toolListTitle: 'Inspect Skills & Evolution Log',
+    toolSaveTitle: 'Evolve Workbench Skill',
+    toolRollbackTitle: 'Rollback Evolution Snapshot',
+    toolLessonTitle: 'Record Evolution Lesson',
+    toolRunning: 'Running...',
+    toolDone: 'Completed',
+    toolFailed: 'Failed',
+  },
+  zh: {
+    panel: '自进化',
+    title: '自进化中心',
+    subtitle: '管理工作区 ~/.dsh/skills/ 技能、记录自进化与经验演进日志，修改前自动快照并支持一键回滚。',
+    refresh: '刷新',
+    refreshing: '刷新中...',
+    newSkillBtn: '+ 新增 / 更新技能',
+    cancel: '取消',
+    saveSkill: '保存并校验技能',
+    slugPlaceholder: '技能标识（小写连字符，如 deploy-check）',
+    reasonPlaceholder: '本次自进化说明（可选）',
+    verifyPlaceholder: '可选校验命令（失败将自动回滚，如 bash ~/.dsh/skills/deploy-check/test.sh）',
+    skillMdPlaceholder: '完整 SKILL.md 内容（建议包含 YAML --- 头部）...',
+    statSkills: '生效技能数',
+    statTotal: '进化记录',
+    statVerified: '校验通过',
+    statRollbacks: '已回滚',
+    skillsTitle: '当前工作区技能 (~/.dsh/skills/)',
+    skillsEmpty: '暂无自定义技能，可在上方添加或直接在对话中让 AI 把成熟经验沉淀为技能。',
+    filesCount: '{count} 个文件',
+    journalTitle: '自进化日志与快照回滚',
+    journalEmpty: '暂无自进化记录。',
+    rollback: '一键回滚',
+    deleteSkill: '删除',
+    addLessonBtn: '+ 记录经验',
+    lessonTitlePlaceholder: '经验 / 改进标题...',
+    lessonSummaryPlaceholder: '背景、踩坑原因或后续规范...',
+    saveLesson: '记录条目',
+    toastSaved: '技能已保存',
+    toastDeleted: '技能已移除（已留存快照）',
+    toastRolledBack: '已从快照回滚恢复',
+    toastLessonSaved: '自进化条目已记录',
+    toastError: '操作失败: {detail}',
+    toolListTitle: '查看技能与自进化记录',
+    toolSaveTitle: '创建或更新工作区技能',
+    toolRollbackTitle: '回滚自进化快照',
+    toolLessonTitle: '记录自进化经验',
+    toolRunning: '执行中...',
+    toolDone: '已完成',
+    toolFailed: '失败',
+  },
+}
+
+export const { en, zh } = MESSAGES
+
+export function createTranslator(rawLocale) {
+  const s = String(rawLocale || '').toLowerCase()
+  const dict = s.startsWith('zh') ? MESSAGES.zh : MESSAGES.en
+  return (key, vars) => {
+    let tpl = dict[key] ?? MESSAGES.en[key] ?? key
+    if (vars && typeof vars === 'object') {
+      for (const [k, v] of Object.entries(vars)) tpl = tpl.replaceAll(`{${k}}`, String(v ?? ''))
+    }
+    return tpl
+  }
+}

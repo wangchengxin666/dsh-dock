@@ -1,0 +1,4 @@
+{
+  "name": "Apps & Services",
+  "description": "Manage Caddy-exposed /apps/* routes (public or protected) and supervisor background services with live logs & restart."
+}

@@ -1,0 +1,4 @@
+{
+  "name": "Webhooks",
+  "description": "Receive signed HTTP webhooks on /hooks/<slug>, inspect archived payloads & delivery logs, and wake up DeepSeek Harness sessions automatically."
+}

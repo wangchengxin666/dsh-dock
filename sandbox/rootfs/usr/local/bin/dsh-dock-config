@@ -1,0 +1,91 @@
+#!/usr/bin/env node
+/**
+ * Sync DSH Web profile plugin-market configuration with the GitHub-hosted
+ * Format-1 plugin index cleanly using YAML 1.2 + atomic rename.
+ */
+'use strict'
+
+const fs = require('node:fs')
+const path = require('node:path')
+
+const HOME_DIR = process.env.HOME || '/home/workspace'
+const DSH_HOME = process.env.DSH_HOME || path.join(HOME_DIR, '.dsh')
+const PROFILE_DIR = process.env.DSH_PROFILE_DIR || path.join(DSH_HOME, 'profiles', 'web')
+const PATCH_PATH = path.join(PROFILE_DIR, 'cordis.patch.yml')
+const PKG_PATH = path.join(PROFILE_DIR, 'package.json')
+const DEFAULT_GITHUB_INDEX = 'git+https://github.com/wangchengxin666/dsh-dock.git?path=plugins/index.json'
+
+function loadYaml() {
+  const candidates = [
+    process.env.DSH_YAML_MODULE,
+    '/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/yaml',
+    '/usr/local/lib/node_modules/yaml',
+    'yaml',
+  ].filter(Boolean)
+  for (const candidate of candidates) {
+    try {
+      return require(candidate)
+    } catch {}
+  }
+  throw new Error('yaml package not found')
+}
+
+function atomicWrite(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`
+  fs.writeFileSync(tmp, content, 'utf8')
+  fs.renameSync(tmp, filePath)
+}
+
+function readPatchEntries(yaml) {
+  if (!fs.existsSync(PATCH_PATH)) return []
+  const parsed = yaml.parse(fs.readFileSync(PATCH_PATH, 'utf8'))
+  return Array.isArray(parsed) ? parsed : []
+}
+
+function syncMarket() {
+  const yaml = loadYaml()
+  const indexUrl = (
+    process.env.DSH_PLUGIN_INDEX_URL ||
+    DEFAULT_GITHUB_INDEX
+  ).trim()
+
+  const desiredIndexes = indexUrl ? [indexUrl] : []
+  let installedDeps = []
+
+  if (fs.existsSync(PKG_PATH)) {
+    const pkg = JSON.parse(fs.readFileSync(PKG_PATH, 'utf8'))
+    installedDeps = Object.keys(pkg.dependencies || {})
+    pkg.dsh = pkg.dsh || {}
+    pkg.dsh.profile = pkg.dsh.profile || {}
+    pkg.dsh.profile.bundles = Array.isArray(pkg.dsh.profile.bundles) ? pkg.dsh.profile.bundles : []
+    const bundle = '@deepseek-ai/dsh-experimental-plugin-market-bundle'
+    if (!pkg.dsh.profile.bundles.includes(bundle)) {
+      pkg.dsh.profile.bundles.push(bundle)
+      atomicWrite(PKG_PATH, `${JSON.stringify(pkg, null, 2)}\n`)
+    }
+  }
+
+  if (desiredIndexes.length > 0 && fs.existsSync(PROFILE_DIR)) {
+    const entries = readPatchEntries(yaml)
+    let entry = entries.find((x) => x && typeof x === 'object' && x.id === 'plugin-market')
+    if (!entry) {
+      entry = { id: 'plugin-market', name: '@deepseek-ai/dsh-plugin-market', config: { indexes: [] } }
+      entries.push(entry)
+    }
+    if (!entry.name) entry.name = '@deepseek-ai/dsh-plugin-market'
+    if (!entry.config || typeof entry.config !== 'object') entry.config = {}
+    entry.config.indexes = desiredIndexes
+    atomicWrite(PATCH_PATH, yaml.stringify(entries))
+  }
+
+  console.log(`INSTALLED_DEPS=${JSON.stringify(installedDeps)}`)
+}
+
+const [cmd] = process.argv.slice(2)
+if (cmd === 'sync-market') {
+  syncMarket()
+} else {
+  console.error('Usage: dsh-dock-config sync-market')
+  process.exit(1)
+}

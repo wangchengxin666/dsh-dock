@@ -1,0 +1,13 @@
+# Gateway Auth overlay (applied on DSH >= 0.2.3 when Caddy auth is enabled
+# and DSH_GATEWAY_AUTH_SECRET is configured).
+# Replaces DSH's standalone launch-token authentication with zero-double-login
+# verification via ctx.connection.authentication backed by Caddy Basic Auth or OAuth2 ForwardAuth.
+- id: authentication-token
+  disabled: true
+
+- id: remote-connection
+  disabled: true
+
+- insert:
+    - id: dsh-gateway-auth
+      name: 'file:///opt/dsh-gateway-auth/index.js'

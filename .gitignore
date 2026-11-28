@@ -1,0 +1,16 @@
+.env
+.env.local
+.env.*.local
+.venv/
+**/.venv/
+**/data/
+**/node_modules/
+dist/
+*.tsbuildinfo
+*.log
+**/__pycache__/
+**/.pytest_cache/
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/.pytest_cache/

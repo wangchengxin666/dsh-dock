@@ -1,0 +1,350 @@
+{
+  "format": 1,
+  "title": {
+    "en": "DSH Dock Built-in Plugins",
+    "zh": "DSH Dock 工作台官方插件"
+  },
+  "description": {
+    "en": "Self-evolving workbench plugins fetched directly from GitHub via DSH Git market format.",
+    "zh": "支持自进化、Webhook 触发与网关应用暴露的官方 DSH 工作台插件索引（直接从 GitHub 拉取）。"
+  },
+  "metadata": {
+    "categories": {
+      "appearance": {
+        "title": {
+          "en": "Appearance & UI",
+          "zh": "界面与主题"
+        }
+      },
+      "workspace": {
+        "title": {
+          "en": "Workspace & Files",
+          "zh": "工作区与文件"
+        }
+      },
+      "memory": {
+        "title": {
+          "en": "Memory & Self-Evolution",
+          "zh": "记忆与自进化"
+        }
+      },
+      "gateway": {
+        "title": {
+          "en": "Apps & Services",
+          "zh": "对外应用与服务"
+        }
+      },
+      "automation": {
+        "title": {
+          "en": "Webhooks & Automation",
+          "zh": "Webhook 与自动化"
+        }
+      }
+    },
+    "labels": {
+      "official": {
+        "title": {
+          "en": "Built-in",
+          "zh": "内置官方"
+        }
+      },
+      "self-evolving": {
+        "title": {
+          "en": "Self-Evolving",
+          "zh": "自进化能力"
+        }
+      }
+    },
+    "sortKeys": {
+      "updated": {
+        "title": {
+          "en": "Recently Updated",
+          "zh": "最近更新"
+        },
+        "order": "desc"
+      },
+      "name": {
+        "title": {
+          "en": "Recommended",
+          "zh": "推荐顺序"
+        },
+        "order": "asc"
+      }
+    }
+  },
+  "plugins": [
+    {
+      "name": "@dsh-dock/custom-theme",
+      "title": {
+        "en": "Custom Theme",
+        "zh": "自定义主题"
+      },
+      "description": {
+        "en": "Preset themes, light/dark CSS token editor, custom CSS variables, brand customization, and zero-flash Host persistence.",
+        "zh": "提供开箱即用默认主题、预设主题切换、明暗配色 Token 编辑器、自定义 CSS 变量、品牌 Logo 定制及持久化无闪烁注入。"
+      },
+      "author": "DSH Dock",
+      "homepage": "https://github.com/wangchengxin666/dsh-dock/tree/main/plugins/custom-theme",
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiIgd2lkdGg9IjM2IiBoZWlnaHQ9IjM2IiBmaWxsPSJub25lIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iY3QtYmciIHgxPSIyIiB5MT0iMiIgeDI9IjM0IiB5Mj0iMzQiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzYzNjZGMSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjU1JSIgc3RvcC1jb2xvcj0iIzRENkJGRSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwRUE1RTkiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHg9IjIiIHk9IjIiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgcng9IjkiIGZpbGw9InVybCgjY3QtYmcpIi8+CiAgPHBhdGggZD0iTTE4IDguNUMxMi43NSA4LjUgOC41IDEyLjYgOC41IDE3LjZDOC41IDIyLjYgMTIuNCAyNi41IDE3IDI2LjVIMTguNEMxOS42IDI2LjUgMjAuNSAyNS41NSAyMC41IDI0LjRDMjAuNSAyMy44NSAyMC4zIDIzLjM1IDE5Ljk1IDIyLjk1QzE5LjYgMjIuNiAxOS40IDIyLjEgMTkuNCAyMS41NUMxOS40IDIwLjQ1IDIwLjMgMTkuNTUgMjEuNCAxOS41NUgyMy43QzI1LjggMTkuNTUgMjcuNSAxNy44NSAyNy41IDE1Ljc1QzI3LjUgMTEuNzUgMjMuMjUgOC41IDE4IDguNVoiIGZpbGw9IiNGRkZGRkYiIGZpbGwtb3BhY2l0eT0iMC45NSIvPgogIDxjaXJjbGUgY3g9IjEzLjIiIGN5PSIxNC41IiByPSIxLjQ1IiBmaWxsPSIjNEQ2QkZFIi8+CiAgPGNpcmNsZSBjeD0iMTcuOCIgY3k9IjEyLjQiIHI9IjEuNDUiIGZpbGw9IiMwRUE1RTkiLz4KICA8Y2lyY2xlIGN4PSIyMi40IiBjeT0iMTQuNiIgcj0iMS40NSIgZmlsbD0iIzhCNUNGNiIvPgogIDxjaXJjbGUgY3g9IjEyLjYiIGN5PSIxOS4zIiByPSIxLjQ1IiBmaWxsPSIjMTBCOTgxIi8+Cjwvc3ZnPg==",
+      "metadata": {
+        "category": "appearance",
+        "keywords": [
+          "deepseek-harness",
+          "dsh-plugin",
+          "theme",
+          "customization",
+          "css-tokens"
+        ],
+        "labels": [
+          "official"
+        ],
+        "sortKeys": {
+          "updated": 1795883338,
+          "name": 10
+        }
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795883348,
+          "engines": {
+            "dsh": ">=0.2.0 <0.3.0"
+          },
+          "source": {
+            "type": "git",
+            "url": "https://github.com/wangchengxin666/dsh-dock",
+            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "path": "plugins/custom-theme"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@dsh-dock/file-manager",
+      "title": {
+        "en": "Server file manager",
+        "zh": "服务器文件管理"
+      },
+      "description": {
+        "en": "A file manager page in the left sidebar for the whole server. Browse any readable directory with breadcrumbs, a path bar you can type into, and shortcut chips; open text, images, and PDFs inline; upload files (button or drag-and-drop), download files, create folders, rename, and delete. It is not tied to a workspace or Session. Paths are checked on the Host against the configured roots; by default the whole filesystem is browsable and writable by the DSH process user, so change roots or allowOutsideRoots in the plugin's config to narrow it. Uploads are capped at 1 GiB per request.",
+        "zh": "左侧栏里的整台服务器文件管理页面。通过面包屑、可直接输入的路径栏和快捷入口浏览任意可读目录；内联预览文本、图片和 PDF；上传（按钮或拖拽）、下载文件，新建文件夹、重命名和删除。它不绑定工作区或会话。所有路径都在 Host 端按配置的根目录校验；默认可以浏览并写入 DSH 进程用户有权限访问的整个文件系统，可在插件配置里收窄 roots 或关闭 allowOutsideRoots。单次上传上限 1 GiB。"
+      },
+      "author": "DSH Dock",
+      "homepage": "https://github.com/wangchengxin666/dsh-dock/tree/main/plugins/file-manager",
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzNiIgaGVpZ2h0PSIzNiIgdmlld0JveD0iMCAwIDM2IDM2Ij4KICA8cGF0aCBkPSJNNyAxMi41YTIuNSAyLjUgMCAwIDEgMi41LTIuNWg2LjJsMi42IDNIMjYuNUEyLjUgMi41IDAgMCAxIDI5IDE1LjV2MTBBMi41IDIuNSAwIDAgMSAyNi41IDI4aC0xN0EyLjUgMi41IDAgMCAxIDcgMjUuNXYtMTNaIiBmaWxsPSIjM2E2ZWE1Ii8+CiAgPHBhdGggZD0iTTcgMTguNWgyMnY3YTIuNSAyLjUgMCAwIDEtMi41IDIuNWgtMTdBMi41IDIuNSAwIDAgMSA3IDI1LjV2LTdaIiBmaWxsPSIjNWI5M2NmIi8+CiAgPHBhdGggZD0iTTExLjUgMjFoMTNhMS4yIDEuMiAwIDAgMSAxLjIgMS4ydjIuMWExLjIgMS4yIDAgMCAxLTEuMiAxLjJoLTEzYTEuMiAxLjIgMCAwIDEtMS4yLTEuMnYtMi4xQTEuMiAxLjIgMCAwIDEgMTEuNSAyMVoiIGZpbGw9IiMxZjM1NTAiLz4KICA8Y2lyY2xlIGN4PSIyMi42IiBjeT0iMjQuMjUiIHI9IjEiIGZpbGw9IiM5ZmQ4YjQiLz4KPC9zdmc+",
+      "metadata": {
+        "category": "workspace",
+        "keywords": [],
+        "labels": [
+          "official"
+        ],
+        "sortKeys": {
+          "updated": 1795883328,
+          "name": 20
+        }
+      },
+      "versions": [
+        {
+          "version": "1.0.0",
+          "publishTimestamp": 1795883348,
+          "engines": {
+            "dsh": ">=0.2.0 <0.3.0"
+          },
+          "source": {
+            "type": "git",
+            "url": "https://github.com/wangchengxin666/dsh-dock",
+            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "path": "plugins/file-manager"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@dsh-dock/sandbox-memory",
+      "title": {
+        "en": "Memory Center",
+        "zh": "记忆中心"
+      },
+      "description": {
+        "en": "Token-frugal sandbox environment snapshot and cross-session long-term memory with automatic capture, native Harness recall tools, and full manual inspection and editing.",
+        "zh": "面向沙箱环境的低 Token 长期记忆与实时环境感知插件：支持缓存友好型索引注入、自动捕获、原生 Agent 读写工具以及可视化查看、编辑与开关管理。"
+      },
+      "author": "DSH Dock",
+      "homepage": "https://github.com/wangchengxin666/dsh-dock/tree/main/plugins/sandbox-memory",
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiIgd2lkdGg9IjM2IiBoZWlnaHQ9IjM2IiBmaWxsPSJub25lIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0ic21lbS1iZyIgeDE9IjIiIHkxPSIyIiB4Mj0iMzQiIHkyPSIzNCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjMEVBNUU5Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iNTIlIiBzdG9wLWNvbG9yPSIjNjM2NkYxIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzhCNUNGNiIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0ic21lbS1jb3JlIiB4MT0iMTIiIHkxPSIxMCIgeDI9IjI0IiB5Mj0iMjYiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI0ZGRkZGRiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNFMEU3RkYiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHg9IjIiIHk9IjIiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgcng9IjkiIGZpbGw9InVybCgjc21lbS1iZykiLz4KICA8cmVjdCB4PSIyLjYiIHk9IjIuNiIgd2lkdGg9IjMwLjgiIGhlaWdodD0iMzAuOCIgcng9IjguNCIgc3Ryb2tlPSIjRkZGRkZGIiBzdHJva2Utb3BhY2l0eT0iMC4yNCIgc3Ryb2tlLXdpZHRoPSIxLjIiLz4KICA8cGF0aCBkPSJNMTggOS4yQzEzLjYgOS4yIDEwLjUgMTIuMSAxMC41IDE2LjFDMTAuNSAxOC4yIDExLjQgMTkuOSAxMi44IDIxLjFDMTMuNCAyMS42IDEzLjggMjIuMyAxMy45IDIzLjFMMTQuMSAyNC40QzE0LjIgMjUuMyAxNC45IDI2IDE1LjggMjZIMjAuMkMyMS4xIDI2IDIxLjggMjUuMyAyMS45IDI0LjRMMjIuMSAyMy4xQzIyLjIgMjIuMyAyMi42IDIxLjYgMjMuMiAyMS4xQzI0LjYgMTkuOSAyNS41IDE4LjIgMjUuNSAxNi4xQzI1LjUgMTIuMSAyMi40IDkuMiAxOCA5LjJaIiBmaWxsPSJ1cmwoI3NtZW0tY29yZSkiIGZpbGwtb3BhY2l0eT0iMC45NSIvPgogIDxwYXRoIGQ9Ik0xNC44IDE2LjJDMTQuOCAxNC40IDE2LjIgMTMgMTggMTNDMTkuOCAxMyAyMS4yIDE0LjQgMjEuMiAxNi4yQzIxLjIgMTcuNiAyMC4zIDE4LjggMTkgMTkuMlYyMS41SDE3VjE5LjJDMTUuNyAxOC44IDE0LjggMTcuNiAxNC44IDE2LjJaIiBmaWxsPSIjNjM2NkYxIiBmaWxsLW9wYWNpdHk9IjAuMjQiLz4KICA8Y2lyY2xlIGN4PSIxNS4zIiBjeT0iMTUuNiIgcj0iMS41IiBmaWxsPSIjNEY0NkU1Ii8+CiAgPGNpcmNsZSBjeD0iMjAuNyIgY3k9IjE1LjYiIHI9IjEuNSIgZmlsbD0iIzBFQTVFOSIvPgogIDxjaXJjbGUgY3g9IjE4IiBjeT0iMTkuNiIgcj0iMS41IiBmaWxsPSIjN0MzQUVEIi8+CiAgPHBhdGggZD0iTTE2LjUgMTYuNEwxNy4zIDE4LjVNMTkuNSAxNi40TDE4LjcgMTguNU0xNi43IDE1LjZIMTkuMyIgc3Ryb2tlPSIjNEY0NkU1IiBzdHJva2Utd2lkdGg9IjEuMzUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxwYXRoIGQ9Ik0xNS40IDI3LjZIMjAuNiIgc3Ryb2tlPSIjRkZGRkZGIiBzdHJva2Utb3BhY2l0eT0iMC44OCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4=",
+      "metadata": {
+        "category": "memory",
+        "keywords": [
+          "deepseek-harness",
+          "dsh-plugin",
+          "memory",
+          "long-term-memory",
+          "environment-context",
+          "sandbox-memory"
+        ],
+        "labels": [
+          "official",
+          "self-evolving"
+        ],
+        "sortKeys": {
+          "updated": 1795883318,
+          "name": 30
+        }
+      },
+      "versions": [
+        {
+          "version": "0.1.1",
+          "publishTimestamp": 1795883348,
+          "engines": {
+            "dsh": ">=0.2.0 <0.3.0"
+          },
+          "source": {
+            "type": "git",
+            "url": "https://github.com/wangchengxin666/dsh-dock",
+            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "path": "plugins/sandbox-memory"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@dsh-dock/app-gateway",
+      "title": {
+        "en": "Apps & Services",
+        "zh": "应用与服务"
+      },
+      "description": {
+        "en": "Manage Caddy-exposed /apps/* routes (public or protected) and supervisor background services with live logs & restart.",
+        "zh": "集中管理 Caddy 对外发布的 /apps/* 页面（一键切换公开或网关保护）与后台守护服务（重启及实时日志查看）。"
+      },
+      "author": "DSH Dock",
+      "homepage": "https://github.com/wangchengxin666/dsh-dock/tree/main/plugins/app-gateway",
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImFnLWJnIiB4MT0iMCIgeTE9IjAiIHgyPSI2NCIgeTI9IjY0IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMzYjgyZjYiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI1NSUiIHN0b3AtY29sb3I9IiM2MzY2ZjEiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMDZiNmQ0Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHJ4PSIxNiIgZmlsbD0idXJsKCNhZy1iZykiLz4KICA8Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIxNiIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjMiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4xMikiLz4KICA8cGF0aCBkPSJNMTYgMzJoMzJNMzIgMTZhMjIgMjIgMCAwIDEgMCAzMk0zMiAxNmEyMiAyMiAwIDAgMCAwIDMyIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMi42IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPC9zdmc+",
+      "metadata": {
+        "category": "gateway",
+        "keywords": [
+          "deepseek-harness",
+          "dsh-plugin",
+          "caddy",
+          "apps",
+          "supervisor"
+        ],
+        "labels": [
+          "official"
+        ],
+        "sortKeys": {
+          "updated": 1795883308,
+          "name": 40
+        }
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795883348,
+          "engines": {
+            "dsh": ">=0.2.0 <0.3.0"
+          },
+          "source": {
+            "type": "git",
+            "url": "https://github.com/wangchengxin666/dsh-dock",
+            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "path": "plugins/app-gateway"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@dsh-dock/webhook-triggers",
+      "title": {
+        "en": "Webhooks",
+        "zh": "Webhook 触发器"
+      },
+      "description": {
+        "en": "Receive signed HTTP webhooks on /hooks/<slug>, inspect archived payloads & delivery logs, and wake up DeepSeek Harness sessions automatically.",
+        "zh": "在 /hooks/<slug> 接收经过签名校验的外部 Webhook 事件、留存投递日志并一键重放，异步唤醒 AI 会话执行任务。"
+      },
+      "author": "DSH Dock",
+      "homepage": "https://github.com/wangchengxin666/dsh-dock/tree/main/plugins/webhook-triggers",
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9IndoLWJnIiB4MT0iMCIgeTE9IjAiIHgyPSI2NCIgeTI9IjY0IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmOTczMTYiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI1NSUiIHN0b3AtY29sb3I9IiNlYzQ4OTkiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjOGI1Y2Y2Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHJ4PSIxNiIgZmlsbD0idXJsKCN3aC1iZykiLz4KICA8cGF0aCBkPSJNMzUuNSAxNEwyMCAzNWgxMmwtMy41IDE1TDQ0IDI5SDMybDMuNS0xNXoiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4yMikiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIzLjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4=",
+      "metadata": {
+        "category": "automation",
+        "keywords": [
+          "deepseek-harness",
+          "dsh-plugin",
+          "webhook",
+          "automation",
+          "triggers"
+        ],
+        "labels": [
+          "official"
+        ],
+        "sortKeys": {
+          "updated": 1795883298,
+          "name": 50
+        }
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795883348,
+          "engines": {
+            "dsh": ">=0.2.0 <0.3.0"
+          },
+          "source": {
+            "type": "git",
+            "url": "https://github.com/wangchengxin666/dsh-dock",
+            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "path": "plugins/webhook-triggers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@dsh-dock/self-evolve",
+      "title": {
+        "en": "Self-Evolve",
+        "zh": "自进化中心"
+      },
+      "description": {
+        "en": "Manage workspace Skills (~/.dsh/skills/), track self-evolution milestones, run test gates, and perform 1-click rollback from snapshots.",
+        "zh": "管理工作区 Skills 技能、记录自进化与经验演进日志，在修改前自动备份并在校验失败时一键回滚。"
+      },
+      "author": "DSH Dock",
+      "homepage": "https://github.com/wangchengxin666/dsh-dock/tree/main/plugins/self-evolve",
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9InNlLWJnIiB4MT0iMCIgeTE9IjAiIHgyPSI2NCIgeTI9IjY0IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxMGI5ODEiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI1NSUiIHN0b3AtY29sb3I9IiMxNGI4YTYiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMGVhNWU5Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHJ4PSIxNiIgZmlsbD0idXJsKCNzZS1iZykiLz4KICA8cGF0aCBkPSJNMjIgMjZjMC01LjUgNC41LTEwIDEwLTEwYTEwIDEwIDAgMCAxIDguNiA0LjkiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIzLjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxwb2x5bGluZSBwb2ludHM9IjQyIDE1IDQxLjUgMjIgMzQuNSAyMS41IiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMy4yIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KICA8cGF0aCBkPSJNNDIgMzhjMCA1LjUtNC41IDEwLTEwIDEwYTEwIDEwIDAgMCAxLTguNi00LjkiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIzLjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxwb2x5bGluZSBwb2ludHM9IjIyIDQ5IDIyLjUgNDIgMjkuNSA0Mi41IiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMy4yIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KICA8Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSI0IiBmaWxsPSIjZmZmZmZmIi8+Cjwvc3ZnPg==",
+      "metadata": {
+        "category": "memory",
+        "keywords": [
+          "deepseek-harness",
+          "dsh-plugin",
+          "self-evolve",
+          "skills",
+          "rollback"
+        ],
+        "labels": [
+          "official",
+          "self-evolving"
+        ],
+        "sortKeys": {
+          "updated": 1795883288,
+          "name": 60
+        }
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795883348,
+          "engines": {
+            "dsh": ">=0.2.0 <0.3.0"
+          },
+          "source": {
+            "type": "git",
+            "url": "https://github.com/wangchengxin666/dsh-dock",
+            "commit": "0cd437bc2db4aee5ec95cd3ef61dc730fab794d2",
+            "path": "plugins/self-evolve"
+          }
+        }
+      ]
+    }
+  ]
+}

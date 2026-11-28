@@ -1,0 +1,4 @@
+{
+  "name": "Self-Evolve",
+  "description": "Manage workspace Skills (~/.dsh/skills/), track self-evolution milestones, run test gates, and perform 1-click rollback from snapshots."
+}

@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Launch the DSH Web profile on loopback; Caddy handles public access & auth.
+set -euo pipefail
+
+: "${DSH_HOME:=/home/workspace/.dsh}"
+export DSH_HOME
+
+if [ -r /opt/toolchain/env.sh ]; then
+  # shellcheck disable=SC1091
+  . /opt/toolchain/env.sh
+fi
+
+args=(--profile web --patch /etc/dsh/sandbox.patch.yml --patch /etc/dsh/no-default-model.patch.yml)
+
+if [ "${DSH_GATEWAY_AUTH_ACTIVE:-false}" = "true" ] && [ -f /etc/dsh/gateway-auth.patch.yml ]; then
+  args+=(--patch /etc/dsh/gateway-auth.patch.yml)
+fi
+
+# First boot: pre-seed DSH default workspace at /home/workspace/default-workspace
+workspace_store="${DSH_HOME}/storages/workspace.json"
+if [ ! -f "${workspace_store}" ]; then
+  WORKSPACE_STORE="${workspace_store}" DEFAULT_WS_DIR="${HOME:-/home/workspace}/default-workspace" node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const { randomUUID } = require("crypto");
+    const storePath = process.env.WORKSPACE_STORE;
+    const wsDir = process.env.DEFAULT_WS_DIR;
+    fs.mkdirSync(wsDir, { recursive: true });
+    fs.mkdirSync(path.dirname(storePath), { recursive: true });
+    const realWsDir = fs.realpathSync(wsDir);
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const data = {
+      unit: { name: "workspace", version: 2 },
+      global: {
+        initialized: true,
+        defaultWorkspaceId: id,
+        workspaceIds: [id],
+        archivedSessionIds: [],
+        pinnedSessionIds: [],
+      },
+      tables: {
+        workspaces: {
+          [id]: {
+            path: realWsDir,
+            title: "default-workspace",
+            sessionIds: [],
+            createdAt: now,
+            updatedAt: now,
+          },
+        },
+      },
+    };
+    fs.writeFileSync(storePath, JSON.stringify(data, null, 2) + "\n", "utf8");
+  ' || true
+fi
+
+/usr/local/bin/dsh-dock-config sync-market || true
+
+args+=(--no-open --host 127.0.0.1 --port 3080)
+
+if [ -n "${DSH_PUBLIC_URL:-}" ]; then
+  args+=(--public-url "${DSH_PUBLIC_URL}")
+fi
+
+read -r -a trusted_hosts <<<"${DSH_TRUSTED_HOSTS:-}"
+for host in "${trusted_hosts[@]}"; do
+  [ -n "${host}" ] || continue
+  args+=(--trusted-host "${host}")
+done
+
+mkdir -p "${DSH_HOME}"
+exec > >(tee -a "${DSH_HOME}/web.log") 2>&1
+exec dsh "${args[@]}"
